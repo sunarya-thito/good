@@ -38,6 +38,22 @@ Directory parseDirectory(String path) {
 /// one behind for a run that went on to fail validation.
 Directory parseOutputDirectory(String path) => Directory(path);
 
+/// One of the build flavors a project declares.
+///
+/// The same shape `good: flavors:` accepts, checked here so a name good could
+/// never have written into `flutter: assets:` fails on the command line rather
+/// than as a build that bundles nothing and says why three steps later.
+String parseFlavorName(String name) {
+  if (!RegExp(r'^[A-Za-z0-9_-]+$').hasMatch(name)) {
+    throw ArgumentError(
+      '"$name" is not a flavor name. A flavor name is letters, digits, '
+      'underscores and dashes - it is what `--flavor` takes, and what good '
+      'writes into the generated asset entries.',
+    );
+  }
+  return name;
+}
+
 /// A project name that can be a directory and a Dart package.
 ///
 /// Both constraints at once, because the name becomes both: lowercase with

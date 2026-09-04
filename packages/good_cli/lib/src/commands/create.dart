@@ -242,7 +242,12 @@ class CreateCommand extends Command with Verbose, Resolving {
       // been resolved is the one failure Flutter reports by shipping nothing
       // rather than by stopping.
       ..printf('  cd %s\n', [projectName])
-      ..println('  flutter run');
+      // With the flavor, because there is no unflavoured build any more: good
+      // gates the loose files on `dev` and the chunks on `prod` so that no
+      // build carries both, and Flutter excludes a flavoured entry from a run
+      // that named no flavor. A bare `flutter run` here starts and draws
+      // nothing.
+      ..println('  flutter run --flavor dev');
   }
 
   /// Adds the good dependency and the asset entries to the project's pubspec.

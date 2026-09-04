@@ -12,8 +12,13 @@ dart pub global activate good_cli
 ```bash
 good create my_game
 cd my_game
-flutter run
+flutter run --flavor dev
 ```
+
+A new project maps two flavors, `dev` and `prod`. `dev` ships the loose files
+under `assets/` and `prod` ships the chunks built from them, so no build
+carries both copies of an asset. Rename them, or use the flavors your project
+already has, under `good: flavors:`.
 
 ## The asset pipeline
 
@@ -36,9 +41,15 @@ good build windows            # also: linux, android, ios
 ```
 
 `good build` runs the pipeline first, so the release bundle carries the packed
-chunks. What else it carries is what `flutter: assets:` says: that list and
-`good: assets:` are read separately, so a file good packs is not thereby handed
-to Flutter's bundler.
+chunks. It passes `--flavor` straight through to `flutter build`, and picks the
+one bundled flavor for you when there is only one. What else the build carries
+is what `flutter: assets:` says: that list and `good: assets:` are read
+separately, so a file good packs is not thereby handed to Flutter's bundler.
+
+`good generate` writes good's own entries into `flutter: assets:` and gates
+each on the flavors that ship it, so Flutter's bundler leaves the originals out
+of a `prod` build and the chunks out of a `dev` one. Entries in that list which
+are not good's are left where they are.
 
 ## Next
 

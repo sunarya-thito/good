@@ -1,5 +1,7 @@
 import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart'
+    show TargetPlatform, debugDefaultTargetPlatformOverride;
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:good/src/scene_handle.dart';
@@ -125,7 +127,7 @@ class _FakeInfo extends AssetInfo {
 
 /// A key, with the counters the tests assert on reachable from it.
 class _FakeAsset extends AssetKey<_FakePayload> {
-  _FakeAsset(String name, {int byteCount = 4})
+  _FakeAsset(String name, {int byteCount = 4, super.flavors, super.platforms})
     : super(_FakeSource(name, byteCount));
 
   @override
@@ -569,6 +571,125 @@ void main() {
             'an int that never went through a describeAssets pass '
             'has nothing for a DataPointer row to point at, and address 0 is '
             'a legitimate other asset',
+      );
+    });
+  });
+
+  group('an asset this build does not ship', () {
+    // Generation never varies by flavor or platform, so every declared asset
+    // has a key and an address in every build - addresses go into component
+    // rows and both isolate copies have to agree about them. What varies is
+    // whether the bytes are there, and `available` is that question answered
+    // from the key's own declared constraints, before any load.
+    //
+    // `appFlavor` is `const String?` over FLUTTER_APP_FLAVOR, and a test binary
+    // is built with no flavor, so any key that names one is unavailable here.
+    // The platform half is `defaultTargetPlatform`, which a test can move.
+
+    tearDown(() => debugDefaultTargetPlatformOverride = null);
+
+    test('an unconstrained key ships everywhere', () {
+      expect(_FakeAsset('plain').available, isTrue);
+    });
+
+    test('a key naming a flavor this build is not, does not', () {
+      expect(
+        _FakeAsset('paid', flavors: const <String>{'paid'}).available,
+        isFalse,
+        reason:
+            'Flutter excludes a flavoured entry from a build that named no '
+            'flavor, and the key has to answer the same way the bundler acted',
+      );
+    });
+
+    test('the platform half is the running platform, spelled Flutter\'s way', () {
+      debugDefaultTargetPlatformOverride = TargetPlatform.macOS;
+      expect(
+        _FakeAsset('desktop', platforms: const <String>{'macos'}).available,
+        isTrue,
+        reason:
+            'the pubspec spelling is `macos`, from TargetPlatform.osName - '
+            'matching on `macOS` would report an asset that shipped as absent',
+      );
+      expect(
+        _FakeAsset('mobile', platforms: const <String>{'android'}).available,
+        isFalse,
+      );
+      debugDefaultTargetPlatformOverride = TargetPlatform.android;
+      expect(
+        _FakeAsset('mobile2', platforms: const <String>{'android'}).available,
+        isTrue,
+      );
+    });
+
+    test('it still takes an address', () {
+      final key = _FakeAsset('paid', flavors: const <String>{'paid'});
+      expect(
+        assets.declare(key).pack(),
+        isNonNegative,
+        reason:
+            'an address goes into a component row and must agree across both '
+            'isolates, so it cannot depend on what this build bundled',
+      );
+    });
+
+    test('loading it is a no-op rather than a failure', () async {
+      // A scene declares every asset its prefabs name, and loads the lot. If
+      // an unshipped one were fetched, the bundle would fail on a path the
+      // bundler deliberately left out and take the whole scene load with it.
+      final key = _FakeAsset('paid', flavors: const <String>{'paid'});
+      assets.declare(key);
+
+      final instance = await assets.load(key);
+
+      expect(instance.isLoaded, isFalse);
+      expect(key.source.reads, 0, reason: 'nothing went looking for bytes');
+      expect(key.decodes, 0);
+    });
+
+    test('reading its payload names the constraint, not a missing load', () {
+      final key = _FakeAsset(
+        'premium',
+        flavors: const <String>{'paid'},
+        platforms: const <String>{'android'},
+      );
+      debugDefaultTargetPlatformOverride = TargetPlatform.windows;
+      final instance = assets.declare(key);
+
+      expect(
+        () => instance.value,
+        throwsA(
+          isA<StateError>().having(
+            (e) => e.message,
+            'message',
+            allOf(
+              contains('premium'),
+              contains('does not ship it'),
+              contains('paid'),
+              contains('android'),
+              contains('windows'),
+              isNot(contains('never passed to Assets.load')),
+            ),
+          ),
+        ),
+        reason:
+            'an asset excluded on purpose is a different fix from one nothing '
+            'loaded, and a message naming one sends half its readers wrong',
+      );
+    });
+
+    test('an available one still says it was never loaded', () {
+      // The other branch, so the two messages cannot collapse into one.
+      final instance = assets.declare(_FakeAsset('shipped'));
+      expect(
+        () => instance.value,
+        throwsA(
+          isA<StateError>().having(
+            (e) => e.message,
+            'message',
+            allOf(contains('never loaded'), isNot(contains('does not ship'))),
+          ),
+        ),
       );
     });
   });

@@ -14,6 +14,9 @@ import 'package:yaml/yaml.dart';
 ///   pack-output: assets/packed/ # release chunks, generated
 ///   assets:                     # what good packs, in Flutter's own shape
 ///     - assets/
+///   flavors:                    # this project's flavors, and what each ships
+///     development: raw
+///     production: bundled
 ///   texture:
 ///     format: webp
 ///     quality: 90
@@ -41,6 +44,7 @@ class GoodConfig {
     required this.assetOutput,
     this.packOutput = 'assets/packed/',
     this.assets = const <AssetEntry>[],
+    this.flavors = const <String, AssetPipeline>{},
     required this.texture,
     required this.audio,
   });
@@ -101,6 +105,52 @@ class GoodConfig {
   /// unchanged - see [AssetEntry].
   final List<AssetEntry> assets;
 
+  /// This project's build flavors, and what each one ships - as written.
+  ///
+  /// ```yaml
+  /// good:
+  ///   flavors:
+  ///     development: raw
+  ///     staging: bundled
+  ///     production: bundled
+  /// ```
+  ///
+  /// **good names no flavor and reserves none.** A build takes one
+  /// `--flavor`, and that slot is the project's: a game that already ships
+  /// `paid` and `free` keeps shipping them and says which of the two goes
+  /// through the pipeline. Inventing a `dev`/`prod` axis of good's own would
+  /// take the only slot there is.
+  ///
+  /// Empty for a project that declares none, which is not the same as having
+  /// none - see [resolvedFlavors].
+  final Map<String, AssetPipeline> flavors;
+
+  /// [flavors], with the degenerate case filled in.
+  ///
+  /// A project that declares no flavors has nothing to map, and an entry with
+  /// no `flavors:` is shipped in every build - so the raw set and the bundled
+  /// set would be one set, both shipped, which is the double-ship this split
+  /// exists to end. `dev` and `prod` are synthesized there: the same rule
+  /// applied to the case where the project named nothing, not a second
+  /// mechanism.
+  Map<String, AssetPipeline> get resolvedFlavors => flavors.isEmpty
+      ? const <String, AssetPipeline>{
+          'dev': AssetPipeline.raw,
+          'prod': AssetPipeline.bundled,
+        }
+      : flavors;
+
+  /// The flavors that ship the originals, sorted.
+  List<String> get rawFlavors => _flavorsFor(AssetPipeline.raw);
+
+  /// The flavors that ship the chunks, sorted.
+  List<String> get bundledFlavors => _flavorsFor(AssetPipeline.bundled);
+
+  List<String> _flavorsFor(AssetPipeline pipeline) => <String>[
+    for (final entry in resolvedFlavors.entries)
+      if (entry.value == pipeline) entry.key,
+  ]..sort();
+
   final TextureConfig texture;
   final AudioConfig audio;
 
@@ -137,7 +187,8 @@ class GoodConfig {
       assetSource: _dir(good, 'asset-source', defaults.assetSource),
       assetOutput: _dir(good, 'asset-output', defaults.assetOutput),
       packOutput: _dir(good, 'pack-output', defaults.packOutput),
-      assets: _assets(good['assets']),
+      assets: _checkedAssets(_assets(good['assets']), _flavors(good)),
+      flavors: _flavors(good),
       texture: TextureConfig(
         format: _enum(
           texture,
@@ -207,6 +258,80 @@ class GoodConfig {
     return value is int ? value : fallback;
   }
 
+  /// The `good: flavors:` map: each of the project's flavors, and whether it
+  /// ships the originals or the chunks.
+  ///
+  /// A value outside [AssetPipeline] is refused rather than ignored. There
+  /// are two pipelines and a flavor goes through one of them; a third word
+  /// here means someone expected a behaviour that does not exist, and the
+  /// quiet reading of it is a flavor that ships nothing at all.
+  static Map<String, AssetPipeline> _flavors(YamlMap good) {
+    final yaml = good['flavors'];
+    if (yaml == null) return const <String, AssetPipeline>{};
+    if (yaml is! YamlMap) {
+      throw ArgumentError(
+        'pubspec.yaml: `good: flavors:` is a ${yaml.runtimeType}, not a map. '
+        'Each line under it names one flavor of this project, and says '
+        '${AssetPipeline.values.map((p) => p.name).join(' or ')}.',
+      );
+    }
+    final flavors = <String, AssetPipeline>{};
+    for (final key in yaml.keys) {
+      // Restricted here rather than passed through, because the name is
+      // written into a pubspec asset entry and read back by Flutter's own
+      // parser. A name needing quoting would come back out of a generated
+      // list as something else.
+      if (key is! String || !RegExp(r'^[A-Za-z0-9_-]+$').hasMatch(key)) {
+        throw ArgumentError(
+          'pubspec.yaml: `good: flavors:` names "$key", which is not a flavor '
+          'name. A flavor name is letters, digits, underscores and dashes - '
+          'it is what `--flavor` takes and what good writes into the '
+          'generated asset entries.',
+        );
+      }
+      final value = yaml[key];
+      final pipeline = <String, AssetPipeline>{
+        for (final p in AssetPipeline.values) p.name: p,
+      }[value];
+      if (pipeline == null) {
+        throw ArgumentError(
+          'pubspec.yaml: `good: flavors: $key: $value` is not a pipeline. A '
+          'flavor ships ${AssetPipeline.values.map((p) => p.name).join(' or ')}'
+          ' - the originals, or the normalized, chunked, compressed and '
+          'encrypted bundle.',
+        );
+      }
+      flavors[key] = pipeline;
+    }
+    return flavors;
+  }
+
+  /// [assets], refused if an entry names a flavor the project does not map.
+  ///
+  /// Not a warning and not a silent pass. `good generate` gates the raw copy
+  /// of an entry on its own flavors intersected with the raw ones, so a name
+  /// outside the map intersects to nothing - the originals ship nowhere - and
+  /// the chunk still ships, so the asset exists in one build and not the
+  /// other for a reason nothing states. A typo'd flavor is exactly that.
+  static List<AssetEntry> _checkedAssets(
+    List<AssetEntry> assets,
+    Map<String, AssetPipeline> flavors,
+  ) {
+    for (final entry in assets) {
+      final unknown =
+          entry.flavors.where((f) => !flavors.containsKey(f)).toList()..sort();
+      if (unknown.isEmpty) continue;
+      throw ArgumentError(
+        'pubspec.yaml: `good: assets:` entry "${entry.path}" ships in '
+        '${unknown.join(', ')}, which `good: flavors:` does not map. '
+        '${flavors.isEmpty ? 'This project declares no flavors at all - add a '
+                  '`good: flavors:` map naming them and whether each ships raw '
+                  'or bundled.' : 'It maps ${flavors.keys.join(', ')}.'}',
+      );
+    }
+    return assets;
+  }
+
   /// The `good: assets:` list.
   ///
   /// A missing key is an empty list, not an error: a project can legitimately
@@ -227,6 +352,22 @@ class GoodConfig {
         AssetEntry.parse(entry, context: 'good: assets'),
     ];
   }
+}
+
+/// What a flavor ships: the originals, or what the pipeline made of them.
+///
+/// The two are the whole of the development/release split, and they are
+/// flavors rather than a post-build deletion because Flutter's own bundler
+/// already excludes a flavoured entry from a build that did not ask for that
+/// flavor. Nothing has to strip anything afterwards, and there is no moment
+/// where both copies are in one bundle.
+enum AssetPipeline {
+  /// The files as they are, loaded loose through the asset bundle. What a
+  /// development run wants: edit a file, hot restart, see it.
+  raw,
+
+  /// normalize -> chunk -> compress -> encrypt. What ships.
+  bundled,
 }
 
 /// The one format every texture is converted to.

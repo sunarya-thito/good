@@ -4,6 +4,7 @@ library;
 import 'dart:io';
 
 import 'package:test/test.dart';
+import 'package:yaml/yaml.dart';
 
 import '_cli.dart';
 import '_temp.dart';
@@ -29,7 +30,7 @@ bool get _hasFfmpeg {
   }
 }
 
-Directory _project() {
+Directory _project({String flavors = ''}) {
   final dir = testTempDir('good_build_assets');
   Directory('${dir.path}/assets_src').createSync(recursive: true);
   Directory('${dir.path}/assets/packed').createSync(recursive: true);
@@ -42,7 +43,7 @@ dependencies:
   goo2d: ^0.1.0
 
 good:
-  assets:
+$flavors  assets:
     - assets/
 
 flutter:
@@ -53,6 +54,14 @@ flutter:
     - assets/packed/
 ''');
   return dir;
+}
+
+/// The project's `flutter: assets:`, as Flutter's own parser reads it.
+List<Object?> _flutterAssets(Directory project) {
+  final doc =
+      loadYaml(File('${project.path}/pubspec.yaml').readAsStringSync())
+          as YamlMap;
+  return ((doc['flutter'] as YamlMap)['assets'] as YamlList).toList();
 }
 
 /// A real image, so compaction has something it can actually convert.
@@ -141,6 +150,55 @@ void main() {
           'hand-placed file alike:\n$log',
     );
   }, skip: _hasFfmpeg ? null : 'ffmpeg is not installed');
+
+  test('a build gates the two copies on different flavors', () {
+    // The mechanism that replaced stripping, end to end. The originals and
+    // the chunks hold the same bytes; gated, no single build carries both, and
+    // Flutter's own bundler is what leaves one out.
+    final project = _project();
+    File('${project.path}/assets/probe.png')
+      ..parent.createSync(recursive: true)
+      ..writeAsBytesSync([0]);
+
+    final build = _good(project, <String>['build', 'windows']);
+    expect(_flutterAssets(project), <Object?>[
+      <String, Object?>{
+        'path': 'assets/',
+        'flavors': <String>['dev'],
+      },
+      <String, Object?>{
+        'path': 'assets/packed/',
+        'flavors': <String>['prod'],
+      },
+    ], reason: '${build.stdout}${build.stderr}');
+  });
+
+  test('a release build refuses a flavor that ships the originals', () {
+    // Bundling into chunks and then bundling the flavor that ships the loose
+    // files would build every chunk and ship none of them. Silent otherwise:
+    // the build succeeds and the game fails at its first asset load.
+    final project = _project(
+      flavors: '  flavors:\n    development: raw\n    production: bundled\n',
+    );
+    File('${project.path}/assets/probe.png')
+      ..parent.createSync(recursive: true)
+      ..writeAsBytesSync([0]);
+
+    final build = _good(project, <String>[
+      'build',
+      'windows',
+      '--flavor',
+      'development',
+    ]);
+    final log = '${build.stdout}${build.stderr}';
+    expect(log, contains('development'));
+    expect(log, contains('production'));
+    expect(
+      File('${project.path}/assets/packed/chunk_root.dat').existsSync(),
+      isFalse,
+      reason: 'it should refuse before packing anything:\n$log',
+    );
+  });
 
   test('a build says nothing about stripping anything', () {
     // The mechanism is gone. A message about it would be the comment that

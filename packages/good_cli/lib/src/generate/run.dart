@@ -3,7 +3,9 @@ import 'dart:math';
 
 import 'package:good_cli/src/command.dart';
 import 'package:good_cli/src/generate/assets.dart';
+import 'package:good_cli/src/config.dart';
 import 'package:good_cli/src/generate/bundle.dart';
+import 'package:good_cli/src/generate/flutter_assets.dart';
 import 'package:good_cli/src/generate/engine_dependency.dart';
 import 'package:good_cli/src/generate/scan.dart';
 import 'package:good_cli/src/generate/templates.dart';
@@ -294,6 +296,7 @@ GenerateResult runGenerate({
 
   _migrate(project, bundle, out);
   _recordBundle(project, bundle, out);
+  _recordFlutterAssets(project, out, verbose);
   _resolve(project, bundle, out, verbose, pubGet: pubGet);
 
   final problems = bundleProblems(
@@ -378,6 +381,66 @@ void _recordBundle(
     return;
   }
   pubspec.writeAsStringSync('${patched.join('\n')}\n');
+}
+
+/// Writes good's entries into the project's `flutter: assets:`, gated on the
+/// flavors that ship them.
+///
+/// This is the step that ends the double-ship. The originals and the chunks
+/// hold the same bytes, and until they were told apart by flavor a build that
+/// packed handed both to Flutter's bundler - so every packed asset shipped
+/// legible beside the chunk holding it, and `strip-originals` existed to
+/// delete the first copy afterwards. Gated, Flutter's own bundler leaves one
+/// of the two out and there is nothing to delete. (#270)
+///
+/// **The project's pubspec, not the generated package's.** Flutter resolves a
+/// package's asset entry against that package's own root and bundles it under
+/// `packages/<name>/`, so an entry for `assets/game/` written into the
+/// generated package names a directory that is not there - and would change
+/// every logical asset path if it were. The paths are the project's, so the
+/// list that declares them has to be the project's too.
+///
+/// Rewritten on every run, because the entries are a function of
+/// `good: assets:` and `good: flavors:` and both can change. Only the entries
+/// good owns are touched; anything else in that list is the project's.
+void _recordFlutterAssets(
+  Directory project,
+  VerboseOutput out,
+  VerboseOutput verbose,
+) {
+  final config = GoodConfig.read(project);
+  final pubspec = File(p.join(project.path, 'pubspec.yaml'));
+  final lines = pubspec.existsSync() ? pubspec.readAsLinesSync() : null;
+  final patched = lines == null
+      ? null
+      : patchedFlutterAssetLines(lines, config);
+  if (patched == null) {
+    // Printed, not guessed at - `patchedPubspecLines` and
+    // `patchedBundlePubspecLines` both stop here for the same reason, and a
+    // wrong edit to somebody's pubspec is worse than an instruction.
+    out
+      ..println('')
+      ..printf(
+        'good could not update `flutter: assets:` in %s. Make it read:\n',
+        [pubspec.path],
+      )
+      ..println(flutterAssetsPatch(config));
+    return;
+  }
+  if (_sameLines(lines!, patched)) {
+    verbose.println('`flutter: assets:` already lists what good ships.');
+    return;
+  }
+  pubspec.writeAsStringSync('${patched.join('\n')}\n');
+  out.printf('Updated `flutter: assets:` in %s\n', [pubspec.path]);
+}
+
+bool _sameLines(List<String> a, List<String> b) {
+  if (a.length != b.length) return false;
+  for (var i = 0; i < a.length; i++) {
+    if (a[i] != b[i]) return false;
+  }
+  return true;
 }
 
 /// Makes the path dependency real, or proves it already is.

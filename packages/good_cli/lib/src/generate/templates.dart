@@ -153,23 +153,78 @@ String _emitEnum({
   }
 
   final sized = sizeClassName != null;
+  // The constraint fields are emitted only for a project that constrains
+  // something. `LocalEnumAssetKey` answers both with an empty set, so a game
+  // that ships everything everywhere generates exactly what it generated
+  // before flavors existed - and one that does not, says so on the value.
+  final constrained = assets.any((asset) => asset.isConstrained);
   buffer.writeln('enum $enumName with LocalEnumAssetKey<$payload> {');
   for (var i = 0; i < assets.length; i++) {
     final asset = assets[i];
     final terminator = i == assets.length - 1 ? ';' : ',';
     final size = sized ? ', ${_width(asset)}, ${_height(asset)}' : '';
-    buffer.writeln("  ${asset.identifier}('${asset.path}'$size)$terminator");
+    if (!constrained || !asset.isConstrained) {
+      buffer.writeln("  ${asset.identifier}('${asset.path}'$size)$terminator");
+      continue;
+    }
+    // One argument per line for a constrained value. Everything a reader
+    // needs in order to know why an asset is missing from a build is on this
+    // enum value, and it does not fit on one line.
+    buffer
+      ..writeln('  ${asset.identifier}(')
+      ..writeln("    '${asset.path}',");
+    if (sized) {
+      buffer
+        ..writeln('    ${_width(asset)},')
+        ..writeln('    ${_height(asset)},');
+    }
+    if (asset.flavors.isNotEmpty) {
+      buffer.writeln('    flavors: ${_setLiteral(asset.flavors)},');
+    }
+    if (asset.platforms.isNotEmpty) {
+      buffer.writeln('    platforms: ${_setLiteral(asset.platforms)},');
+    }
+    buffer.writeln('  )$terminator');
   }
-  buffer
-    ..writeln()
-    ..writeln(
+  buffer.writeln();
+  if (constrained) {
+    buffer.writeln('  const $enumName(');
+    if (sized) {
+      buffer
+        ..writeln('    this.path,')
+        ..writeln('    this.width,')
+        ..writeln('    this.height, {');
+    } else {
+      buffer.writeln('    this.path, {');
+    }
+    buffer
+      ..writeln('    this.flavors = const <String>{},')
+      ..writeln('    this.platforms = const <String>{},')
+      ..writeln('  });');
+  } else {
+    buffer.writeln(
       sized
           ? '  const $enumName(this.path, this.width, this.height);'
           : '  const $enumName(this.path);',
-    )
+    );
+  }
+  buffer
     ..writeln()
     ..writeln('  @override')
     ..writeln('  final String path;');
+  if (constrained) {
+    buffer
+      ..writeln()
+      ..writeln('  /// The build flavors that ship this asset, empty for all')
+      ..writeln('  /// of them. Read `available` rather than this.')
+      ..writeln('  @override')
+      ..writeln('  final Set<String> flavors;')
+      ..writeln()
+      ..writeln('  /// The platforms that ship this asset, empty for all of')
+      ..writeln('  /// them. See [flavors].')
+      ..writeln('  @override')
+      ..writeln('  final Set<String> platforms;');
+  }
   if (sized) {
     buffer
       ..writeln()
@@ -215,6 +270,13 @@ String _emitEnum({
   return buffer.toString();
 }
 
+/// A `const` set of names, sorted so two runs over one project agree.
+String _setLiteral(Set<String> values) {
+  final sorted = values.toList()..sort();
+  final quoted = sorted.map((value) => "'$value'").join(', ');
+  return '<String>{$quoted}';
+}
+
 /// The width to write, and `0` where the header did not state one.
 ///
 /// A number and not an omission because every enum value has to pass one to
@@ -256,13 +318,17 @@ import 'asset_key.dart';
 import 'audios.dart';
 import 'textures.dart';
 
-/// Every asset that is declared but will not be there at run time.
+/// Every asset that is declared, shipped by this build, and not there.
 ///
 /// Checked **without loading anything**: [AssetSource.check] consults the
 /// manifest and at most stats a file, so this is cheap enough to run over a
 /// whole game at startup - which is the point. A missing asset found here is a
 /// clear message before the first frame; the same asset found later is a
 /// failure in the middle of play, with a scene half-loaded.
+///
+/// Assets this build does not ship are skipped rather than counted: see
+/// [AssetKey.available], which answers from the key's own declared flavors
+/// and platforms without reading anything.
 ///
 /// [AssetAvailability.unverifiable] is *not* counted as a failure. A loose
 /// development build cannot stat a bundle entry, and a network source cannot
@@ -274,6 +340,10 @@ Future<List<AssetKey<Object?>>> findMissingAssets() async {
     ...Textures.values,
     ...Audios.values,
   ]) {
+    // A key exists in every build; its bytes do not. An asset this flavor or
+    // this platform never ships is absent on purpose, and reporting it here
+    // would make the readiness check fail every build that uses the feature.
+    if (!key.available) continue;
     final availability = await key.source.check();
     if (availability == AssetAvailability.missing ||
         availability == AssetAvailability.unknown) {
