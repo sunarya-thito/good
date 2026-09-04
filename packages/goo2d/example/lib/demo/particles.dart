@@ -67,8 +67,7 @@ int _hsv(double hue, double saturation, double value) {
 /// scene-graph case, which does use one.
 class Mote extends EntityStruct
     with Transform2D, Renderable2D, EntityLifecycleListener {
-  late final Sprite body;
-  final texture = Asset.of(discTexture);
+  final body = Sprite.of(width: 14, height: 14, texture: discTexture);
 
   /// Polar coordinates, kept per entity because the movement is a function of
   /// them and of time - so a tick reads four fields and writes three, and no
@@ -95,12 +94,6 @@ class Mote extends EntityStruct
   /// shared, so it costs nothing across the boundary.
   int _spawned = 0;
 
-
-  @override
-  void describeSprites(SpriteDescriptor descriptor) {
-    super.describeSprites(descriptor);
-    body = descriptor.has(width: 14, height: 14, texture: texture);
-  }
 
   @override
   void onEntityMounted(Entity entity) {

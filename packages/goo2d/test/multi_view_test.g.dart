@@ -23,6 +23,7 @@ part of 'multi_view_test.dart';
 List<ScannableField> _collect$Sprite(Object object) {
   final owner = object as _Sprite;
   return <ScannableField>[
+    owner.quad,
     owner.worldX,
     owner.worldY,
     owner.worldScaleX,
@@ -73,6 +74,7 @@ List<ScannableField> _collect$Eye(Object object) {
 List<ScannableField> _collect$Target(Object object) {
   final owner = object as _Target;
   return <ScannableField>[
+    owner.quad,
     owner.worldX,
     owner.worldY,
     owner.worldScaleX,

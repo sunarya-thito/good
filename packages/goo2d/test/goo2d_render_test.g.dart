@@ -23,6 +23,7 @@ part of 'goo2d_render_test.dart';
 List<ScannableField> _collect$Sprite(Object object) {
   final owner = object as _Sprite;
   return <ScannableField>[
+    owner.quad,
     owner.parentFirstChild,
     owner.parentLastChild,
     owner.childParent,
@@ -52,6 +53,10 @@ List<ScannableField> _collect$Sprite(Object object) {
 List<ScannableField> _collect$Billboard(Object object) {
   final owner = object as _Billboard;
   return <ScannableField>[
+    owner.tile,
+    owner.front,
+    owner.middle,
+    owner.back,
     owner.worldX,
     owner.worldY,
     owner.worldScaleX,

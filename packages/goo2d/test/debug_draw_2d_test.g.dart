@@ -23,6 +23,7 @@ part of 'debug_draw_2d_test.dart';
 List<ScannableField> _collect$Box(Object object) {
   final owner = object as _Box;
   return <ScannableField>[
+    owner.quad,
     owner.worldX,
     owner.worldY,
     owner.worldScaleX,

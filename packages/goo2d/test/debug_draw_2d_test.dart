@@ -44,13 +44,7 @@ const int _lineColor = 0xFF00FFFF;
 /// somewhere else.
 class _Box extends EntityStruct
     with Transform2D, WorldTransform2D, Renderable2D {
-  late final Sprite quad;
-
-  @override
-  void describeSprites(SpriteDescriptor descriptor) {
-    super.describeSprites(descriptor);
-    quad = descriptor.has(width: 16, height: 16, color: _spriteColor);
-  }
+  final quad = Sprite.of(width: 16, height: 16, color: _spriteColor);
 }
 
 class _Eye extends EntityStruct with Transform2D, WorldTransform2D, Camera {}

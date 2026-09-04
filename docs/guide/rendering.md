@@ -47,13 +47,7 @@ Two mixins and one declaration:
 ```dart
 class Player extends EntityStruct
     with Transform2D, WorldTransform2D, Renderable2D {
-  late final Sprite sprite;
-
-  @override
-  void describeSprites(SpriteDescriptor descriptor) {
-    super.describeSprites(descriptor);
-    sprite = descriptor.has(width: 64, height: 64, color: 0xFF4FC3F7);
-  }
+  final sprite = Sprite.of(width: 64, height: 64, color: 0xFF4FC3F7);
 }
 ```
 
@@ -145,20 +139,19 @@ box.offsetY[entity] = 20; // matches, and +20 is up for both
 `Renderable2D` is a multi-component, so a prefab can declare more than one:
 
 <!-- snippet: in EntityStruct with Renderable2D -->
-<!-- snippet-setup
-late Sprite body;
-late Sprite muzzleFlash;
-late TextureAsset bodyTexture;
-late TextureAsset flashTexture;
--->
 ```dart
-@override
-void describeSprites(SpriteDescriptor descriptor) {
-  super.describeSprites(descriptor);
-  body = descriptor.has(width: 64, height: 64, texture: bodyTexture);
-  muzzleFlash = descriptor.has(width: 32, height: 32, texture: flashTexture,
-                               visible: false, zIndex: 10);
-}
+final body = Sprite.of(
+  width: 64,
+  height: 64,
+  texture: Textures.spritesPlayer,
+);
+final muzzleFlash = Sprite.of(
+  width: 32,
+  height: 32,
+  texture: Textures.uiButton,
+  visible: false,
+  zIndex: 10,
+);
 ```
 
 Toggle `muzzleFlash.visible[entity]` for a frame instead of spawning and
@@ -172,20 +165,11 @@ handle to the sprite:
 ```dart
 class Player extends EntityStruct
     with Transform2D, WorldTransform2D, Renderable2D {
-  late final TextureAsset texture;
-  late final Sprite sprite;
-
-  @override
-  void describeAssets(AssetDescriptor descriptor) {
-    super.describeAssets(descriptor);
-    texture = descriptor.has(Textures.spritesPlayer);
-  }
-
-  @override
-  void describeSprites(SpriteDescriptor descriptor) {
-    super.describeSprites(descriptor);
-    sprite = descriptor.has(width: 64, height: 64, texture: texture);
-  }
+  final sprite = Sprite.of(
+    width: 64,
+    height: 64,
+    texture: Textures.spritesPlayer,
+  );
 }
 ```
 
@@ -239,7 +223,7 @@ class Player extends EntityStruct
     with Transform2D, WorldTransform2D, Renderable2D {
   final animTime = Field.float64();
 
-  late final Sprite sprite;
+  final sprite = Sprite.of(width: 64, height: 64);
 
   static const List<SpriteFrame> walkCycle = <SpriteFrame>[
     SpriteFrame.grid(columns: 8, rows: 4, index: 0),
@@ -247,16 +231,10 @@ class Player extends EntityStruct
     SpriteFrame.grid(columns: 8, rows: 4, index: 2),
     SpriteFrame.grid(columns: 8, rows: 4, index: 3),
   ];
-
-  @override
-  void describeSprites(SpriteDescriptor descriptor) {
-    super.describeSprites(descriptor);
-    sprite = descriptor.has(width: 64, height: 64);
-  }
 }
 ```
 
-`width` and `height` on `has` are **world units**, not pixels, so they are not
+`width` and `height` on `Sprite.of` are **world units**, not pixels, so they are not
 the texture's size and `TextureSize` does not belong there. Drawing a sprite at
 its native pixel size is `TextureSize.spritesPlayerWidth * unitsPerPixel` for
 whatever scale the game uses.
@@ -491,7 +469,7 @@ it, and the camera's position stops moving it.
 ```dart
 class Backdrop extends EntityStruct
     with Transform2D, ScreenTransform2D, Renderable2D {
-  late final Sprite fill;
+  final fill = Sprite.of(width: 1, height: 1, color: 0xFF203040);
 
   @override
   final screenLayer = ScreenLayer.behind;
@@ -501,12 +479,6 @@ class Backdrop extends EntityStruct
 
   @override
   final screenHeightAxis = ScreenAxis.fraction;
-
-  @override
-  void describeSprites(SpriteDescriptor descriptor) {
-    super.describeSprites(descriptor);
-    fill = descriptor.has(width: 1, height: 1, color: 0xFF203040);
-  }
 }
 ```
 
@@ -849,14 +821,8 @@ class Button extends EntityStruct
         Collider2D,
         PointerReceiver,
         HoverReceiver {
-  late final Sprite sprite;
+  final sprite = Sprite.of(width: 64, height: 64);
   late final CircleBody hitArea;
-
-  @override
-  void describeSprites(SpriteDescriptor descriptor) {
-    super.describeSprites(descriptor);
-    sprite = descriptor.has(width: 64, height: 64);
-  }
 
   @override
   void describeCollider(ColliderDescriptor descriptor) {

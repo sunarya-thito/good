@@ -23,6 +23,7 @@ part of 'screen_transform_test.dart';
 List<ScannableField> _collect$World(Object object) {
   final owner = object as _World;
   return <ScannableField>[
+    owner.quad,
     owner.worldX,
     owner.worldY,
     owner.worldScaleX,
@@ -73,6 +74,7 @@ List<ScannableField> _collect$Eye(Object object) {
 List<ScannableField> _collect$Rig(Object object) {
   final owner = object as _Rig;
   return <ScannableField>[
+    owner.quad,
     owner.parentFirstChild,
     owner.parentLastChild,
     owner.worldX,
@@ -99,6 +101,7 @@ List<ScannableField> _collect$Rig(Object object) {
 List<ScannableField> _collect$Pinned(Object object) {
   final owner = object as _Pinned;
   return <ScannableField>[
+    owner.quad,
     owner.childParent,
     owner.childNextSibling,
     owner.childPrevSibling,
@@ -115,6 +118,7 @@ List<ScannableField> _collect$Pinned(Object object) {
 List<ScannableField> _collect$Corner(Object object) {
   final owner = object as _Corner;
   return <ScannableField>[
+    owner.quad,
     owner.transformOffsetX,
     owner.transformOffsetY,
     owner.transformScaleX,
@@ -128,6 +132,7 @@ List<ScannableField> _collect$Corner(Object object) {
 List<ScannableField> _collect$Backdrop(Object object) {
   final owner = object as _Backdrop;
   return <ScannableField>[
+    owner.fill,
     owner.transformOffsetX,
     owner.transformOffsetY,
     owner.transformScaleX,
@@ -141,6 +146,7 @@ List<ScannableField> _collect$Backdrop(Object object) {
 List<ScannableField> _collect$Banner(Object object) {
   final owner = object as _Banner;
   return <ScannableField>[
+    owner.quad,
     owner.transformOffsetX,
     owner.transformOffsetY,
     owner.transformScaleX,
@@ -154,6 +160,7 @@ List<ScannableField> _collect$Banner(Object object) {
 List<ScannableField> _collect$Panel(Object object) {
   final owner = object as _Panel;
   return <ScannableField>[
+    owner.frame,
     owner.transformOffsetX,
     owner.transformOffsetY,
     owner.transformScaleX,
@@ -167,6 +174,7 @@ List<ScannableField> _collect$Panel(Object object) {
 List<ScannableField> _collect$Spinner(Object object) {
   final owner = object as _Spinner;
   return <ScannableField>[
+    owner.quad,
     owner.transformOffsetX,
     owner.transformOffsetY,
     owner.transformScaleX,
@@ -180,6 +188,7 @@ List<ScannableField> _collect$Spinner(Object object) {
 List<ScannableField> _collect$Label(Object object) {
   final owner = object as _Label;
   return <ScannableField>[
+    owner.atlas,
     owner.textCodeUnits,
     owner.textLength,
     owner.textColor,
@@ -261,6 +270,7 @@ List<ScannableField> _collect$TightGame(Object object) {
 List<ScannableField> _collect$Clash(Object object) {
   final owner = object as _Clash;
   return <ScannableField>[
+    owner.quad,
     owner.worldX,
     owner.worldY,
     owner.worldScaleX,

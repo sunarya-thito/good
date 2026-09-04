@@ -54,13 +54,7 @@ late Game run;
 /// nearly identical archetypes.
 class _Quad extends EntityStruct
     with Transform2D, WorldTransform2D, Renderable2D {
-  late final Sprite quad;
-
-  @override
-  void describeSprites(SpriteDescriptor descriptor) {
-    super.describeSprites(descriptor);
-    quad = descriptor.has(width: 20, height: 20, color: 0xFF00FF00);
-  }
+  final quad = Sprite.of(width: 20, height: 20, color: 0xFF00FF00);
 }
 
 /// A renderable with **no `WorldTransform2D`** - the other half of the
@@ -68,13 +62,7 @@ class _Quad extends EntityStruct
 /// Culling reads position and scale through that same indirection, so it has
 /// to be exercised on both sides or one of the two paths is untested.
 class _Flat extends EntityStruct with Transform2D, Renderable2D {
-  late final Sprite quad;
-
-  @override
-  void describeSprites(SpriteDescriptor descriptor) {
-    super.describeSprites(descriptor);
-    quad = descriptor.has(width: 20, height: 20, color: 0xFF0000FF);
-  }
+  final quad = Sprite.of(width: 20, height: 20, color: 0xFF0000FF);
 }
 
 /// The 2x1 PNG the other suites use. Never decoded on the producing isolate -
@@ -92,26 +80,13 @@ class _Panel extends EntityStruct
     with Transform2D, WorldTransform2D, Renderable2D {
   static const double size = 100;
 
-  late final TextureAsset skin;
-  late final Sprite frame;
-
-  @override
-  void describeAssets(AssetDescriptor descriptor) {
-    super.describeAssets(descriptor);
-    skin = descriptor.has(_panelKey);
-  }
-
-  @override
-  void describeSprites(SpriteDescriptor descriptor) {
-    super.describeSprites(descriptor);
-    frame = descriptor.has(
-      texture: skin,
-      width: size,
-      height: size,
-      color: 0xFFFFFFFF,
-      nineSliceBorder: NineSliceBorder.all(4, sourceSize: 16),
-    );
-  }
+  final frame = Sprite.of(
+    texture: _panelKey,
+    width: size,
+    height: size,
+    color: 0xFFFFFFFF,
+    nineSliceBorder: NineSliceBorder.all(4, sourceSize: 16),
+  );
 }
 
 class _Eye extends EntityStruct with Transform2D, WorldTransform2D, Camera {}

@@ -98,12 +98,17 @@ abstract interface class Scannable {}
 /// carrying a key and `Barrel()` builds a prefab, and the scene addresses and
 /// registers what it finds afterwards.
 ///
-/// `Sprite`, `ColliderBody`, `ParamPointer`, `StateChannel` and `Track` are
-/// declaration values too and are not marked, for the same reason and not a
-/// different one: each is still handed out by a descriptor inside a hook, so
-/// every field holding one is `late` and marking the type would refuse them
-/// all. Each becomes a root with the change that gives it a `Field.*`-shaped
-/// spelling, not before.
+/// `Sprite` is the most recent, and it needed one thing more than a spelling:
+/// a sprite is twenty columns under one name, and nothing here could say that
+/// a value is several declarations. [CompositeDeclaration] says it, so
+/// `Sprite.of(...)` builds the columns from a field initialiser and the scene
+/// lays them out where the field sits.
+///
+/// `ColliderBody`, `StateChannel` and `Track` are declaration values too and
+/// are not marked, for the same reason and not a different one: each is still
+/// handed out by a descriptor inside a hook, so every field holding one is
+/// `late` and marking the type would refuse them all. Each becomes a root
+/// with the change that gives it a `Field.*`-shaped spelling, not before.
 ///
 /// A field whose type is not one of these is not a declaration:
 ///
@@ -115,6 +120,37 @@ abstract interface class Scannable {}
 /// Nothing decides at run time whether a field counted. The bound decides, and
 /// it decides while the code is being written.
 abstract interface class ScannableField {}
+
+/// A declaration that **is** several declarations.
+///
+/// One `Sprite` is twenty columns. The field holds the sprite; every column
+/// inside it is a declaration no field of its own holds, so a pass that took
+/// only the fields would reserve row space for none of them and the sprite
+/// would read and write bytes nothing issued.
+///
+/// Not the same thing as a declaration whose *initial value* is one
+/// (`data_layout.dart`'s `NestedDeclaration`). There the outer is a column in
+/// its own right and the inner is the default it carries. Here the outer is
+/// no column at all - it is a name for a group of them, and it lays out no
+/// row of its own.
+///
+/// This is what lets a multi-column value be produced by a field initialiser.
+/// Before it, the only way to declare twenty columns under one name was a
+/// descriptor inside a hook handing the group back, and a field holding the
+/// result of a hook is `late` - the double declaration this engine's rules
+/// forbid.
+///
+/// Each pass takes the members it can act on and leaves the rest, exactly as
+/// it does for a declaration a field holds directly: `ArchetypeDataDescriptor`
+/// lays the columns out, `_AssetDescriptor` addresses the assets among their
+/// defaults, and neither is told what a `Sprite` is.
+abstract interface class CompositeDeclaration implements ScannableField {
+  /// The declarations this one is made of, in the order they were written.
+  ///
+  /// That order is the row's: a composite is laid out where the field
+  /// holding it sits, and its members in the order given here.
+  Iterable<ScannableField> get composedDeclarations;
+}
 
 /// An annotation a scan carries into what it generates.
 ///

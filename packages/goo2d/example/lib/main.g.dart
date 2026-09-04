@@ -28,6 +28,8 @@ List<ScannableField> _collect$Breath(Object object) {
 List<ScannableField> _collect$Player(Object object) {
   final owner = object as Player;
   return <ScannableField>[
+    owner.body,
+    owner.visor,
     owner.parentFirstChild,
     owner.parentLastChild,
     owner.childParent,
@@ -57,6 +59,7 @@ List<ScannableField> _collect$Player(Object object) {
 List<ScannableField> _collect$Enemy(Object object) {
   final owner = object as Enemy;
   return <ScannableField>[
+    owner.body,
     owner.childParent,
     owner.childNextSibling,
     owner.childPrevSibling,
@@ -84,6 +87,7 @@ List<ScannableField> _collect$Enemy(Object object) {
 List<ScannableField> _collect$Wingman(Object object) {
   final owner = object as Wingman;
   return <ScannableField>[
+    owner.body,
     owner.childParent,
     owner.childNextSibling,
     owner.childPrevSibling,

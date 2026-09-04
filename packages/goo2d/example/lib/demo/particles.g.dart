@@ -30,7 +30,7 @@ List<ScannableField> _collect$SetAblations(Object object) {
 List<ScannableField> _collect$Mote(Object object) {
   final owner = object as Mote;
   return <ScannableField>[
-    owner.texture,
+    owner.body,
     owner.angle,
     owner.radius,
     owner.spin,

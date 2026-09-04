@@ -23,6 +23,7 @@ part of 'text_2d_test.dart';
 List<ScannableField> _collect$Back(Object object) {
   final owner = object as _Back;
   return <ScannableField>[
+    owner.quad,
     owner.worldX,
     owner.worldY,
     owner.worldScaleX,
@@ -47,6 +48,7 @@ List<ScannableField> _collect$Back(Object object) {
 List<ScannableField> _collect$Enemy(Object object) {
   final owner = object as _Enemy;
   return <ScannableField>[
+    owner.quad,
     owner.worldX,
     owner.worldY,
     owner.worldScaleX,
@@ -145,6 +147,7 @@ List<ScannableField> _collect$Silent(Object object) {
 List<ScannableField> _collect$Front(Object object) {
   final owner = object as _Front;
   return <ScannableField>[
+    owner.quad,
     owner.worldX,
     owner.worldY,
     owner.worldScaleX,

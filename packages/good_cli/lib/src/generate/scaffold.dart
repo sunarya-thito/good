@@ -625,17 +625,10 @@ import 'package:$package/$package.dart';
 /// final speed = Field.float64(220);   // read and written as speed[entity]
 /// ```
 ///
-/// To give it a texture, declare one in `describeAssets` and hand the handle
-/// to the sprite:
+/// To give it a texture, name the key on the sprite:
 ///
 /// ```dart
-/// late final TextureAsset texture;
-///
-/// @override
-/// void describeAssets(AssetDescriptor descriptor) {
-///   super.describeAssets(descriptor);
-///   texture = descriptor.has(Textures.yourAsset);
-/// }
+/// final sprite = Sprite.of(width: 64, height: 64, texture: Textures.yourAsset);
 /// ```
 ///
 /// `Textures` comes from `package:$bundle/textures.dart`, which is
@@ -643,18 +636,12 @@ import 'package:$package/$package.dart';
 /// in the pubspec, and run `good generate`. Everything good writes lands in
 /// that package; every file under `lib/` here is one you wrote.
 class Player extends EntityStruct with Transform2D, WorldTransform2D, Renderable2D {
-  @override
-  void describeSprites(SpriteDescriptor descriptor) {
-    super.describeSprites(descriptor);
-    // Untextured to start with: a flat colour is one branch in the renderer
-    // and needs no asset, so a new project draws something on the first run.
-    //
-    // The handle `has` returns is not kept here, because nothing in this file
-    // reads it back and a `late final Sprite sprite;` filled in from this body
-    // is a declaration written twice - the one shape this engine's
-    // declaration rules refuse everywhere.
-    descriptor.has(width: 64, height: 64, color: 0xFF4FC3F7);
-  }
+  /// Untextured to start with: a flat colour is one branch in the renderer
+  /// and needs no asset, so a new project draws something on the first run.
+  ///
+  /// A sprite is twenty columns under one name, and this field declares all
+  /// of them - the same one-line shape `Field.float64` above has.
+  final sprite = Sprite.of(width: 64, height: 64, color: 0xFF4FC3F7);
 }
 ''';
 

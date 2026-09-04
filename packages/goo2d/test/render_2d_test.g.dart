@@ -23,6 +23,7 @@ part of 'render_2d_test.dart';
 List<ScannableField> _collect$Sprite(Object object) {
   final owner = object as _Sprite;
   return <ScannableField>[
+    owner.quad,
     owner.parentFirstChild,
     owner.parentLastChild,
     owner.childParent,
@@ -52,6 +53,7 @@ List<ScannableField> _collect$Sprite(Object object) {
 List<ScannableField> _collect$Flat(Object object) {
   final owner = object as _Flat;
   return <ScannableField>[
+    owner.quad,
     owner.transformOffsetX,
     owner.transformOffsetY,
     owner.transformScaleX,
@@ -94,6 +96,8 @@ List<ScannableField> _collect$Group(Object object) {
 List<ScannableField> _collect$TwoSprite(Object object) {
   final owner = object as _TwoSprite;
   return <ScannableField>[
+    owner.body,
+    owner.hat,
     owner.worldX,
     owner.worldY,
     owner.worldScaleX,
@@ -118,6 +122,8 @@ List<ScannableField> _collect$TwoSprite(Object object) {
 List<ScannableField> _collect$HalfHidden(Object object) {
   final owner = object as _HalfHidden;
   return <ScannableField>[
+    owner.shown,
+    owner.hidden,
     owner.worldX,
     owner.worldY,
     owner.worldScaleX,
@@ -142,6 +148,8 @@ List<ScannableField> _collect$HalfHidden(Object object) {
 List<ScannableField> _collect$Stack(Object object) {
   final owner = object as _Stack;
   return <ScannableField>[
+    owner.high,
+    owner.low,
     owner.worldX,
     owner.worldY,
     owner.worldScaleX,
@@ -166,6 +174,7 @@ List<ScannableField> _collect$Stack(Object object) {
 List<ScannableField> _collect$TopLeft(Object object) {
   final owner = object as _TopLeft;
   return <ScannableField>[
+    owner.quad,
     owner.worldX,
     owner.worldY,
     owner.worldScaleX,
@@ -219,6 +228,9 @@ List<ScannableField> _collect$Eye(Object object) {
 List<ScannableField> _collect$Textured(Object object) {
   final owner = object as _Textured;
   return <ScannableField>[
+    owner.tile,
+    owner.textured,
+    owner.plain,
     owner.worldX,
     owner.worldY,
     owner.worldScaleX,
@@ -243,6 +255,8 @@ List<ScannableField> _collect$Textured(Object object) {
 List<ScannableField> _collect$Panel(Object object) {
   final owner = object as _Panel;
   return <ScannableField>[
+    owner.skin,
+    owner.frame,
     owner.worldX,
     owner.worldY,
     owner.worldScaleX,
@@ -267,6 +281,7 @@ List<ScannableField> _collect$Panel(Object object) {
 List<ScannableField> _collect$UnsizedPanel(Object object) {
   final owner = object as _UnsizedPanel;
   return <ScannableField>[
+    owner.frame,
     owner.worldX,
     owner.worldY,
     owner.worldScaleX,
@@ -291,6 +306,7 @@ List<ScannableField> _collect$UnsizedPanel(Object object) {
 List<ScannableField> _collect$PlainPanel(Object object) {
   final owner = object as _PlainPanel;
   return <ScannableField>[
+    owner.frame,
     owner.worldX,
     owner.worldY,
     owner.worldScaleX,
@@ -315,6 +331,7 @@ List<ScannableField> _collect$PlainPanel(Object object) {
 List<ScannableField> _collect$HorizontalBar(Object object) {
   final owner = object as _HorizontalBar;
   return <ScannableField>[
+    owner.bar,
     owner.worldX,
     owner.worldY,
     owner.worldScaleX,
@@ -339,6 +356,7 @@ List<ScannableField> _collect$HorizontalBar(Object object) {
 List<ScannableField> _collect$SingleCellPanel(Object object) {
   final owner = object as _SingleCellPanel;
   return <ScannableField>[
+    owner.frame,
     owner.worldX,
     owner.worldY,
     owner.worldScaleX,
@@ -363,6 +381,7 @@ List<ScannableField> _collect$SingleCellPanel(Object object) {
 List<ScannableField> _collect$BorderedUntextured(Object object) {
   final owner = object as _BorderedUntextured;
   return <ScannableField>[
+    owner.frame,
     owner.worldX,
     owner.worldY,
     owner.worldScaleX,
@@ -387,6 +406,7 @@ List<ScannableField> _collect$BorderedUntextured(Object object) {
 List<ScannableField> _collect$PivotBody(Object object) {
   final owner = object as _PivotBody;
   return <ScannableField>[
+    owner.quad,
     owner.worldX,
     owner.worldY,
     owner.worldScaleX,

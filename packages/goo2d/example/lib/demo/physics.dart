@@ -172,25 +172,19 @@ class Crate extends EntityStruct
         RigidBody2D,
         CollisionListener,
         EntityLifecycleListener {
-  late final Sprite body;
+  // 1 m x 1 m, in WORLD units - the same units the collider below uses,
+  // and the same units Box2D simulates in. `Sprite.width` is world units,
+  // not pixels; the camera's `zoom` is the only thing that converts to
+  // pixels. Sizing sprites in pixels here *and* setting zoom applies the
+  // scale twice and draws everything _pixelsPerMetre times too large,
+  // which is exactly how this was first written.
+  final body = Sprite.of(width: 1, height: 1, color: _crateColor);
   late final BoxBody box;
 
   /// Seconds of flash remaining. A component field rather than plain Dart
   /// state on the prefab, because it is per *entity* - the prefab is one
   /// object shared by every crate.
   final flash = Field.float64();
-
-  @override
-  void describeSprites(SpriteDescriptor descriptor) {
-    super.describeSprites(descriptor);
-    // 1 m x 1 m, in WORLD units - the same units the collider below uses,
-    // and the same units Box2D simulates in. `Sprite.width` is world units,
-    // not pixels; the camera's `zoom` is the only thing that converts to
-    // pixels. Sizing sprites in pixels here *and* setting zoom applies the
-    // scale twice and draws everything _pixelsPerMetre times too large,
-    // which is exactly how this was first written.
-    body = descriptor.has(width: 1, height: 1, color: _crateColor);
-  }
 
   @override
   void describeCollider(ColliderDescriptor descriptor) {
@@ -262,17 +256,11 @@ class Ball extends EntityStruct
         RigidBody2D,
         CollisionListener,
         EntityLifecycleListener {
-  late final Sprite body;
+  // Matches the 0.4 m collider radius below.
+  final body = Sprite.of(width: 0.8, height: 0.8, color: _ballColor);
   late final CircleBody circle;
 
   final flash = Field.float64();
-
-  @override
-  void describeSprites(SpriteDescriptor descriptor) {
-    super.describeSprites(descriptor);
-    // Matches the 0.4 m collider radius below.
-    body = descriptor.has(width: 0.8, height: 0.8, color: _ballColor);
-  }
 
   @override
   void describeCollider(ColliderDescriptor descriptor) {
@@ -353,17 +341,11 @@ class Ground extends EntityStruct
         Collider2D,
         RigidBody2D,
         EntityLifecycleListener {
-  late final Sprite body;
+  final body = Sprite.of(color: _floorColor);
   late final BoxBody box;
 
   /// Set by [SandboxSystem] before the entity is added.
   Arena arena = Arena.forPopulation(0);
-
-  @override
-  void describeSprites(SpriteDescriptor descriptor) {
-    super.describeSprites(descriptor);
-    body = descriptor.has(color: _floorColor);
-  }
 
   @override
   void describeCollider(ColliderDescriptor descriptor) {
@@ -404,7 +386,7 @@ class Wall extends EntityStruct
         Collider2D,
         RigidBody2D,
         EntityLifecycleListener {
-  late final Sprite body;
+  final body = Sprite.of(color: _floorColor);
   late final BoxBody box;
 
   /// Set by [SandboxSystem] before the entity is added.
@@ -412,12 +394,6 @@ class Wall extends EntityStruct
 
   /// Which side this one is: -1 for left, 1 for right.
   double side = -1;
-
-  @override
-  void describeSprites(SpriteDescriptor descriptor) {
-    super.describeSprites(descriptor);
-    body = descriptor.has(color: _floorColor);
-  }
 
   @override
   void describeCollider(ColliderDescriptor descriptor) {

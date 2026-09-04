@@ -23,6 +23,7 @@ part of 'sprite_budget_test.dart';
 List<ScannableField> _collect$First(Object object) {
   final owner = object as _First;
   return <ScannableField>[
+    owner.quad,
     owner.worldX,
     owner.worldY,
     owner.worldScaleX,
@@ -47,6 +48,7 @@ List<ScannableField> _collect$First(Object object) {
 List<ScannableField> _collect$Second(Object object) {
   final owner = object as _Second;
   return <ScannableField>[
+    owner.quad,
     owner.worldX,
     owner.worldY,
     owner.worldScaleX,
@@ -71,6 +73,7 @@ List<ScannableField> _collect$Second(Object object) {
 List<ScannableField> _collect$Panel(Object object) {
   final owner = object as _Panel;
   return <ScannableField>[
+    owner.frame,
     owner.worldX,
     owner.worldY,
     owner.worldScaleX,
@@ -95,6 +98,7 @@ List<ScannableField> _collect$Panel(Object object) {
 List<ScannableField> _collect$Bar(Object object) {
   final owner = object as _Bar;
   return <ScannableField>[
+    owner.bar,
     owner.worldX,
     owner.worldY,
     owner.worldScaleX,
@@ -119,6 +123,7 @@ List<ScannableField> _collect$Bar(Object object) {
 List<ScannableField> _collect$Column(Object object) {
   final owner = object as _Column;
   return <ScannableField>[
+    owner.bar,
     owner.worldX,
     owner.worldY,
     owner.worldScaleX,

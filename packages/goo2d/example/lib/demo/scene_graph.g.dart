@@ -23,7 +23,7 @@ part of 'scene_graph.dart';
 List<ScannableField> _collect$Critter(Object object) {
   final owner = object as Critter;
   return <ScannableField>[
-    owner.texture,
+    owner.body,
     owner.angle,
     owner.radius,
     owner.spin,
@@ -57,7 +57,7 @@ List<ScannableField> _collect$Critter(Object object) {
 List<ScannableField> _collect$Limb(Object object) {
   final owner = object as Limb;
   return <ScannableField>[
-    owner.texture,
+    owner.body,
     owner.childParent,
     owner.childNextSibling,
     owner.childPrevSibling,

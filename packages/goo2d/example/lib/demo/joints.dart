@@ -62,14 +62,8 @@ const int _spokeColor = 0xFF1E88E5;
 /// integrates it and treats it as infinite mass.
 class Anchor extends EntityStruct
     with Transform2D, Renderable2D, Collider2D, RigidBody2D {
-  late final Sprite body;
+  final body = Sprite.of(width: 1.2, height: 0.4, color: _anchorColor);
   late final BoxBody box;
-
-  @override
-  void describeSprites(SpriteDescriptor descriptor) {
-    super.describeSprites(descriptor);
-    body = descriptor.has(width: 1.2, height: 0.4, color: _anchorColor);
-  }
 
   @override
   void describeCollider(ColliderDescriptor descriptor) {
@@ -94,18 +88,12 @@ class Anchor extends EntityStruct
 /// One link of a chain.
 class Link extends EntityStruct
     with Transform2D, Renderable2D, Collider2D, RigidBody2D {
-  late final Sprite body;
+  final body = Sprite.of(
+    width: _linkHalfWidth * 2,
+    height: _linkHalfHeight * 2,
+    color: _linkColor,
+  );
   late final BoxBody box;
-
-  @override
-  void describeSprites(SpriteDescriptor descriptor) {
-    super.describeSprites(descriptor);
-    body = descriptor.has(
-      width: _linkHalfWidth * 2,
-      height: _linkHalfHeight * 2,
-      color: _linkColor,
-    );
-  }
 
   @override
   void describeCollider(ColliderDescriptor descriptor) {
@@ -126,14 +114,8 @@ class Link extends EntityStruct
 /// break under.
 class Weight extends EntityStruct
     with Transform2D, Renderable2D, Collider2D, RigidBody2D {
-  late final Sprite body;
+  final body = Sprite.of(width: 1.6, height: 1.6, color: _weightColor);
   late final BoxBody box;
-
-  @override
-  void describeSprites(SpriteDescriptor descriptor) {
-    super.describeSprites(descriptor);
-    body = descriptor.has(width: 1.6, height: 1.6, color: _weightColor);
-  }
 
   @override
   void describeCollider(ColliderDescriptor descriptor) {
@@ -153,43 +135,34 @@ class Weight extends EntityStruct
 /// A motorised wheel, pinned to a static hub by a revolute joint.
 class Wheel extends EntityStruct
     with Transform2D, Renderable2D, Collider2D, RigidBody2D {
-  late final Sprite body;
-  late final Sprite spoke;
+  // **Textured, because a sprite is a quad.** goo2d draws rectangles; the
+  // collider below is a *circle*, and an untextured square sprite over it
+  // means the picture disagrees with the physics. Nothing collides with
+  // this wheel today so the lie costs nothing yet - which is exactly how
+  // that class of bug survives until the day something does.
+  final body = Sprite.of(
+    texture: discTexture,
+    width: 3.4,
+    height: 3.4,
+    color: _wheelColor,
+  );
+  // A second sprite on the same entity, pivoted at its **bottom edge** so
+  // it reads as one spoke from hub to rim rather than a bar across the
+  // whole wheel.
+  //
+  // That is not decoration. A plain disc spinning about its centre looks
+  // completely static, and a full diameter bar looks identical every half
+  // turn - so it appears to flicker between two positions and gives no
+  // sense of direction. A single spoke is the smallest thing that shows
+  // both that the wheel turns and which way.
+  final spoke = Sprite.of(
+    width: 0.35,
+    height: 1.7,
+    color: _spokeColor,
+    zIndex: 1,
+    pivot: const RelativeOffset2D(fractionX: 0.5, fractionY: 1),
+  );
   late final CircleBody circle;
-  final disc = Asset.of(discTexture);
-
-
-  @override
-  void describeSprites(SpriteDescriptor descriptor) {
-    super.describeSprites(descriptor);
-    // **Textured, because a sprite is a quad.** goo2d draws rectangles; the
-    // collider below is a *circle*, and an untextured square sprite over it
-    // means the picture disagrees with the physics. Nothing collides with
-    // this wheel today so the lie costs nothing yet - which is exactly how
-    // that class of bug survives until the day something does.
-    body = descriptor.has(
-      texture: disc,
-      width: 3.4,
-      height: 3.4,
-      color: _wheelColor,
-    );
-    // A second sprite on the same entity, pivoted at its **bottom edge** so
-    // it reads as one spoke from hub to rim rather than a bar across the
-    // whole wheel.
-    //
-    // That is not decoration. A plain disc spinning about its centre looks
-    // completely static, and a full diameter bar looks identical every half
-    // turn - so it appears to flicker between two positions and gives no
-    // sense of direction. A single spoke is the smallest thing that shows
-    // both that the wheel turns and which way.
-    spoke = descriptor.has(
-      width: 0.35,
-      height: 1.7,
-      color: _spokeColor,
-      zIndex: 1,
-      pivot: const RelativeOffset2D(fractionX: 0.5, fractionY: 1),
-    );
-  }
 
   @override
   void describeCollider(ColliderDescriptor descriptor) {

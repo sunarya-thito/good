@@ -200,13 +200,12 @@ exactly where it is most useful.
 
 ### Textures
 
-<!-- snippet-setup
-final descriptor = given<SpriteDescriptor>();
-late Sprite sprite;
-final texture = given<TextureAsset>();
--->
 ```dart
-sprite = descriptor.has(texture: texture, width: 64, height: 64);
+final sprite = Sprite.of(
+  texture: Textures.spritesPlayer,
+  width: 64,
+  height: 64,
+);
 ```
 
 `TextureFilter` chooses sampling — `mipmap` by default, and the crisp option for
