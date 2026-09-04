@@ -1061,7 +1061,7 @@ void main() {
       ]);
       _bringUpAmbient(scene);
       final parent = scene.registered.single as _AmbientParent;
-      final child = parent.nested;
+      final child = parent.child;
 
       expect(parent.texture.key, same(_parentKey));
       expect(child.texture.key, same(_childKey));
@@ -1194,10 +1194,11 @@ class _AmbientTwin extends EntityStruct {
 /// A nested declaration with the declarer's own asset written **after** it,
 /// which is the ordering an owner-attributed model gets wrong.
 class _AmbientParent extends EntityStruct with Parent {
-  // Not named `child`: the annotation and an instance field of the same name
-  // land in one scope, and `@child` then resolves to the field.
-  @child
-  final nested = _AmbientChild();
+  // Named `child` on purpose: an instance field of that name is what shadowed
+  // the marker const back when the marker was called `child`, and `sub` is
+  // spelled apart from anything a scene graph calls a field so that it cannot.
+  @sub
+  final child = _AmbientChild();
   final texture = Asset.of(_parentKey);
 }
 

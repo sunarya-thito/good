@@ -603,7 +603,7 @@ void _declarations(
     // Separate lines from the ones above, because the two are separate
     // answers. A private declaration is a column the row is missing; one of
     // these is a field that was never a declaration, and either leaving it
-    // alone or writing `@child` on it is a correct thing to do.
+    // alone or writing `@sub` on it is a correct thing to do.
     final unmarked = scan.unmarked.keys.toList()..sort();
     for (final key in unmarked) {
       stdout.writeln('Not a declaration: $key - ${scan.unmarked[key]}');

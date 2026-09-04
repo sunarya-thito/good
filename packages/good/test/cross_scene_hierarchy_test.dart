@@ -44,7 +44,7 @@ final List<Entity> _unmounted = <Entity>[];
 final Map<Entity, Entity?> _parentAtUnmount = <Entity, Entity?>{};
 
 class _Level extends SceneStruct {
-  @child
+  @sub
   final body = _Body();
 }
 

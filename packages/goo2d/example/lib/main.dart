@@ -148,13 +148,13 @@ class Wingman extends EntityStruct
 class Eye extends EntityStruct with Transform2D, WorldTransform2D, Camera {}
 
 class MainScene extends SceneStruct {
-  @child
+  @sub
   final playerPrefab = Player();
-  @child
+  @sub
   final enemyPrefab = Enemy();
-  @child
+  @sub
   final wingmanPrefab = Wingman();
-  @child
+  @sub
   final eyePrefab = Eye();
 
 

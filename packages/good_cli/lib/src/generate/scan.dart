@@ -1198,11 +1198,10 @@ const String scannableAnnotationRoot = 'ScannableAnnotation';
 /// Every name that can be written as a marker annotation on a declaration.
 ///
 /// Two kinds, and a pass holding only the first finds nothing. `@LoadBefore(X)`
-/// names the class directly, so the supertype walk answers it. `@child` names
-/// a **const variable** - `const DeclaredChild child = DeclaredChild._();` -
-/// and `typesByName['child']` is null, because `child` is not a type. So the
-/// variable's written type is what gets walked, and the variable's own name is
-/// what goes in the set.
+/// names the class directly, so the supertype walk answers it. `@sub` names a
+/// **const variable** - `const Sub sub = Sub._();` - and `typesByName['sub']`
+/// is null, because `sub` is not a type. So the variable's written type is what
+/// gets walked, and the variable's own name is what goes in the set.
 ///
 /// A set of names rather than a test run per annotation, because the answer is
 /// the same for every field in the repository and the walk that produces it is
@@ -1220,9 +1219,9 @@ Set<String> scannableAnnotationNames(ScanSources sources) {
     }
     for (final variable in unit.variables) {
       // The written type and not the initialiser: a marker is a const with
-      // its type spelled out, which is what makes `@child` resolvable by a
-      // parse at all. One written `const child = DeclaredChild._();` is not
-      // found here, and the type it is declared with is where it says so.
+      // its type spelled out, which is what makes `@sub` resolvable by a parse
+      // at all. One written `const sub = Sub._();` is not found here, and the
+      // type it is declared with is where it says so.
       final declared = variable.typeSource;
       if (declared == null) continue;
       final parsed = TypeSource.parse(declared);
@@ -1502,7 +1501,7 @@ bool isBareConstructorField(
 ///
 /// ```dart
 /// final hp   = Field.float64();   // collected, no marker
-/// @child final enemy = Enemy();   // collected, the marker says so
+/// @sub  final enemy = Enemy();    // collected, the marker says so
 /// final spare = Enemy();          // not collected, and legal
 /// ```
 ///
@@ -1846,7 +1845,7 @@ DeclarationScan scanDeclarations(ScanSources sources) {
           unmarked['${type.name}.${field.name}'] =
               'a bare constructor call holds it and nothing at the line says '
               'it declares anything - `$valueType()` is spelled the way a '
-              'field holding an ordinary object is. Write `@child` on it to '
+              'field holding an ordinary object is. Write `@sub` on it to '
               'declare it, or leave it as it is if it is a spare';
           continue;
         }
@@ -1956,7 +1955,7 @@ List<DeclarationRefusal> _declarationCycles(
 /// declarations walked through so the caller can name the ring rather than
 /// just report that there is one.
 ///
-/// Every constructed child is an edge, marked or not. `@child` decides whether
+/// Every constructed child is an edge, marked or not. `@sub` decides whether
 /// a field is *collected*; it decides nothing about whether Dart builds the
 /// object, and it is the building that does not terminate.
 List<ScannedDeclaration>? _ringFrom(

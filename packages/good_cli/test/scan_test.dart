@@ -70,11 +70,11 @@ class LoadBefore implements ScannableAnnotation {
   final Type other;
 }
 
-class DeclaredChild implements ScannableAnnotation {
-  const DeclaredChild._();
+class Sub implements ScannableAnnotation {
+  const Sub._();
 }
 
-const DeclaredChild child = DeclaredChild._();
+const Sub sub = Sub._();
 
 abstract final class Field {
   static InitialPointer<double> float64([double initialValue = 0.0]) =>
@@ -532,7 +532,7 @@ class Movement extends GameSystem {
     test('a marked bare constructor is collected', () {
       final scan = _declarations('''
 class Turret extends EntityStruct {
-  @child
+  @sub
   final barrel = Barrel();
 }
 
@@ -545,9 +545,9 @@ class Barrel extends EntityStruct {}
       expect(declaration.name, 'barrel');
       expect(declaration.isCollected, isTrue);
       // The marker is a const variable and not a class, so a walk that only
-      // looked types up in `typesByName` finds nothing under `child` and
+      // looked types up in `typesByName` finds nothing under `sub` and
       // carries no annotation at all.
-      expect(declaration.annotations, <String>['child']);
+      expect(declaration.annotations, <String>['sub']);
     });
 
     test('an unmarked bare constructor is reported and stays legal', () {
@@ -557,7 +557,7 @@ class Barrel extends EntityStruct {}
       // reserves no column, and the row is not missing one.
       final scan = _declarations('''
 class Turret extends EntityStruct {
-  @child
+  @sub
   final barrel = Barrel();
   final spare = Barrel();
 }
@@ -756,17 +756,17 @@ class Turret extends EntityStruct {
     test('a ring through three structs is one refusal, not three', () {
       final scan = _declarations('''
 class Turret extends EntityStruct {
-  @child
+  @sub
   final barrel = Barrel();
 }
 
 class Barrel extends EntityStruct {
-  @child
+  @sub
   final tip = Tip();
 }
 
 class Tip extends EntityStruct {
-  @child
+  @sub
   final turret = Turret();
 }
 ''');
@@ -786,14 +786,14 @@ class Tip extends EntityStruct {
       // that treated "seen already" as "cycle" would refuse it.
       final scan = _declarations('''
 class Turret extends EntityStruct {
-  @child
+  @sub
   final barrel = Barrel();
 }
 
 class Tower extends EntityStruct {
-  @child
+  @sub
   final barrel = Barrel();
-  @child
+  @sub
   final spare = Barrel();
 }
 

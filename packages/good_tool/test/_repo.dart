@@ -117,10 +117,10 @@ FakePackage componentKernel({String name = 'good'}) => FakePackage(
 
 /// The `good` stand-in a collector fixture needs.
 ///
-/// [componentKernel] plus the three scan markers and the `@child` const. What
+/// [componentKernel] plus the three scan markers and the `@sub` const. What
 /// decides whether a field reaches a collector is read off this source - the
 /// supertype walk finds `ScannableField` above `EntityStruct`, and the const's
-/// written type is what makes `@child` a marker - so a fixture spelling any of
+/// written type is what makes `@sub` a marker - so a fixture spelling any of
 /// them differently gets a different answer with nothing hard-coded.
 FakePackage declarationKernel({String name = 'good'}) => FakePackage(
   name,
@@ -142,11 +142,11 @@ abstract interface class ScannableAnnotation {}
 
 abstract class EntityStruct implements Component, Scannable, ScannableField {}
 
-class DeclaredChild implements ScannableAnnotation {
-  const DeclaredChild._();
+class Sub implements ScannableAnnotation {
+  const Sub._();
 }
 
-const DeclaredChild child = DeclaredChild._();
+const Sub sub = Sub._();
 
 class GeneratedDeclarations {
   const GeneratedDeclarations({

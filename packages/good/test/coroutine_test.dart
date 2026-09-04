@@ -27,7 +27,7 @@ class _Mover extends EntityStruct {
 }
 
 class _Scene extends SceneStruct {
-  @child
+  @sub
   final mover = _Mover();
 }
 

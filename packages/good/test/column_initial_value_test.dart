@@ -72,11 +72,11 @@ class _Lieutenant extends EntityStruct with _Body {
 class _Squad extends SceneStruct {
   late final Scene handle;
 
-  @child
+  @sub
   final grunt = _Grunt();
-  @child
+  @sub
   final captain = _Captain();
-  @child
+  @sub
   final lieutenant = _Lieutenant();
 }
 

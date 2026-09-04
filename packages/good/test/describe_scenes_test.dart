@@ -50,7 +50,7 @@ mixin _Unmarked on Component {
 class _Prop extends EntityStruct with _Unmarked {}
 
 class _Level extends SceneStruct {
-  @child
+  @sub
   final unit = _Unit();
 }
 
@@ -60,9 +60,9 @@ class _Menu extends SceneStruct {}
 /// census query matches and one it must not - a scene with a single archetype
 /// could not tell "matched the right one" from "matched everything".
 class _Mixed extends SceneStruct {
-  @child
+  @sub
   final unit = _Unit();
-  @child
+  @sub
   final prop = _Prop();
 }
 

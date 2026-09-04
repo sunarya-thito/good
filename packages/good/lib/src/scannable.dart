@@ -132,26 +132,37 @@ abstract interface class ScannableAnnotation {}
 // The markers a reader needs
 // ---------------------------------------------------------------------------
 
-/// The type of [child]. Written `@child`, never `@DeclaredChild()`.
+/// The type of [sub]. Written `@sub`, never `@Sub()`.
 ///
 /// Public because the generator keys a table by it and a type argument cannot
 /// be a private name; constructed only here, so there is one spelling of the
 /// annotation and no way to write a second.
 ///
-/// Named apart from the `Child` mixin it goes with, which is the thing the
-/// prefab being declared has to mix in. Two names because they say two
-/// different things: the mixin gives a struct somewhere to keep its parent
-/// handle, and this says the field holding it declares one.
-class DeclaredChild implements ScannableAnnotation {
-  const DeclaredChild._();
+/// # Why `sub` and not `child`
+///
+/// An instance field named `child` shadows a top-level `const child` for the
+/// whole of its class body, so a struct that holds one gets `Undefined name
+/// 'child' used as an annotation` on **every** marked field in that class and
+/// not just on the colliding line. A struct holding a field called `child` is
+/// what a scene graph is made of, so this repository's own tests reached it.
+/// Shadowing is structural to Dart, so what the marker can do about it is take
+/// a name nothing holding a prefab calls a field; `good_lint` carries the
+/// diagnostic for the collisions that are left.
+///
+/// Renaming also lets the type and the const agree again. `Child` was already
+/// taken by the mixin a declared prefab keeps its parent handle on
+/// (`data/hierarchy.dart`), both are exported from `good.dart`, and that is
+/// the only reason the type was ever spelled differently from the annotation.
+class Sub implements ScannableAnnotation {
+  const Sub._();
 }
 
 /// Says the field it is written on declares a child prefab.
 ///
 /// ```dart
 /// class Turret extends EntityStruct with Transform2D, Parent {
-///   @child final barrel = Barrel();   // declares a prefab
-///   final spare = Barrel();           // declares nothing
+///   @sub final barrel = Barrel();   // declares a prefab
+///   final spare = Barrel();         // declares nothing
 /// }
 /// ```
 ///
@@ -170,7 +181,7 @@ class DeclaredChild implements ScannableAnnotation {
 /// final hp   = Field.float64();   // a dotted static - the shape tells
 /// final near = Query.all(A, B);   // a dotted static - the shape tells
 /// final tex  = Asset.of(k);       // a dotted static - the shape tells
-/// @child final enemy = Enemy();   // a bare constructor - nothing tells
+/// @sub  final enemy = Enemy();    // a bare constructor - nothing tells
 /// ```
 ///
 /// A field the reader cannot tell about is the one that carries a marker, and
@@ -187,7 +198,7 @@ class DeclaredChild implements ScannableAnnotation {
 /// instance of a declarable type is ordinary code, and half the reason this
 /// marker exists is that such a field stays legal. `good_tool --declarations
 /// --verbose` names every one of them.
-const DeclaredChild child = DeclaredChild._();
+const Sub sub = Sub._();
 
 // ---------------------------------------------------------------------------
 // The collectors

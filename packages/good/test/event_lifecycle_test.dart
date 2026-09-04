@@ -109,7 +109,7 @@ class _Deaf extends GameSystem
 }
 
 class _Level extends SceneStruct {
-  @child
+  @sub
   final unit = _Unit();
   Entity? spawned;
 
@@ -161,9 +161,9 @@ class _Nosy extends EntityStruct with GameLifecycleListener {
 }
 
 class _NosyScene extends SceneStruct {
-  @child
+  @sub
   final nosy = _Nosy();
-  @child
+  @sub
   final aware = _SceneAware();
 
   @override
@@ -227,9 +227,9 @@ class _Census extends GameSystem with EntityLifecycleListener {
 }
 
 class _TrackedScene extends SceneStruct {
-  @child
+  @sub
   final tracked = _Tracked();
-  @child
+  @sub
   final indexed = _Indexed();
 }
 

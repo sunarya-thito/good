@@ -39,7 +39,7 @@ class _Barrel extends EntityStruct with _Name, Child {}
 class _Tip extends EntityStruct with _Name, Child {}
 
 class _Turret extends EntityStruct with _Name, Child, Parent {
-  @child
+  @sub
   final barrel = _Barrel();
 }
 
@@ -51,21 +51,21 @@ class _Turret extends EntityStruct with _Name, Child, Parent {
 /// splice comes out right either way. It takes a rig spawned after a publish
 /// to tell the two reads apart.
 class _Rig extends EntityStruct with _Name, Parent {
-  @child
+  @sub
   final left = _Barrel();
-  @child
+  @sub
   final middle = _Barrel();
-  @child
+  @sub
   final right = _Barrel();
 }
 
 class _DeepBarrel extends EntityStruct with _Name, Child, Parent {
-  @child
+  @sub
   final tip = _Tip();
 }
 
 class _DeepTurret extends EntityStruct with _Name, Parent {
-  @child
+  @sub
   final barrel = _DeepBarrel();
 }
 
@@ -73,12 +73,12 @@ class _DeepTurret extends EntityStruct with _Name, Parent {
 // because the failure is registration and a scene only registers once.
 
 class _DeclaresANonChild extends EntityStruct with _Name, Parent {
-  @child
+  @sub
   final loose = _NoChild();
 }
 
 class _DeclaresWithoutParent extends EntityStruct with _Name, Child {
-  @child
+  @sub
   final barrel = _Barrel();
 }
 
@@ -137,25 +137,25 @@ class _Level extends SceneStruct {
 
   _Level();
 
-  @child
+  @sub
   final node = _Node();
-  @child
+  @sub
   final leaf = _Leaf();
-  @child
+  @sub
   final noChild = _NoChild();
-  @child
+  @sub
   final bareNode = _BareNode();
-  @child
+  @sub
   final turret = _Turret();
-  @child
+  @sub
   final rig = _Rig();
-  @child
+  @sub
   final deepTurret = _DeepTurret();
-  @child
+  @sub
   final probed = _Probed();
-  @child
+  @sub
   final probedSuperLast = _ProbedSuperLast();
-  @child
+  @sub
   final probedNoSuper = _ProbedNoSuper();
 }
 

@@ -85,7 +85,7 @@ class AccessorProperty {
 /// read them, and shipped as undecorated public setters into a cache.
 ///
 /// The test for adding a name here is that leaving it off would make the
-/// property reachable where the column is not. `@override` and `@child` fail
+/// property reachable where the column is not. `@override` and `@sub` fail
 /// it - neither says anything about who may name the field - and a
 /// documentation annotation fails it too.
 ///
@@ -783,7 +783,7 @@ DeclarationCollectorScan scanDeclarationCollectors({
       final fields = <CollectedDeclaration>[];
       for (final declaration in declarations) {
         // Not a hole in the row, so not a commented-out line either. A bare
-        // constructor call with no `@child` on it declares nothing at all -
+        // constructor call with no `@sub` on it declares nothing at all -
         // no column is reserved for it and none is missing - and writing a
         // placeholder here would say a column went astray. What names it is
         // `--declarations`.

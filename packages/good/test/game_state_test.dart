@@ -54,7 +54,7 @@ class _Probe extends EntityStruct {
 class _StateScene extends SceneStruct {
   _StateScene();
 
-  @child
+  @sub
   final probe = _Probe();
 }
 

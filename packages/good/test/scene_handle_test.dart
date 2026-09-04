@@ -45,7 +45,7 @@ class _Level extends SceneStruct {
 
   _Level();
 
-  @child
+  @sub
   final unit = _Unit();
 }
 

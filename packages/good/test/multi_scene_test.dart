@@ -37,7 +37,7 @@ mixin _Marked on Component {
 class _Unit extends EntityStruct with _Marked {}
 
 class _Level extends SceneStruct {
-  @child
+  @sub
   final unit = _Unit();
 
   /// How many times this declaration has been mounted - one per loaded scene,

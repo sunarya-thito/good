@@ -72,7 +72,7 @@ class _Bare extends TimelineStruct {
 }
 
 class _Scene extends SceneStruct {
-  @child
+  @sub
   final enemy = _Enemy();
 }
 

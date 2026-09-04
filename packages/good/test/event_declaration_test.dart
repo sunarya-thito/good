@@ -62,9 +62,9 @@ class _NotedScene extends SceneStruct with _Noted {
   @override
   String get noted => 'scene';
 
-  @child
+  @sub
   final a = _UnitA();
-  @child
+  @sub
   final b = _UnitB();
 }
 

@@ -62,7 +62,7 @@ class _After extends EntityStruct {
 /// declaration stack unwound.
 class _Broken extends SceneStruct {
   Object? thrown;
-  @child
+  @sub
   final after = _After();
 
   @override
@@ -79,11 +79,11 @@ class _Broken extends SceneStruct {
 class _Level extends SceneStruct {
   late final Scene handle;
 
-  @child
+  @sub
   final declared = _Declared();
-  @child
+  @sub
   final mixed = _Mixed();
-  @child
+  @sub
   final twin = _Twin();
 }
 

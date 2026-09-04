@@ -63,9 +63,9 @@ class _SelfishUnit extends EntityStruct with _Ping {
 }
 
 class _PingScene extends SceneStruct with _Ping {
-  @child
+  @sub
   final unit = _PingUnit();
-  @child
+  @sub
   final selfish = _SelfishUnit();
 }
 

@@ -852,7 +852,7 @@ void main() {
     });
 
     // Asked of a fixture and not of this repository, because every
-    // bare-constructor declaration here now carries `@child` - so deleting
+    // bare-constructor declaration here now carries `@sub` - so deleting
     // the filter below changes not one byte of the 43 committed parts or of
     // the 13 `.g.dart` files, and `--check` passes either way. A guard whose
     // removal nothing notices is not a guard.
@@ -870,7 +870,7 @@ import 'package:good/good.dart';
 class Barrel extends EntityStruct {}
 
 class Turret extends EntityStruct {
-  @child
+  @sub
   final barrel = Barrel();
   final spare = Barrel();
 }
@@ -910,7 +910,7 @@ import 'package:good/good.dart';
 class _Barrel extends EntityStruct {}
 
 class Turret extends EntityStruct {
-  @child
+  @sub
   final barrel = _Barrel();
   final spare = _Barrel();
 }

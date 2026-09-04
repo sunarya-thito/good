@@ -56,9 +56,9 @@ class _Bird extends EntityStruct with _Winged {}
 /// Two prefabs, so a census has two archetypes to tell apart and two
 /// signatures that must not come back equal.
 class _Habitat extends SceneStruct {
-  @child
+  @sub
   final rock = _Rock();
-  @child
+  @sub
   final bird = _Bird();
 }
 

@@ -32,7 +32,7 @@ part 'game_reuse_test.g.dart';
 class _Thing extends EntityStruct {}
 
 class _Level extends SceneStruct {
-  @child
+  @sub
   final thing = _Thing();
 }
 

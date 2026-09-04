@@ -72,7 +72,7 @@ class _TestScene extends SceneStruct {
 
   _TestScene();
 
-  @child
+  @sub
   final unit = _Unit();
 }
 
