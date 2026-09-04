@@ -123,10 +123,24 @@ String emitFixtureDeclarations(FixtureLibrary library) {
 
   buffer
     ..writeln('/// Every fixture this library declares, and how to read one.')
-    ..writeln('///')
-    ..writeln("/// It carries the package's own generated table as a")
-    ..writeln('/// dependency, so installing this installs the collectors for')
-    ..writeln('/// the engine classes a fixture is built on as well.')
+    ..writeln('///');
+  if (library.tables.length == 1 &&
+      library.tables.single.name == library.package.name) {
+    buffer
+      ..writeln("/// It carries the package's own generated table as a")
+      ..writeln(
+        '/// dependency, so installing this installs the collectors for',
+      )
+      ..writeln('/// the engine classes a fixture is built on as well.');
+  } else {
+    buffer
+      ..writeln('/// This package declares no scanned class of its own, so it')
+      ..writeln('/// has no table for this one to depend on. What it carries')
+      ..writeln('/// instead are the tables of the packages it depends on, so')
+      ..writeln('/// that installing this still installs the collectors for')
+      ..writeln('/// the engine classes a fixture is built on.');
+  }
+  buffer
     ..writeln(
       'const $generatedDeclarationsType ${library.tableName} =',
     )
@@ -158,8 +172,11 @@ String emitFixtureDeclarations(FixtureLibrary library) {
   }
   buffer
     ..writeln('      ],')
-    ..writeln('      dependencies: <$generatedDeclarationsType>[')
-    ..writeln('        ${library.package.declarationsName},')
+    ..writeln('      dependencies: <$generatedDeclarationsType>[');
+  for (final table in library.tables) {
+    buffer.writeln('        ${table.declarationsName},');
+  }
+  buffer
     ..writeln('      ],')
     ..writeln('    );')
     ..writeln()

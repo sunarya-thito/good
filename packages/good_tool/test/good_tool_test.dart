@@ -919,6 +919,7 @@ class Turret extends EntityStruct {
       final scan = scanFixtures(
         packages: packages,
         sources: readFixtureSources(packages, packages),
+        tabled: <String>{'good'},
       );
       final turret = scan.libraries.single.collectors.singleWhere(
         (collector) => collector.type == 'Turret',
@@ -929,6 +930,52 @@ class Turret extends EntityStruct {
         <String>['barrel'],
       );
     });
+
+    // A package with no scanned class in its `lib/` gets no
+    // `declarations.g.dart`, so the name a fixture part would otherwise
+    // depend on is written nowhere. `good_net_p2p` is that package here: its
+    // part named `goodNetP2pDeclarations` and the whole package stopped
+    // analyzing.
+    test(
+      'depends on what the packages upstream have when it has no table',
+      () async {
+        final repo = fakeRepo(<FakePackage>[
+          declarationKernel(),
+          const FakePackage(
+            'relay',
+            files: <String, String>{
+              'relay.dart': "export 'package:good/good.dart';\n",
+            },
+            dependencies: <String>['good'],
+          ),
+        ]);
+        File(p.join(repo.path, 'packages', 'relay', 'test', 'round_test.dart'))
+          ..parent.createSync(recursive: true)
+          ..writeAsStringSync('''
+import 'package:good/good.dart';
+
+class _Shot extends EntityStruct {
+  final damage = Field.int32(1);
+}
+''');
+        final packages = repoPackages(repo);
+        final scan = scanFixtures(
+          packages: packages,
+          sources: readFixtureSources(packages, packages),
+          // What the run reads off `scanDeclarationCollectors`: `good` declares
+          // scanned classes and `relay` declares none.
+          tabled: <String>{'good'},
+          known: packages,
+        );
+        final library = scan.libraries.singleWhere(
+          (library) => library.package.name == 'relay',
+        );
+
+        final written = emitFixtureDeclarations(library);
+        expect(written, contains('goodDeclarations,'));
+        expect(written, isNot(contains('relayDeclarations')));
+      },
+    );
 
     // The table is keyed by a `Type`, and the literal `Spawner` written into
     // it is `Spawner<EntityStruct>` while every instance's `runtimeType` is
@@ -1023,6 +1070,7 @@ class _Spawner<T extends EntityStruct> extends EntityStruct {
       final scan = scanFixtures(
         packages: packages,
         sources: readFixtureSources(packages, packages),
+        tabled: <String>{'good'},
       );
       final library = scan.libraries.single;
       expect(

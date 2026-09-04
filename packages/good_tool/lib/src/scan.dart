@@ -888,11 +888,21 @@ class FixtureLibrary {
     required this.package,
     required this.path,
     required this.collectors,
+    required this.tables,
   });
 
-  /// The package the library belongs to - where its table's key comes from,
-  /// and whose generated table it depends on.
+  /// The package the library belongs to - where its table's key comes from.
   final EnginePackage package;
+
+  /// The generated tables this one depends on, so that installing it installs
+  /// the collectors for the engine classes a fixture is built on.
+  ///
+  /// Usually the library's own package, whose table already depends on the
+  /// packages it is built on. A package that declares no scanned class in its
+  /// `lib/` has no table at all - `good_net_p2p` is one - and naming one would
+  /// be naming something the generator never wrote, so what stands in for it
+  /// is the tables of the packages it depends on.
+  final List<EnginePackage> tables;
 
   /// The library's own file, normalised and absolute.
   final String path;
@@ -1006,10 +1016,19 @@ class FixtureScan {
 /// walked against its own types laid over the `lib/` ones, and nothing from a
 /// second test file is ever in scope - which is also what Dart says, since no
 /// test file here imports another.
+///
+/// [tabled] names the packages that have a `lib/` table, which is not every
+/// package read: one declaring no scanned class of its own gets no
+/// `declarations.g.dart` written for it. [known] is every package read, where
+/// [packages] is the subset being written into - the same split
+/// `declarationFiles` makes.
 FixtureScan scanFixtures({
   required List<EnginePackage> packages,
   required ScanSources sources,
+  required Set<String> tabled,
+  List<EnginePackage>? known,
 }) {
+  final available = known ?? packages;
   final libTypes = <String, ScannedType>{};
   // Over every unit and not per library: a marker is a const in an engine
   // package's `lib/`, so the set is the same whichever fixture is being
@@ -1031,6 +1050,16 @@ FixtureScan scanFixtures({
       for (final root in package.fixtureRoots) root.path,
     ];
     if (roots.isEmpty) continue;
+    final tables = <EnginePackage>[
+      if (tabled.contains(package.name))
+        package
+      else
+        for (final candidate in available)
+          if (candidate.name != package.name &&
+              package.dependencies.contains(candidate.name) &&
+              tabled.contains(candidate.name))
+            candidate,
+    ];
     for (final path in paths) {
       if (!roots.any((root) => p.isWithin(root, path))) continue;
       final unit = sources.units[path]!;
@@ -1085,6 +1114,7 @@ FixtureScan scanFixtures({
           package: package,
           path: path,
           collectors: collectors,
+          tables: tables,
         ),
       );
     }

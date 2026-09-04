@@ -472,7 +472,21 @@ void _tests(
   final readable = <EnginePackage>[...packages, ...dependencies];
   final sources = readFixtureSources(packages, readable);
   if (_unparsed(sources.unparsed)) return;
-  final scan = scanFixtures(packages: packages, sources: sources);
+  // Which packages have a `lib/` table at all, asked of the sources rather
+  // than of the disk: a package declaring no scanned class gets no
+  // `declarations.g.dart`, and a part naming one would name something the
+  // generator never wrote. Reading the file back to find out would be reading
+  // this generator's own output, which is what `readFixtureSources` excludes.
+  final collectors = scanDeclarationCollectors(
+    packages: readable,
+    sources: sources,
+  );
+  final scan = scanFixtures(
+    packages: packages,
+    sources: sources,
+    tabled: collectors.byPackage.keys.toSet(),
+    known: readable,
+  );
   final files = fixtureFiles(scan);
   final absent = missingPartDirectives(scan.libraries);
 
