@@ -93,12 +93,6 @@ class _Damage extends EntityStruct with Transform2D, WorldTransform2D, Text2D {
   late final TextureAsset atlas;
 
   @override
-  void describeStruct(DataDescriptor data) {
-    super.describeStruct(data);
-    textCodeUnits.length = 8;
-  }
-
-  @override
   void describeAssets(AssetDescriptor descriptor) {
     super.describeAssets(descriptor);
     atlas = descriptor.has(_atlasKey);
@@ -123,6 +117,7 @@ class _Damage extends EntityStruct with Transform2D, WorldTransform2D, Text2D {
   @override
   void describeStruct(DataDescriptor data) {
     super.describeStruct(data);
+    textCodeUnits.length = 8;
     textCellWidth.initialValue = _cell;
     textCellHeight.initialValue = _cell;
     textColor.initialValue = _labelColor;

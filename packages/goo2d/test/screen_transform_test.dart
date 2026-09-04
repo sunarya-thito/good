@@ -222,12 +222,6 @@ class _Label extends EntityStruct with Transform2D, WorldTransform2D, Text2D {
   late final TextureAsset atlas;
 
   @override
-  void describeStruct(DataDescriptor data) {
-    super.describeStruct(data);
-    textCodeUnits.length = 8;
-  }
-
-  @override
   void describeAssets(AssetDescriptor descriptor) {
     super.describeAssets(descriptor);
     atlas = descriptor.has(_textureKey);
@@ -240,6 +234,7 @@ class _Label extends EntityStruct with Transform2D, WorldTransform2D, Text2D {
   @override
   void describeStruct(DataDescriptor data) {
     super.describeStruct(data);
+    textCodeUnits.length = 8;
     textCellWidth.initialValue = 8;
     textCellHeight.initialValue = 8;
     textColor.initialValue = _labelColor;
