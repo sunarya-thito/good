@@ -26,8 +26,8 @@ part 'game_declaration_test.g.dart';
 //
 // What this file pins is the field form on a `Game`: the values it declares,
 // that each channel is storage of its own, that the numbering survives the
-// isolate boundary, and that a `Game` built while another is constructing is
-// refused rather than declaring into it.
+// isolate boundary, and that a `Game` built inside another constructor
+// declares onto its own fields.
 
 abstract class _BareGame extends Game {
   @override
@@ -89,16 +89,18 @@ class _Nested extends _BareGame {
   final fire = Input.of(const TriggerBinding(InputKey.spacebar));
 }
 
-/// A game holding a game. The inner one's fields run while *this* game's
-/// windows are open, so without the guard the inner declarations land here.
+/// A game holding a game. There was a guard against this once, counting games
+/// against an open declaration window; the windows are gone and so is it. A
+/// collector is keyed by the class it reads, so the inner one's fields are
+/// read off the inner one and nesting has nothing left to corrupt.
 class _NestingGame extends _BareGame {
   final own = Channel.int32(1);
   final inner = _Nested();
 }
 
-/// A game with only an input, built inside a system's constructor - where the
-/// system's registry is open and no state descriptor is, so the channel guard
-/// would not have caught it.
+/// A game with only an input, built inside a system's constructor. That was
+/// the case the channel guard missed, because what used to be open there
+/// belonged to the system; with nothing open at all it lands nowhere.
 class _InputOnly extends _BareGame {
   final fire = Input.of(const TriggerBinding(InputKey.spacebar));
 }
@@ -292,47 +294,60 @@ void main() {
     });
   });
 
-  group('a Game built while somebody else is declaring', () {
-    test('a game inside a game constructor is refused', () async {
-      await expectLater(
-        Game.startInline(_NestingGame.new),
-        throwsA(
-          isA<StateError>().having(
-            (e) => e.message,
-            'message',
-            allOf(
-              contains('2 games finished constructing'),
-              contains('inside another Game'),
-            ),
-          ),
-        ),
+  group('a Game built while somebody else is being constructed', () {
+    test('a game inside a game constructor keeps its own fields', () async {
+      final game = await _boot(_NestingGame.new);
+
+      expect(
+        game.stateChannelCount,
+        1,
         reason:
-            'without the count this boots and runs: measured before the '
-            'guard existed, the outer game came out holding 2 channels and 1 '
-            'action - the inner ones - and the inner game held none of '
-            'either while its own handle read the outer storage',
+            'the one Channel field the outer game declares. Measured before '
+            'the guard existed and while the windows were open, this was 2 - '
+            'the inner game\'s - and the inner game held none of its own',
+      );
+      expect(
+        game.own.value,
+        1,
+        reason: 'its own initialiser, not the 7 the inner one named',
+      );
+      expect(
+        game.inputActionCount,
+        0,
+        reason: 'and the inner game\'s Input.of did not land here either',
+      );
+      expect(
+        collectDeclarations(game.inner),
+        orderedEquals(<Matcher>[same(game.inner.score), same(game.inner.fire)]),
+        reason:
+            'while the inner game still holds both of them. This is the '
+            'property the deleted guard was protecting, and a collector keyed '
+            'by the class it reads gives it for free - there is no ambient '
+            'owner left for a field to be attributed to',
       );
     });
 
-    test('a game inside a system constructor is refused', () async {
-      await expectLater(
-        Game.startInline(_SystemHostGame.new),
-        throwsA(
-          isA<StateError>().having(
-            (e) => e.message,
-            'message',
-            allOf(
-              contains('a Game was constructed while'),
-              contains('_GameBuildingSystem'),
-            ),
-          ),
-        ),
-        reason:
-            'the registry open there belongs to the system, so an Input.of '
-            'on a field of that game declares on the host: measured before '
-            'the guard, the host held the 1 action and the game held 0',
-      );
-    });
+    test(
+      'a game inside a system constructor lands nothing on the host',
+      () async {
+        final game = await _boot(_SystemHostGame.new);
+
+        expect(
+          game.inputActionCount,
+          0,
+          reason:
+              'the system constructor built a game holding one Input.of and '
+              'dropped it. Measured before the guard existed, the host held '
+              'that action and the game held none - the case the channel '
+              'guard missed, since what was open there was the system\'s',
+        );
+        expect(
+          game.stateChannelCount,
+          0,
+          reason: 'and nothing else arrived from it either',
+        );
+      },
+    );
 
     test('a prebuilt game handed through a closure is refused', () async {
       final game = await _boot(_FieldGame.new);
