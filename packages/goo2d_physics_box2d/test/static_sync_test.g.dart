@@ -23,6 +23,7 @@ part of 'static_sync_test.dart';
 List<ScannableField> _collect$Slab(Object object) {
   final owner = object as _Slab;
   return <ScannableField>[
+    owner.box,
     owner.bodyHandle,
     owner.bodyType,
     owner.bodyLinearVelocityX,

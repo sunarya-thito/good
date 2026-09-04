@@ -5,19 +5,11 @@ part 'collider_test.g.dart';
 
 class _Player extends EntityStruct
     with Transform2D, Collider2D, CollisionListener {
-  late final BoxBody box;
-  late final CircleBody hurtbox;
-  late final CircleBody pickupRange;
+  final box = ColliderBody.box(halfWidth: 16, halfHeight: 24);
+  final hurtbox = ColliderBody.circle(radius: 20);
+  final pickupRange = ColliderBody.circle(radius: 48, isTrigger: true);
 
   final List<String> firedEvents = <String>[];
-
-  @override
-  void describeCollider(ColliderDescriptor descriptor) {
-    super.describeCollider(descriptor);
-    box = descriptor.hasBoxCollider(halfWidth: 16, halfHeight: 24);
-    hurtbox = descriptor.hasCircleCollider(radius: 20);
-    pickupRange = descriptor.hasCircleCollider(radius: 48, isTrigger: true);
-  }
 
   @override
   void onCollisionEnter2D(Collision2DEvent event) => firedEvents.add('enter');
@@ -27,60 +19,35 @@ class _Player extends EntityStruct
 }
 
 class _Wall extends EntityStruct with Transform2D, Collider2D {
-  late final BoxBody box;
-
-  @override
-  void describeCollider(ColliderDescriptor descriptor) {
-    super.describeCollider(descriptor);
-    box = descriptor.hasBoxCollider(halfWidth: 100, halfHeight: 10);
-  }
+  final box = ColliderBody.box(halfWidth: 100, halfHeight: 10);
 }
 
 /// Three points in eight slots, so the cases below can tell the outline
 /// apart from the capacity it is stored in.
 class _Polygon extends EntityStruct with Transform2D, Collider2D {
-  late final PolygonBody triangle;
-
-  @override
-  void describeCollider(ColliderDescriptor descriptor) {
-    super.describeCollider(descriptor);
-    triangle = descriptor.hasPolygonCollider(
-      points: const [(0, 0), (10, 0), (5, 10)],
-      maxPoints: 8,
-    );
-  }
+  final triangle = ColliderBody.polygon(
+    points: const [(0, 0), (10, 0), (5, 10)],
+    maxPoints: 8,
+  );
 }
 
 /// A capsule taller than it is wide, plus one deliberately squashed flatter
 /// than its own radius - the degenerate case that has to read as a circle.
 class _Capsule extends EntityStruct with Transform2D, Collider2D {
-  late final CapsuleBody pill;
-  late final CapsuleBody squashed;
-
-  @override
-  void describeCollider(ColliderDescriptor descriptor) {
-    super.describeCollider(descriptor);
-    pill = descriptor.hasCapsuleCollider(radius: 10, halfHeight: 30);
-    squashed = descriptor.hasCapsuleCollider(radius: 10, halfHeight: 4);
-  }
+  final pill = ColliderBody.capsule(radius: 10, halfHeight: 30);
+  final squashed = ColliderBody.capsule(radius: 10, halfHeight: 4);
 }
 
 /// A concave outline - an arrowhead with a notch cut out of its base. A
 /// convex-only containment test passes every other polygon case and fails
 /// this one, which is why it is here.
 class _Concave extends EntityStruct with Transform2D, Collider2D {
-  late final PolygonBody arrow;
-
-  @override
-  void describeCollider(ColliderDescriptor descriptor) {
-    super.describeCollider(descriptor);
-    // (0,0) tip, out to both base corners, with (0,20) notched back in
-    // between them - so the point (0, 25) is inside the bounding box and
-    // inside the convex hull, but outside the shape itself.
-    arrow = descriptor.hasPolygonCollider(
-      points: const [(0, 0), (20, 40), (0, 20), (-20, 40)],
-    );
-  }
+  // (0,0) tip, out to both base corners, with (0,20) notched back in
+  // between them - so the point (0, 25) is inside the bounding box and
+  // inside the convex hull, but outside the shape itself.
+  final arrow = ColliderBody.polygon(
+    points: const [(0, 0), (20, 40), (0, 20), (-20, 40)],
+  );
 }
 
 class _Scene extends SceneStruct {
@@ -106,39 +73,22 @@ class _Scene extends SceneStruct {
   final concave = _Concave();
 }
 
-/// A prefab whose one collider is whatever [_declare] declares, so a case
-/// can assert on what `hasPolygonCollider` rejects.
-class _AdHoc extends EntityStruct with Transform2D, Collider2D {
-  _AdHoc(this._declare);
-
-  final void Function(ColliderDescriptor descriptor) _declare;
-
-  @override
-  void describeCollider(ColliderDescriptor descriptor) {
-    super.describeCollider(descriptor);
-    _declare(descriptor);
-  }
+/// Three points in twelve slots - past the eight a Box2D convex polygon
+/// allows, which this layer deliberately does not cap.
+///
+/// A prefab and not a body built in the test body, because the capacity has
+/// to be read after the scene reserved the array: `pointsX.length` off a
+/// body nothing realized would be measuring the argument again.
+class _WidePolygon extends EntityStruct with Transform2D, Collider2D {
+  final wide = ColliderBody.polygon(
+    points: const [(0, 0), (10, 0), (5, 10)],
+    maxPoints: 12,
+  );
 }
 
-class _AdHocScene extends SceneStruct {
-  _AdHocScene(this._declare);
-
-  final void Function(ColliderDescriptor descriptor) _declare;
-
-  @override
-  void describeScene(SceneDescriptor descriptor) {
-    super.describeScene(descriptor);
-    descriptor.has(() => _AdHoc(_declare));
-  }
-}
-
-/// Builds the layout for a prefab declaring [declare], which is where a
-/// rejected declaration throws - `describeCollider` runs from
-/// `initializeScene`.
-void _adHocScene(void Function(ColliderDescriptor descriptor) declare) {
-  final pool = MemoryPool(pageSize: 4096);
-  addTearDown(pool.dispose);
-  _AdHocScene(declare).initializeScene(pool);
+class _WidePolygonScene extends SceneStruct {
+  @sub
+  final polygon = _WidePolygon();
 }
 
 _Scene _scene() {
@@ -282,28 +232,52 @@ void main() {
       // Containment here is even-odd crossing, which handles any outline, so
       // a picking polygon is not bound by what a solver can simulate. The
       // Box2D bridge refuses a shape it cannot take; this layer does not.
-      late final PolygonBody body;
-      _adHocScene((descriptor) {
-        body = descriptor.hasPolygonCollider(
-          points: const [(0, 0), (10, 0), (5, 10)],
-          maxPoints: 12,
-        );
-      });
-      expect(body.pointsX.length, 12);
+      final scene = _WidePolygonScene()
+        ..initializeScene(MemoryPool(pageSize: 4096));
+      addTearDown(scene.pool.dispose);
+      expect(scene.polygon.wide.pointsX.length, 12);
     });
 
     test(
-      'an outline of fewer than three points is rejected at declare time',
+      'an outline of fewer than three points is rejected where it is written',
       () {
+        // On the line that writes it, not when a scene lays the archetype
+        // out: the outline is an argument to `of`, so nothing has to have
+        // been built for the refusal to be right. Asserted on the message,
+        // because `RangeError` is an `ArgumentError` and `throwsArgumentError`
+        // alone cannot tell this guard from an index gone wrong.
         expect(
-          () => _adHocScene(
-            (descriptor) =>
-                descriptor.hasPolygonCollider(points: const [(0, 0), (10, 0)]),
+          () {
+            ColliderBody.polygon(points: const [(0, 0), (10, 0)]);
+          },
+          throwsA(
+            isA<ArgumentError>().having(
+              (error) => error.message,
+              'message',
+              'a polygon needs at least three points',
+            ),
           ),
-          throwsArgumentError,
         );
       },
     );
+
+    test('a capacity smaller than the outline is rejected the same way', () {
+      expect(
+        () {
+          ColliderBody.polygon(
+            points: const [(0, 0), (10, 0), (5, 10)],
+            maxPoints: 2,
+          );
+        },
+        throwsA(
+          isA<ArgumentError>().having(
+            (error) => error.message,
+            'message',
+            'must hold every declared point (3)',
+          ),
+        ),
+      );
+    });
 
     test('an entity can use fewer points than the declared capacity', () {
       final scene = _scene();

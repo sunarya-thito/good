@@ -304,13 +304,7 @@ class _BorderedUntextured extends EntityStruct
 class _PivotBody extends EntityStruct
     with Transform2D, WorldTransform2D, Renderable2D, Collider2D {
   final quad = Sprite.of(width: 40, height: 100);
-  late final BoxBody box;
-
-  @override
-  void describeCollider(ColliderDescriptor descriptor) {
-    super.describeCollider(descriptor);
-    box = descriptor.hasBoxCollider(halfWidth: 20, halfHeight: 50);
-  }
+  final box = ColliderBody.box(halfWidth: 20, halfHeight: 50);
 }
 
 class _SpriteScene extends SceneStruct {

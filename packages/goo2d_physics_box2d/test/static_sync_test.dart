@@ -22,13 +22,7 @@ late Box2DPhysicsSystem physics;
 late _Scene _declaration;
 
 class _Slab extends EntityStruct with Transform2D, Collider2D, RigidBody2D {
-  late final BoxBody box;
-
-  @override
-  void describeCollider(ColliderDescriptor d) {
-    super.describeCollider(d);
-    box = d.hasBoxCollider(halfWidth: 2, halfHeight: 0.5);
-  }
+  final box = ColliderBody.box(halfWidth: 2, halfHeight: 0.5);
 
   @override
   void describeStruct(DataDescriptor data) {

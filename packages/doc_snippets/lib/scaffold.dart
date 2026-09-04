@@ -33,7 +33,7 @@ import 'package:goo2d/goo2d.dart';
 
 /// A stand-in for something a fragment is handed by the code around it.
 ///
-/// `final descriptor = given<ColliderDescriptor>();` in a
+/// `final descriptor = given<EffectorDescriptor>();` in a
 /// `<!-- snippet-setup -->`
 /// block gives the fence a correctly typed local without a page of
 /// construction. Typed and never `dynamic`, so the call inside the fence is
@@ -127,15 +127,9 @@ class Player extends EntityStruct
     width: 64,
     height: 64,
   );
-  late final CircleBody hitbox;
+  final hitbox = ColliderBody.circle(radius: 0.5);
   final speed = Field.float64(120);
   final shielded = Field.boolean();
-
-  @override
-  void describeCollider(ColliderDescriptor descriptor) {
-    super.describeCollider(descriptor);
-    hitbox = descriptor.hasCircleCollider(radius: 0.5);
-  }
 }
 
 class Enemy() extends EntityStruct

@@ -24,6 +24,7 @@ List<ScannableField> _collect$Button(Object object) {
   final owner = object as _Button;
   return <ScannableField>[
     owner.sprite,
+    owner.hitArea,
     owner.worldX,
     owner.worldY,
     owner.worldScaleX,
@@ -49,6 +50,7 @@ List<ScannableField> _collect$Panel(Object object) {
   final owner = object as _Panel;
   return <ScannableField>[
     owner.sprite,
+    owner.hitArea,
     owner.worldX,
     owner.worldY,
     owner.worldScaleX,
@@ -73,6 +75,7 @@ List<ScannableField> _collect$Panel(Object object) {
 List<ScannableField> _collect$Zone(Object object) {
   final owner = object as _Zone;
   return <ScannableField>[
+    owner.hitArea,
     owner.worldX,
     owner.worldY,
     owner.worldScaleX,
@@ -121,6 +124,7 @@ List<ScannableField> _collect$Naked(Object object) {
 List<ScannableField> _collect$Satellite(Object object) {
   final owner = object as _Satellite;
   return <ScannableField>[
+    owner.hitArea,
     owner.worldX,
     owner.worldY,
     owner.worldScaleX,
@@ -145,6 +149,8 @@ List<ScannableField> _collect$Satellite(Object object) {
 List<ScannableField> _collect$Compound(Object object) {
   final owner = object as _Compound;
   return <ScannableField>[
+    owner.near,
+    owner.far,
     owner.worldX,
     owner.worldY,
     owner.worldScaleX,
@@ -169,6 +175,7 @@ List<ScannableField> _collect$Compound(Object object) {
 List<ScannableField> _collect$Pad(Object object) {
   final owner = object as _Pad;
   return <ScannableField>[
+    owner.hitArea,
     owner.worldX,
     owner.worldY,
     owner.worldScaleX,
@@ -194,6 +201,7 @@ List<ScannableField> _collect$Glass(Object object) {
   final owner = object as _Glass;
   return <ScannableField>[
     owner.sprite,
+    owner.hitArea,
     owner.worldX,
     owner.worldY,
     owner.worldScaleX,

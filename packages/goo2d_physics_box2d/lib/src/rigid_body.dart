@@ -78,10 +78,10 @@ enum BodyType2D {
 /// }
 /// ```
 ///
-/// There is no `describeRigidBody` hook to go with `describeCollider`. A
-/// collider declares however many shapes the prefab has, and only the prefab
-/// knows how many; a body is six values, and a column default carries each of
-/// them.
+/// There is no `RigidBody2D` factory to go with `ColliderBody.box`. A
+/// collider is a group of columns under one name and a prefab declares
+/// however many of them it has; a body is six columns this mixin already
+/// declares, and a column default carries each of them.
 ///
 /// # How a body gets created
 ///

@@ -29,24 +29,12 @@ late Box2DPhysicsSystem physics;
 
 /// A dynamic crate: a box collider on a simulated body.
 class _Crate extends EntityStruct with Transform2D, Collider2D, RigidBody2D {
-  late final BoxBody box;
-
-  @override
-  void describeCollider(ColliderDescriptor descriptor) {
-    super.describeCollider(descriptor);
-    box = descriptor.hasBoxCollider(halfWidth: 0.5, halfHeight: 0.5);
-  }
+  final box = ColliderBody.box(halfWidth: 0.5, halfHeight: 0.5);
 }
 
 /// A static floor.
 class _Floor extends EntityStruct with Transform2D, Collider2D, RigidBody2D {
-  late final BoxBody box;
-
-  @override
-  void describeCollider(ColliderDescriptor descriptor) {
-    super.describeCollider(descriptor);
-    box = descriptor.hasBoxCollider(halfWidth: 50, halfHeight: 1);
-  }
+  final box = ColliderBody.box(halfWidth: 50, halfHeight: 1);
 
   @override
   void describeStruct(DataDescriptor data) {
@@ -57,25 +45,13 @@ class _Floor extends EntityStruct with Transform2D, Collider2D, RigidBody2D {
 
 /// A bouncy ball, covering the circle shape and restitution.
 class _Ball extends EntityStruct with Transform2D, Collider2D, RigidBody2D {
-  late final CircleBody circle;
-
-  @override
-  void describeCollider(ColliderDescriptor descriptor) {
-    super.describeCollider(descriptor);
-    circle = descriptor.hasCircleCollider(radius: 0.5, restitution: 0.8);
-  }
+  final circle = ColliderBody.circle(radius: 0.5, restitution: 0.8);
 }
 
 /// A kinematic moving platform: gameplay sets its velocity, the solver
 /// integrates it.
 class _Platform extends EntityStruct with Transform2D, Collider2D, RigidBody2D {
-  late final BoxBody box;
-
-  @override
-  void describeCollider(ColliderDescriptor descriptor) {
-    super.describeCollider(descriptor);
-    box = descriptor.hasBoxCollider(halfWidth: 4, halfHeight: 0.5);
-  }
+  final box = ColliderBody.box(halfWidth: 4, halfHeight: 0.5);
 
   @override
   void describeStruct(DataDescriptor data) {
@@ -86,13 +62,7 @@ class _Platform extends EntityStruct with Transform2D, Collider2D, RigidBody2D {
 
 /// A body that never rotates.
 class _Pinned extends EntityStruct with Transform2D, Collider2D, RigidBody2D {
-  late final CircleBody circle;
-
-  @override
-  void describeCollider(ColliderDescriptor descriptor) {
-    super.describeCollider(descriptor);
-    circle = descriptor.hasCircleCollider(radius: 0.5);
-  }
+  final circle = ColliderBody.circle(radius: 0.5);
 
   @override
   void describeStruct(DataDescriptor data) {

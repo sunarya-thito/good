@@ -217,7 +217,7 @@ mixin Text2D on Component {
   ///
   /// Its `length` is the most code units a label of this prefab holds, and it
   /// is storage - reserved in every row of the archetype whether or not an
-  /// entity uses it, so it is `describeCollider`'s `maxPoints` and not a soft
+  /// entity uses it, so it is `ColliderBody.polygon`'s `maxPoints` and not a soft
   /// limit. [Text2DAccessor.setText] asserts on a longer string in debug and
   /// truncates in release. A prefab that wants a different one moves it in
   /// its own `describeStruct`, `1..65535`:

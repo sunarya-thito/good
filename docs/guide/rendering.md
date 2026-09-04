@@ -822,13 +822,7 @@ class Button extends EntityStruct
         PointerReceiver,
         HoverReceiver {
   final sprite = Sprite.of(width: 64, height: 64);
-  late final CircleBody hitArea;
-
-  @override
-  void describeCollider(ColliderDescriptor descriptor) {
-    super.describeCollider(descriptor);
-    hitArea = descriptor.hasCircleCollider(radius: 32);
-  }
+  final hitArea = ColliderBody.circle(radius: 32);
 
   @override
   void onPointerDown(PointerPickEvent event) { }

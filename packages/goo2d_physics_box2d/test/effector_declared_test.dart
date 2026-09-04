@@ -36,18 +36,12 @@ late Box2DPhysicsSystem physics;
 /// A wind zone: a region, and an effector acting through it. No rigid body of
 /// its own - a force field is not a thing that falls.
 class _Zone extends EntityStruct with Transform2D, Collider2D, Effector2D {
-  late final BoxBody region;
+  final region = ColliderBody.box(
+    halfWidth: 50,
+    halfHeight: 50,
+    isTrigger: true,
+  );
   late final AreaEffector wind;
-
-  @override
-  void describeCollider(ColliderDescriptor descriptor) {
-    super.describeCollider(descriptor);
-    region = descriptor.hasBoxCollider(
-      halfWidth: 50,
-      halfHeight: 50,
-      isTrigger: true,
-    );
-  }
 
   @override
   void describeEffector(EffectorDescriptor descriptor) {
@@ -63,18 +57,12 @@ class _Zone extends EntityStruct with Transform2D, Collider2D, Effector2D {
 /// `density: 3` against the boxes' own 1, so a submerged box is pushed up
 /// harder than gravity pulls it down and the lift is unmistakable.
 class _Pool extends EntityStruct with Transform2D, Collider2D, Effector2D {
-  late final BoxBody region;
+  final region = ColliderBody.box(
+    halfWidth: 50,
+    halfHeight: 10,
+    isTrigger: true,
+  );
   late final BuoyancyEffector water;
-
-  @override
-  void describeCollider(ColliderDescriptor descriptor) {
-    super.describeCollider(descriptor);
-    region = descriptor.hasBoxCollider(
-      halfWidth: 50,
-      halfHeight: 10,
-      isTrigger: true,
-    );
-  }
 
   @override
   void describeEffector(EffectorDescriptor descriptor) {
@@ -84,13 +72,7 @@ class _Pool extends EntityStruct with Transform2D, Collider2D, Effector2D {
 }
 
 class _Box extends EntityStruct with Transform2D, Collider2D, RigidBody2D {
-  late final BoxBody box;
-
-  @override
-  void describeCollider(ColliderDescriptor descriptor) {
-    super.describeCollider(descriptor);
-    box = descriptor.hasBoxCollider(halfWidth: 0.5, halfHeight: 0.5);
-  }
+  final box = ColliderBody.box(halfWidth: 0.5, halfHeight: 0.5);
 }
 
 class _Scene extends SceneStruct {

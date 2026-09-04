@@ -23,6 +23,7 @@ part of 'effectors_test.dart';
 List<ScannableField> _collect$Box(Object object) {
   final owner = object as _Box;
   return <ScannableField>[
+    owner.box,
     owner.bodyHandle,
     owner.bodyType,
     owner.bodyLinearVelocityX,
