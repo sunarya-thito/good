@@ -15,6 +15,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:goo2d/goo2d.dart';
 import 'package:goo2d_physics_box2d/goo2d_physics_box2d.dart';
 
+part 'effectors_test.g.dart';
+
 late Game run;
 late Box2DPhysicsSystem physics;
 
@@ -115,6 +117,8 @@ void _advance(int steps) {
 }
 
 void main() {
+  _installDeclarations();
+
   tearDown(() {
     SceneRegistry.reset();
     ArchetypeRegistry.reset();

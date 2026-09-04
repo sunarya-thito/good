@@ -2,6 +2,8 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:goo2d/goo2d.dart';
 
+part 'multi_view_test.g.dart';
+
 /// The live run under test. A file-level binding: the bring-up helper
 /// returns the `Game` (the description) while tests also need the run, and
 /// one inline run per isolate means one binding is enough.
@@ -181,6 +183,8 @@ int _publishedQuads(_MultiGame game, CameraView view) {
 }
 
 void main() {
+  _installDeclarations();
+
   setUp(events.clear);
 
   tearDown(() {

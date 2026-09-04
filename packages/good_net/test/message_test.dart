@@ -4,6 +4,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:good/good.dart';
 import 'package:good_net/good_net.dart';
 
+part 'message_test.g.dart';
+
 /// A client's request: "I fired, at this angle, with this weapon".
 class _Fire extends NetMessage<({double angle, int weapon})> {
   final angle = Param.float32();
@@ -353,6 +355,8 @@ class _SkewedGame extends _NetGame {
 const Duration _step = Duration(milliseconds: 16);
 
 void main() {
+  _installDeclarations();
+
   final running = <Game>[];
 
   Future<T> boot<T extends Game>(T Function() create) async {

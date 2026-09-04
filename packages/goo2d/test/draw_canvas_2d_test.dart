@@ -6,6 +6,8 @@ import 'package:goo2d/goo2d.dart';
 
 import 'png_fixture.dart';
 
+part 'draw_canvas_2d_test.g.dart';
+
 // DrawCanvas2D, the main-isolate replay side: does one frame become the right
 // drawVertices calls with the geometry the producer wrote, does texture
 // batching preserve the z order the producer sorted into, and does the replay
@@ -228,6 +230,8 @@ List<double> _frameUvs(SpriteFrame frame) {
 late Assets assets;
 
 void main() {
+  _installDeclarations();
+
   setUp(() {
     assets = Assets();
     AssetLoaders.register<Texture>(const TextureLoader());

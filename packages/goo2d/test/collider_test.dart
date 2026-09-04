@@ -1,6 +1,8 @@
 import 'package:goo2d/goo2d.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+part 'collider_test.g.dart';
+
 class _Player extends EntityStruct
     with Transform2D, Collider2D, CollisionListener {
   late final BoxBody box;
@@ -152,6 +154,8 @@ _Scene _scene() {
 }
 
 void main() {
+  _installDeclarations();
+
   tearDown(() {
     SceneRegistry.reset();
     ArchetypeRegistry.reset();

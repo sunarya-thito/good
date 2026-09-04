@@ -5,6 +5,8 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:goo2d/goo2d.dart';
 
+part 'texture_test.g.dart';
+
 /// A 2x1 PNG - the smallest thing that proves the decode really happened and
 /// that width and height are not simply both 1 by accident.
 final Uint8List _png2x1 = base64Decode(
@@ -67,6 +69,8 @@ _TextureScene _declare(TextureKey key) {
 late Assets assets;
 
 void main() {
+  _installDeclarations();
+
   setUp(() {
     assets = Assets();
     AssetLoaders.register<Texture>(const TextureLoader());

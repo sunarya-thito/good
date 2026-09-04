@@ -11,6 +11,8 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:goo2d/goo2d.dart';
 
+part 'component_bits_test.g.dart';
+
 class _Ship extends EntityStruct with Transform2D, WorldTransform2D {}
 
 class _Eye extends EntityStruct with Transform2D, Camera {}
@@ -67,6 +69,8 @@ bool _matches(ArchetypeStorage storage, int required) =>
     storage.componentSignature & required == required;
 
 void main() {
+  _installDeclarations();
+
   setUp(() {
     SceneRegistry.reset();
     ArchetypeRegistry.reset();

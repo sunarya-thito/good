@@ -15,6 +15,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:goo2d/goo2d.dart';
 import 'package:goo2d_physics_box2d/goo2d_physics_box2d.dart';
 
+part 'physics_test.g.dart';
+
 /// The live run under test. Follows goo2d's own test convention (see
 /// world_transform_test.dart): the helper returns the `Game` while tests
 /// also need the run, and one inline run per isolate makes one binding
@@ -236,6 +238,8 @@ void _advance(int steps) {
 }
 
 void main() {
+  _installDeclarations();
+
   setUp(() {
     _teleport = null;
     _retype = null;

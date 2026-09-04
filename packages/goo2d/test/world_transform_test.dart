@@ -3,6 +3,8 @@ import 'dart:math' as math;
 import 'package:goo2d/goo2d.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+part 'world_transform_test.g.dart';
+
 /// The live run under test. A file-level binding: the bring-up helper
 /// returns the `Game` (the description) while tests also need the run, and
 /// one inline run per isolate means one binding is enough.
@@ -184,6 +186,8 @@ int _fastestChurnMicros(_Scene scene, EntityStruct prefab, int n) {
 }
 
 void main() {
+  _installDeclarations();
+
   tearDown(() {
     SceneRegistry.reset();
     ArchetypeRegistry.reset();

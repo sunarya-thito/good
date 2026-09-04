@@ -15,6 +15,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:goo2d/goo2d.dart';
 import 'package:goo2d_physics_box2d/goo2d_physics_box2d.dart';
 
+part 'static_sync_test.g.dart';
+
 late Game run;
 late Box2DPhysicsSystem physics;
 late _Scene _declaration;
@@ -112,6 +114,8 @@ Future<Scene> _boot() async {
 }
 
 void main() {
+  _installDeclarations();
+
   tearDown(() {
     SceneRegistry.reset();
     ArchetypeRegistry.reset();

@@ -24,6 +24,8 @@ import 'package:goo2d/goo2d.dart';
 import 'package:goo2d_ffi_box2d/goo2d_ffi_box2d.dart' show box2d;
 import 'package:goo2d_physics_box2d/goo2d_physics_box2d.dart';
 
+part 'scene_isolation_test.g.dart';
+
 late Game run;
 late Box2DPhysicsSystem physics;
 late _PhysScene _declaration;
@@ -115,6 +117,8 @@ Future<GameState> _boot() async {
 double _ballY(Entity entity) => _declaration.ball.transformOffsetY[entity];
 
 void main() {
+  _installDeclarations();
+
   tearDown(() {
     SceneRegistry.reset();
     ArchetypeRegistry.reset();

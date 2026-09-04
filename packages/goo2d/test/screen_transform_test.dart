@@ -17,6 +17,8 @@ import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:goo2d/goo2d.dart';
 
+part 'screen_transform_test.g.dart';
+
 /// The live run under test. A file-level binding, as in the other renderer
 /// suites: the bring-up helper returns the `Game` while the tests also need
 /// the run, and one inline run per isolate means one binding is enough.
@@ -430,6 +432,8 @@ Entity _eye(CameraView view, {double x = 0, double y = 0, double zoom = 1}) {
 }
 
 void main() {
+  _installDeclarations();
+
   tearDown(() {
     SceneRegistry.reset();
     ArchetypeRegistry.reset();

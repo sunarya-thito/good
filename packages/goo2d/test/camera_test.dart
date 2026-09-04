@@ -1,6 +1,8 @@
 import 'package:goo2d/goo2d.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+part 'camera_test.g.dart';
+
 /// The live run under test. A file-level binding: the bring-up helper
 /// returns the `Game` (the description) while tests also need the run, and
 /// one inline run per isolate means one binding is enough.
@@ -44,6 +46,8 @@ _Scene _scene() {
 }
 
 void main() {
+  _installDeclarations();
+
   tearDown(() {
     SceneRegistry.reset();
     ArchetypeRegistry.reset();

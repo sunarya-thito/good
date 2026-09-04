@@ -26,6 +26,8 @@ import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:goo2d/goo2d.dart';
 
+part 'sprite_budget_test.g.dart';
+
 /// The live run under test - one inline run per isolate, so one binding, and
 /// [_game] stops whatever was up before it starts another.
 Game? _run;
@@ -375,6 +377,8 @@ List<int> _colorsOf(Uint8List batch) {
 List<int> _batchColors(_BudgetGame game) => _colorsOf(_batchBytes(game));
 
 void main() {
+  _installDeclarations();
+
   TestWidgetsFlutterBinding.ensureInitialized();
 
   group('the record budget', () {

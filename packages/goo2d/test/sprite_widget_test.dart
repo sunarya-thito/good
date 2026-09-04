@@ -8,6 +8,8 @@ import 'package:goo2d/goo2d.dart';
 
 import 'png_fixture.dart';
 
+part 'sprite_widget_test.g.dart';
+
 // SpriteWidget, the main-isolate widget side of #120: does a handle the engine
 // already decoded reach a Flutter widget with the right pixels, does a frame of
 // a sheet name the right rectangle, does an unloaded handle stay quiet, and
@@ -107,6 +109,8 @@ Future<Texel> _rasterize(SpriteWidget widget, int width, int height) async {
 }
 
 void main() {
+  _installDeclarations();
+
   TestWidgetsFlutterBinding.ensureInitialized();
 
   setUp(() {

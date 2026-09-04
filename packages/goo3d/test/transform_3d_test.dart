@@ -3,6 +3,8 @@ import 'dart:math' as math;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:goo3d/goo3d.dart';
 
+part 'transform_3d_test.g.dart';
+
 class _Turret extends EntityStruct with Transform3D {}
 
 // A deliberately different archetype - the extra field ahead of Transform3D's
@@ -53,6 +55,8 @@ Entity _turret(_Scene scene, [void Function(Entity entity)? write]) {
 const double _tolerance = 1e-12;
 
 void main() {
+  _installDeclarations();
+
   tearDown(() {
     SceneRegistry.reset();
     ArchetypeRegistry.reset();

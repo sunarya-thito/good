@@ -3,6 +3,8 @@ import 'dart:math' as math;
 import 'package:goo2d/goo2d.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+part 'transform_helpers_test.g.dart';
+
 class _Turret extends EntityStruct with Transform2D {}
 
 // A deliberately different archetype (extra field ahead of Transform2D's
@@ -42,6 +44,8 @@ _Scene _scene() {
 }
 
 void main() {
+  _installDeclarations();
+
   tearDown(() {
     SceneRegistry.reset();
     ArchetypeRegistry.reset();

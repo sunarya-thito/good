@@ -27,6 +27,8 @@
 import 'package:goo2d/goo2d.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+part 'spawn_tick_world_transform_test.g.dart';
+
 class _Leaf extends EntityStruct with Transform2D, WorldTransform2D, Child {}
 
 /// Both ends of a hierarchy in one archetype, so a whole chain shares a page -
@@ -145,6 +147,8 @@ class _Game extends Game {
 const Duration _step = Duration(milliseconds: 10);
 
 void main() {
+  _installDeclarations();
+
   tearDown(() {
     SceneRegistry.reset();
     ArchetypeRegistry.reset();

@@ -1,6 +1,8 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:goo3d/goo3d.dart';
 
+part 'camera_3d_test.g.dart';
+
 /// A camera that declares nothing, to pin what a prefab gets for free.
 class _DefaultEye extends EntityStruct
     with Transform3D, WorldTransform3D, Camera3D {}
@@ -52,6 +54,8 @@ _Scene _scene() {
 }
 
 void main() {
+  _installDeclarations();
+
   tearDown(() {
     SceneRegistry.reset();
     ArchetypeRegistry.reset();

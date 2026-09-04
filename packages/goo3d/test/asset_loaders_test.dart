@@ -18,6 +18,8 @@ import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:goo3d/goo3d.dart';
 
+part 'asset_loaders_test.g.dart';
+
 final Uint8List _oggish = Uint8List.fromList(<int>[
   0x4F,
   0x67,
@@ -55,6 +57,8 @@ Future<_Game> _boot() async {
 }
 
 void main() {
+  _installDeclarations();
+
   tearDown(() {
     SceneRegistry.reset();
     ArchetypeRegistry.reset();

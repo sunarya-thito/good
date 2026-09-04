@@ -28,6 +28,8 @@ import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:goo2d/goo2d.dart';
 
+part 'debug_draw_2d_test.g.dart';
+
 late Game run;
 
 const Duration _step = Duration(milliseconds: 10);
@@ -212,6 +214,8 @@ Entity _eyeAt(_DebugGame game, _Scene scene, {double x = 0, double zoom = 1}) {
 }
 
 void main() {
+  _installDeclarations();
+
   TestWidgetsFlutterBinding.ensureInitialized();
 
   tearDown(() {

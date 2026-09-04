@@ -5,6 +5,8 @@ import 'package:good/good.dart';
 import 'package:good_net/good_net.dart';
 import 'package:good_net_p2p/good_net_p2p.dart';
 
+part 'multiplayer_test.g.dart';
+
 /// What a game actually writes: a message class, a declaration, a handler.
 class Fire extends NetMessage<({double angle, int weapon})> {
   final angle = Param.float32();
@@ -88,6 +90,8 @@ class ShooterState extends GameState<ShooterGame>
 }
 
 void main() {
+  _installDeclarations();
+
   final running = <Game>[];
 
   Future<ShooterState> boot([ShooterGame? game]) async {

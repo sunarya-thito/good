@@ -21,6 +21,8 @@ import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:goo2d/goo2d.dart';
 
+part 'text_2d_test.g.dart';
+
 late Game run;
 
 const Duration _step = Duration(milliseconds: 10);
@@ -310,6 +312,8 @@ Entity _spriteAt<T extends EntityStruct>(
 }
 
 void main() {
+  _installDeclarations();
+
   TestWidgetsFlutterBinding.ensureInitialized();
 
   tearDown(() {

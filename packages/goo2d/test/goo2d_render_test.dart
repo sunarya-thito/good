@@ -6,6 +6,8 @@ import 'dart:ui';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:goo2d/goo2d.dart';
 
+part 'goo2d_render_test.g.dart';
+
 /// The live run under test. A file-level binding: the bring-up helper
 /// returns the `Game` (the description) while tests also need the run, and
 /// one inline run per isolate means one binding is enough.
@@ -156,6 +158,8 @@ Future<_Game> _boot() async {
 late Assets assets;
 
 void main() {
+  _installDeclarations();
+
   setUp(() => assets = Assets());
 
   TestWidgetsFlutterBinding.ensureInitialized();

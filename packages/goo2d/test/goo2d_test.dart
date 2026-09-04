@@ -1,6 +1,8 @@
 import 'package:goo2d/goo2d.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+part 'goo2d_test.g.dart';
+
 // The same shape the render example declares, minus the experimental
 // primary-constructor syntax (which the analyzer is configured for but the
 // test VM would need a flag to run). Player and Enemy have byte-identical
@@ -44,6 +46,8 @@ MainScene _scene() {
 }
 
 void main() {
+  _installDeclarations();
+
   tearDown(() {
     SceneRegistry.reset();
     ArchetypeRegistry.reset();

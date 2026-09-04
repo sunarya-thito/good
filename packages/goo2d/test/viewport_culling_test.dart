@@ -42,6 +42,8 @@ import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:goo2d/goo2d.dart';
 
+part 'viewport_culling_test.g.dart';
+
 /// The live run under test. A file-level binding, matching the rest of this
 /// package's suites: the bring-up helper returns the `Game` while tests also
 /// need the run.
@@ -230,6 +232,8 @@ Entity _eye(_CullGame game, _Scene scene, {double x = 0, double zoom = 1}) {
 }
 
 void main() {
+  _installDeclarations();
+
   tearDown(() {
     SceneRegistry.reset();
     ArchetypeRegistry.reset();
