@@ -332,8 +332,16 @@ Future<void> main(List<String> arguments) async {
       package: package.declarationsExport,
   };
 
+  // A package whose accessor file the scan no longer fills - see
+  // [orphanedAccessorFiles]. Not folded into `absent`: that map is about a
+  // barrel missing an export, and this is about a file nothing writes.
+  final orphaned = orphanedAccessorFiles(
+    accessorFiles(accessors, packages),
+    packages,
+  );
+
   if (check) {
-    _check(packages, files, absent, directories);
+    _check(packages, files, absent, orphaned, directories);
     return;
   }
 
@@ -353,6 +361,13 @@ Future<void> main(List<String> arguments) async {
       'anything in it.',
     );
   });
+  for (final package in orphaned) {
+    stdout.writeln(
+      'No longer written: ${_display(packages, package.accessorFile)} - the '
+      'scan found no property in ${package.name}. Check that is intended '
+      'before removing it.',
+    );
+  }
   stdout.writeln(
     '${accessors.propertyCount} propert(ies) over '
     '${accessors.extensions.length} component(s), ${bits.bits.length} '
@@ -421,10 +436,11 @@ void _check(
   List<EnginePackage> packages,
   List<GeneratedFile> files,
   Map<EnginePackage, String> absent,
+  List<EnginePackage> orphaned,
   List<String> directories,
 ) {
   final stale = files.where((file) => !file.isCurrent).toList();
-  if (stale.isEmpty && absent.isEmpty) {
+  if (stale.isEmpty && absent.isEmpty && orphaned.isEmpty) {
     stdout.writeln('${files.length} generated file(s) are up to date.');
     return;
   }
@@ -441,6 +457,12 @@ void _check(
       '`$export`',
     );
   });
+  for (final package in orphaned) {
+    stderr.writeln(
+      'No longer written: ${_display(packages, package.accessorFile)} is '
+      'committed and the scan found no property in ${package.name}',
+    );
+  }
   final where = <String>[
     for (final directory in directories) '--dir $directory',
   ].join(' ');

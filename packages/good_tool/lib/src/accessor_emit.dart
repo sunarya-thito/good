@@ -168,6 +168,34 @@ List<EnginePackage> missingExports(
   ];
 }
 
+/// Every package holding an `accessors.g.dart` this scan would not write.
+///
+/// [accessorFiles] emits nothing for a package with no properties, so a
+/// package that had some and now has none keeps a committed file that the
+/// generator has stopped accounting for - `--check` counts what it writes, so
+/// the file falls out of the count and nothing says it is stale.
+///
+/// Reported and refused rather than fixed. The tempting repairs are to write
+/// the file empty or to delete it, and both are wrong for the same reason:
+/// losing every property in a package is far more often a scan that broke
+/// than a decision somebody made. It happened here - a half-written
+/// `good_cli` scan.dart made this pass miss `rigid_body.dart` entirely, and
+/// `RigidBody2D`'s ten properties went with it. An emitter that quietly wrote
+/// an empty file, or deleted the real one, would have committed that
+/// regression as though it were intended. Naming the package is the answer
+/// that is right whichever it was.
+List<EnginePackage> orphanedAccessorFiles(
+  List<GeneratedFile> files,
+  List<EnginePackage> packages,
+) {
+  final generated = <String>{for (final file in files) file.file.path};
+  return <EnginePackage>[
+    for (final package in packages)
+      if (!generated.contains(package.accessorFile.path) &&
+          package.accessorFile.existsSync()) package,
+  ];
+}
+
 bool _exports(EnginePackage package) {
   final barrel = package.barrel;
   if (!barrel.existsSync()) return false;
