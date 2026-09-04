@@ -26,6 +26,13 @@ import 'package:good/src/asset.dart';
 /// A `typedef` or an extension type would do neither job. Both erase to their
 /// representation as a type argument, so `AssetLoaders.register<JsonValue>`
 /// would key on `Object?` and answer for every payload type in the process.
+///
+/// The same argument arrives from the other side, and it is the stronger form
+/// of it: **a payload type is the only way to have a second kind.** The
+/// registry holds one loader per type, so CSV cannot be an `Asset<String>`
+/// with a decoder of its own - it needs a payload class, exactly as JSON does.
+/// A project adding a kind writes the class; a project registering a second
+/// decoder for a type that already has one replaces it. See [TextLoader].
 final class JsonValue {
   const JsonValue(this.value);
 
@@ -115,6 +122,26 @@ class JsonLoader extends AssetLoader<JsonValue> {
 ///
 /// Registered by `Game.describeAssetLoaders` for the reason [JsonLoader] is.
 ///
+/// # The kernel claims `String` for the whole isolate
+///
+/// [AssetLoaders] holds one loader per payload type and `register` overwrites,
+/// so registering this puts a claim on `String` itself - one of the most
+/// general types in Dart - for every package in the process, not for the game
+/// that booted. Two consequences, both measured rather than reasoned about:
+///
+/// A game registering its own `AssetLoader<String>` **wins, silently**. That
+/// is the documented rule - later wins, which is how a game substitutes its
+/// own decoder for an engine one - arriving at its widest: nothing refuses the
+/// second claim and nothing reports it, and from then on every [TextAsset] in
+/// the process goes through it, including the ones other packages declared.
+/// Deliberate and supported; undiscoverable anywhere but here.
+///
+/// And a project cannot have two text kinds with different decoders. CSV read
+/// as rows and prose read as a string are two payload *types*, not two loaders
+/// for `String` - which is the same reason [JsonValue] is a class rather than
+/// a typedef, seen from the other end. [BytesLoader] claims `Uint8List` the
+/// same way.
+///
 /// The whole file, decoded once. Line splitting, front matter and templating
 /// are the project's business - this is the payload, and a loader that
 /// interpreted it would be a second file format nobody declared.
@@ -128,7 +155,8 @@ class TextLoader extends AssetLoader<String> {
 
 /// Hands back a file's bytes.
 ///
-/// Registered by `Game.describeAssetLoaders` for the reason [JsonLoader] is.
+/// Registered by `Game.describeAssetLoaders` for the reason [JsonLoader] is,
+/// and it claims `Uint8List` process-wide the way [TextLoader] claims `String`.
 ///
 /// Named for what it produces rather than for [UnknownAsset], because
 /// "unknown" describes what the *project* knows about the file and this class

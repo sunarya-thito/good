@@ -27,6 +27,32 @@ AssetKey<T> _text<T>(String name, String content) =>
 /// content.
 const List<int> _bom = <int>[0xEF, 0xBB, 0xBF];
 
+/// A project's own decoder for `String`, to show what registering one does.
+class _ShoutingTextLoader extends AssetLoader<String> {
+  const _ShoutingTextLoader();
+
+  @override
+  Future<String> load(AssetKey<String> key) async =>
+      utf8.decode(await key.source.load()).toUpperCase();
+}
+
+/// The escape hatch a type-keyed registry leaves for a second text kind: a
+/// payload type of its own, which is what [JsonValue] is.
+class _Csv {
+  const _Csv(this.rows);
+  final List<List<String>> rows;
+}
+
+class _CsvLoader extends AssetLoader<_Csv> {
+  const _CsvLoader();
+
+  @override
+  Future<_Csv> load(AssetKey<_Csv> key) async => _Csv(<List<String>>[
+    for (final line in utf8.decode(await key.source.load()).split('\n'))
+      line.split(','),
+  ]);
+}
+
 void main() {
   late Assets assets;
 
@@ -208,6 +234,59 @@ void main() {
         reason:
             'an erased payload type would make every kind the same asset '
             'identity for one source',
+      );
+    });
+  });
+
+  group('what claiming String and Uint8List engine-wide costs', () {
+    // AssetLoaders.register is a silent overwrite keyed by type, and the
+    // kernel now claims two of the most general types in Dart. Neither of
+    // these cases asserts that the design is good; they pin what it does, so
+    // the doc on TextLoader is a statement someone measured.
+    test('a project registering its own String decoder replaces the kernel', () async {
+      AssetLoaders.register<String>(const _ShoutingTextLoader());
+
+      expect(
+        AssetLoaders.of<String>(),
+        isA<_ShoutingTextLoader>(),
+        reason: 'later wins, with nothing raised and nothing logged',
+      );
+
+      final key = _text<String>('credits', 'thanks');
+      assets.declare(key);
+      expect(
+        (await assets.load(key)).value,
+        'THANKS',
+        reason:
+            'and it answers for every TextAsset in the process, including the '
+            'ones other packages declared - the claim is engine-wide, not '
+            'scoped to the game that made it',
+      );
+    });
+
+    test('two text kinds need two payload types, not two decoders', () async {
+      // The typedef argument from the other side. One type is one entry, so
+      // CSV cannot be `Asset<String>` with a different loader; it needs a
+      // payload type of its own, which is exactly why JsonValue is a class.
+      AssetLoaders.register<_Csv>(const _CsvLoader());
+
+      final asText = _text<String>('table', 'a,b\nc,d');
+      final asCsv = _text<_Csv>('table', 'a,b\nc,d');
+
+      final text = assets.declare(asText);
+      final csv = assets.declare(asCsv);
+      await assets.load(asText);
+      await assets.load(asCsv);
+
+      expect(text.value, 'a,b\nc,d');
+      expect(csv.value.rows, <List<String>>[
+        <String>['a', 'b'],
+        <String>['c', 'd'],
+      ]);
+      expect(
+        AssetLoaders.of<String>(),
+        isA<TextLoader>(),
+        reason: 'and the plain text kind is untouched by the second one',
       );
     });
   });
