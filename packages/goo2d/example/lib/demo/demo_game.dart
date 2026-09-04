@@ -21,15 +21,20 @@ class SetPopulation extends ValueSink<int> {
 /// running. A case adds its own commands and channels on top; it does not
 /// re-declare any of these.
 abstract class DemoGame extends Game2D {
-  /// Installs the collectors this library's fixtures are read through.
+  /// The collectors this library's fixtures are read through.
   ///
-  /// A test installs its own first thing in `main`; a library with no `main`
-  /// installs them where it is entered instead, and every case is entered by
-  /// constructing its game. Each case file does the same for its own, because
-  /// the table a part declares is private to the library that declares it.
-  DemoGame() {
-    _installDeclarations();
-  }
+  /// A constructor cannot install them. `Isolate.spawn` sends the game as a
+  /// deep copy, so no constructor runs on the game isolate, and `_bootGame`
+  /// there reads a declaration off a scene through a registry nothing filled.
+  /// A getter is code and the copy re-evaluates it, which is the whole reason
+  /// `Game.declarations` is one.
+  ///
+  /// Each case adds its own on top of this, because the table a part declares
+  /// is private to the library that declares it.
+  @override
+  List<GeneratedDeclarations> get declarations => const <GeneratedDeclarations>[
+    _demoGameDeclarations,
+  ];
 
   /// Microseconds the case's *own* systems spent in the last fixed step -
   /// whatever it chose to time, and nothing else. Published by [DemoStats]

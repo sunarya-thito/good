@@ -562,10 +562,13 @@ class _JointStats extends GameSystem with Tickable {
 }
 
 class JointGame extends DemoGame {
-  /// This file's collectors - see `DemoGame`'s constructor.
-  JointGame() {
-    _installDeclarations();
-  }
+  /// This file's collectors on top of `DemoGame`'s - see there for why a
+  /// getter and not a constructor.
+  @override
+  List<GeneratedDeclarations> get declarations => <GeneratedDeclarations>[
+    ...super.declarations,
+    _jointsDeclarations,
+  ];
 
   final intactJoints = Channel.int32();
   final brokenJoints = Channel.int32();

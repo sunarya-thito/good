@@ -824,10 +824,13 @@ class PhysicsState extends DemoState<PhysicsGame> {
 }
 
 class PhysicsGame extends DemoGame {
-  /// This file's collectors - see `DemoGame`'s constructor.
-  PhysicsGame() {
-    _installDeclarations();
-  }
+  /// This file's collectors on top of `DemoGame`'s - see there for why a
+  /// getter and not a constructor.
+  @override
+  List<GeneratedDeclarations> get declarations => <GeneratedDeclarations>[
+    ...super.declarations,
+    _physicsDeclarations,
+  ];
 
   /// Threads the solver may spread a step across, set **before**
   /// `Game.start`.

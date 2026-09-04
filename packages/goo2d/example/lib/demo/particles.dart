@@ -302,10 +302,13 @@ class ParticlesState extends DemoState<ParticlesGame> {
 }
 
 class ParticlesGame extends DemoGame {
-  /// This file's collectors - see `DemoGame`'s constructor.
-  ParticlesGame() {
-    _installDeclarations();
-  }
+  /// This file's collectors on top of `DemoGame`'s - see there for why a
+  /// getter and not a constructor.
+  @override
+  List<GeneratedDeclarations> get declarations => <GeneratedDeclarations>[
+    ...super.declarations,
+    _particlesDeclarations,
+  ];
 
   late final SetAblations setAblations;
 

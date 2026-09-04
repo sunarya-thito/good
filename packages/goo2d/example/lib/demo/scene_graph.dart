@@ -266,10 +266,13 @@ class SceneGraphState extends DemoState<SceneGraphGame> {
 }
 
 class SceneGraphGame extends DemoGame {
-  /// This file's collectors - see `DemoGame`'s constructor.
-  SceneGraphGame() {
-    _installDeclarations();
-  }
+  /// This file's collectors on top of `DemoGame`'s - see there for why a
+  /// getter and not a constructor.
+  @override
+  List<GeneratedDeclarations> get declarations => <GeneratedDeclarations>[
+    ...super.declarations,
+    _sceneGraphDeclarations,
+  ];
 
   @override
   SceneGraphState createState() => SceneGraphState();

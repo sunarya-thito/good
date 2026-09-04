@@ -276,6 +276,18 @@ class MyGameState extends GameState2D<MyAwesomeGame> {
 /// produce the frames - and `createState` is narrowed to that type, so the two
 /// halves cannot come apart.
 class MyAwesomeGame extends Game2D {
+  /// This file's collectors, named here as well as installed in `main`,
+  /// because the two reach different isolates.
+  ///
+  /// `main` runs on this one only. `Game.start` spawns, and `Isolate.spawn`
+  /// sends the game as a deep copy - no `main` and no constructor runs over
+  /// there, so the copy that boots reads this getter and nothing else. The
+  /// table carries `goo2dDeclarations` as a dependency.
+  @override
+  List<GeneratedDeclarations> get declarations => const <GeneratedDeclarations>[
+    _mainDeclarations,
+  ];
+
   /// Declared here, handled in [MyGameState]: the declaration site is whoever
   /// has to *hold* the handle, and it is the UI that calls this one.
   late final SpawnEnemy spawnEnemy;
