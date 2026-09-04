@@ -99,6 +99,10 @@ flutter:
   assets:
     - assets/
     - assets/packed/
+
+good:
+  assets:
+    - assets/
 ''';
 
 /// The version range a scaffolded project depends on.
@@ -161,7 +165,9 @@ List<String>? patchedPubspecLines(List<String> lines, String package) {
       dependencies is YamlMap && dependencies.containsKey(package);
   final flutter = doc['flutter'];
   final hasAssets = flutter is YamlMap && flutter.containsKey('assets');
-  if (hasDependency && hasAssets) return lines;
+  final good = doc['good'];
+  final hasGoodAssets = good is YamlMap && good.containsKey('assets');
+  if (hasDependency && hasAssets && hasGoodAssets) return lines;
 
   final deps = lines.indexWhere((line) => line.trimRight() == 'dependencies:');
   final material = lines.indexWhere(
@@ -175,10 +181,10 @@ List<String>? patchedPubspecLines(List<String> lines, String package) {
   if (!hasAssets) {
     patched.insertAll(material + 1, <String>[
       '',
-      '  # Both directories ship. `good build` fills assets/packed/ and',
-      '  # leaves the loose copies in assets/, so a packed asset is bundled',
-      '  # twice. Set `strip-originals: true` under `good: assets:` to delete',
-      '  # them - Image.asset stops resolving those paths once they are gone.',
+      '  # What Flutter bundles and reads by path: assets/ so a development',
+      '  # run reads the loose files, assets/packed/ so a release build\'s',
+      '  # chunks ship. Which of those files good packs is `good: assets:`',
+      '  # below, a separate list and the only one good reads.',
       '  # Keep your originals in assets_src/; assets/ is generated.',
       '  assets:',
       '    - assets/',
@@ -188,15 +194,55 @@ List<String>? patchedPubspecLines(List<String> lines, String package) {
   if (!hasDependency) {
     patched.insert(deps + 1, '  $package: $engineConstraint');
   }
+  // Last, because it goes on the end and every insertion above would move it.
+  if (!hasGoodAssets) {
+    if (doc.containsKey('good')) {
+      // A `good:` section is already there - `good generate` writes one to
+      // record the bundle package. Adding a second at column 0 would give the
+      // pubspec two of one key, which every `flutter` command refuses to read.
+      final index = patched.indexWhere((line) => line.trimRight() == 'good:');
+      if (index < 0) return null;
+      patched.insertAll(index + 1, <String>['  assets:', '    - assets/']);
+    } else {
+      if (patched.isNotEmpty && patched.last.trim().isNotEmpty) patched.add('');
+      patched.addAll(<String>[
+        '# The files good packs: normalized, chunked, compressed, encrypted.',
+        '# The entries take the same keys as `flutter: assets:` above, so one',
+        '# moves between the two lists unchanged.',
+        'good:',
+        '  assets:',
+        '    - assets/',
+      ]);
+    }
+  }
+
+  // Read back what was written, from the document and not from the text. The
+  // `good:` half is appended at column 0, and a top-level key ends whatever
+  // block precedes it - so a patch that produced a pubspec meaning something
+  // other than this must not reach the caller.
+  final YamlNode check;
+  try {
+    check = loadYamlNode(patched.join('\n'));
+  } on YamlException {
+    return null;
+  }
+  if (check is! YamlMap) return null;
+  final checkedGood = check['good'];
+  if (checkedGood is! YamlMap || checkedGood['assets'] is! YamlList) {
+    return null;
+  }
+  final checkedFlutter = check['flutter'];
+  if (checkedFlutter is! YamlMap || checkedFlutter['assets'] is! YamlList) {
+    return null;
+  }
   return patched;
 }
 
 /// Why the packed directory exists in a fresh project with nothing in it.
 String _packedGitkeep() => '''
-# `good build` writes its chunks here. The loose copies stay in ../ unless the
-# project sets `strip-originals: true`, so by default a packed asset ships from
-# both places. Both directories are listed under `flutter: assets:`, which is
-# what makes the chunks ship.
+# `good build` writes its chunks here, and `flutter: assets:` lists this
+# directory so they ship. What goes into them is what `good: assets:` names;
+# the loose copies of those files stay where they are.
 #
 # Generated. Safe to delete; `good build` writes it again.
 ''';
@@ -593,7 +639,7 @@ import 'package:$package/$package.dart';
 /// ```
 ///
 /// `Textures` comes from `package:$bundle/textures.dart`, which is
-/// generated. Drop an image into `assets/`, list it under `flutter: assets:`
+/// generated. Drop an image into `assets/`, list it under `good: assets:`
 /// in the pubspec, and run `good generate`. Everything good writes lands in
 /// that package; every file under `lib/` here is one you wrote.
 class Player extends EntityStruct with Transform2D, WorldTransform2D, Renderable2D {
@@ -762,7 +808,7 @@ void main() {
 
 String _gitkeep(String command, String bundle) =>
     '''
-# Drop images here, list them under `flutter: assets:` in pubspec.yaml, then
+# Drop images here, list them under `good: assets:` in pubspec.yaml, then
 # run `$command`'s sibling: `good generate`. That writes ../$bundle/, where
 # each asset becomes a value of the `Textures` enum.
 #

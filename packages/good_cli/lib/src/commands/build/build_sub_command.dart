@@ -5,7 +5,6 @@ import 'package:good_cli/src/assets/ffmpeg.dart';
 import 'package:good_cli/src/assets/key_material.dart';
 import 'package:good_cli/src/assets/options.dart';
 import 'package:good_cli/src/assets/pack.dart';
-import 'package:good_cli/src/assets/strip.dart';
 import 'package:good_cli/src/config.dart';
 import 'package:good_cli/src/generate/assets.dart';
 import 'package:good_cli/src/generate/bundle.dart';
@@ -131,8 +130,7 @@ abstract class BuildSubCommand extends Command with Verbose, Resolving {
 
     info.println('');
     info.println('[1/4] compacting assets');
-    final compacted = await _compact(project, config);
-    if (compacted == null) throw const CommandFailure();
+    if (!await _compact(project, config)) throw const CommandFailure();
 
     info.println('[2/4] generating bindings');
     runGenerate(
@@ -144,9 +142,7 @@ abstract class BuildSubCommand extends Command with Verbose, Resolving {
     );
 
     info.println('[3/4] packing assets');
-    if (!await _pack(project, config, compacted, bundle)) {
-      throw const CommandFailure();
-    }
+    if (!await _pack(project, config, bundle)) throw const CommandFailure();
 
     info.printf('[4/4] flutter build %s\n', [flutterTarget]);
     if (!_flutterBuild(project)) throw const CommandFailure();
@@ -156,26 +152,19 @@ abstract class BuildSubCommand extends Command with Verbose, Resolving {
       ..printf('Built %s.\n', [flutterTarget]);
   }
 
-  /// Runs compaction and reports what it produced, or null if it failed.
+  /// Runs compaction, and says whether the build can go on.
   ///
-  /// The plan comes back, and not just a success flag, because it is the only
-  /// record of *which* files in the output directory good generated - and
-  /// therefore which of the ones a build strips can be built again. See
-  /// [_stripLoose].
-  ///
-  /// An empty plan when the project has no source directory is not an error:
-  /// a project that keeps its art already-canonical in the output
-  /// directory is a legitimate setup. Nothing there is regenerable, so a build
-  /// that sets `strip-originals: true` deletes originals and names every one
-  /// of them.
-  Future<CompactPlan?> _compact(Directory project, GoodConfig config) async {
+  /// A project with no source directory has nothing to compact and is not an
+  /// error: keeping the art already-canonical in the output directory is a
+  /// legitimate setup, and the build carries on to pack what is there.
+  Future<bool> _compact(Directory project, GoodConfig config) async {
     final sourceDir = Directory('${project.path}/${config.assetSource}');
     if (!sourceDir.existsSync()) {
       debug.printf('  no %s - nothing to compact\n', [config.assetSource]);
-      return const CompactPlan(steps: <CompactStep>[], skipped: {});
+      return true;
     }
     final plan = planCompaction(sourceDir: sourceDir, config: config);
-    if (plan.isEmpty) return plan;
+    if (plan.isEmpty) return true;
 
     final Ffmpeg ffmpeg;
     try {
@@ -186,7 +175,7 @@ abstract class BuildSubCommand extends Command with Verbose, Resolving {
       );
     } on FfmpegUnavailable catch (error) {
       err.println(error.message);
-      return null;
+      return false;
     }
     final result = await runCompaction(
       plan: plan,
@@ -198,7 +187,7 @@ abstract class BuildSubCommand extends Command with Verbose, Resolving {
       out: info,
       verbose: debug,
     );
-    if (result.failed.isEmpty) return plan;
+    if (result.failed.isEmpty) return true;
     // A build stops here. Compaction reporting a failure and carrying on would
     // ship a game missing an asset, and the whole point of the readiness check
     // is that that is not something to discover at run time.
@@ -206,13 +195,12 @@ abstract class BuildSubCommand extends Command with Verbose, Resolving {
     for (final entry in result.failed.entries) {
       err.printf('  %s: %s\n', [entry.key, entry.value]);
     }
-    return null;
+    return false;
   }
 
   Future<bool> _pack(
     Directory project,
     GoodConfig config,
-    CompactPlan compacted,
     BundlePackage bundle,
   ) async {
     final scan = scanAssets(project);
@@ -245,7 +233,7 @@ abstract class BuildSubCommand extends Command with Verbose, Resolving {
     // them, and Flutter bundles none of them, so the game fails at its first
     // asset load with every file present on the build machine.
     if (assetMode.value == AssetMode.release &&
-        !scan.declaredEntries.contains(config.packOutput)) {
+        !declaredAssetEntries(project).contains(config.packOutput)) {
       err.printf(
         'pubspec.yaml does not list %s under `flutter: assets:`, so the '
         'chunks would be built and never bundled. Add it - good creates the '
@@ -293,57 +281,7 @@ abstract class BuildSubCommand extends Command with Verbose, Resolving {
       );
       return false;
     }
-    if (result.mapping.isNotEmpty && config.stripOriginals) {
-      _stripLoose(project, config, compacted, result.mapping.keys);
-    }
     return true;
-  }
-
-  /// Removes the loose copies of everything that is now inside a chunk.
-  ///
-  /// Only called when the project has set `strip-originals: true`. The default
-  /// leaves every file in [assetOutput] untouched so that hand-placed assets
-  /// (those not produced by compaction) survive for `Image.asset` to resolve
-  /// from the Flutter bundle.
-  ///
-  /// [compacted] says which of the removed files compaction can rebuild. Files
-  /// that are not in that set are originals the project opted to delete, and
-  /// they are named as they go - an opt-in is a reason to say what it cost.
-  void _stripLoose(
-    Directory project,
-    GoodConfig config,
-    CompactPlan compacted,
-    Iterable<String> packed,
-  ) {
-    final stripped = <String>[];
-    final removed = stripLoose(
-      assetDir: Directory('${project.path}/${config.assetOutput}'),
-      packed: packed,
-      assetRoot: config.assetOutput,
-      onStrip: (path) {
-        stripped.add(path);
-        debug.printf('  stripped %s%s\n', [config.assetOutput, path]);
-      },
-    );
-    if (removed == 0) return;
-    info.printf(
-      '  stripped %s loose asset(s) now carried in chunks; '
-      '`good assets compact` rebuilds them\n',
-      [removed],
-    );
-
-    final generated = <String>{for (final step in compacted.steps) step.output};
-    final originals = stripped.where((p) => !generated.contains(p)).toList()
-      ..sort();
-    if (originals.isEmpty) return;
-    info.printf(
-      '  %s of those were not built from %s, so compaction cannot bring them '
-      'back. Keep the originals under %s:\n',
-      [originals.length, config.assetSource, config.assetSource],
-    );
-    for (final path in originals) {
-      info.printf('    %s%s\n', [config.assetOutput, path]);
-    }
   }
 
   /// Hands off to Flutter.

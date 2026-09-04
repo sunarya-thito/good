@@ -103,23 +103,28 @@ class AssetScan {
   /// value someone will hunt for.
   final Map<String, String> unsupported;
 
-  /// The `flutter: assets:` entries the pubspec declared, verbatim.
+  /// The paths `good: assets:` declared, verbatim.
   final List<String> declaredEntries;
 
   bool get isEmpty => textures.isEmpty && audio.isEmpty;
 }
 
-/// Reads a project's shipped assets from its pubspec.
+/// Reads the assets good owns from a project's pubspec.
 ///
-/// **The pubspec, not a directory walk**, and that is the whole point. Flutter
-/// bundles what `flutter: assets:` lists and nothing else, so generating a key
-/// for a file merely *present* on disk would produce code that compiles and
-/// then fails at load with the file sitting right there - the worst possible
-/// version of that error. Reading the declaration means the generated set and
-/// the shipped set cannot disagree.
+/// **`good: assets:`, not `flutter: assets:`**, and the two lists are the
+/// whole distinction. Flutter's is bundled and read by path; good's goes
+/// through the pipeline. Read from one list there was no way to say which a
+/// file was, so every packed asset was handed to Flutter's bundler too and
+/// shipped in the clear beside the chunk holding the same bytes (#270).
 ///
-/// An entry ending in `/` is a directory: Flutter bundles the files directly
-/// inside it, not recursively, and this matches that.
+/// **The pubspec, not a directory walk.** Generating a key for a file merely
+/// *present* on disk would produce code that compiles and then fails at load
+/// with the file sitting right there - the worst possible version of that
+/// error. Reading the declaration means the generated set and the declared set
+/// cannot disagree.
+///
+/// An entry ending in `/` is a directory: the files directly inside it, not
+/// recursively, which is the rule Flutter's own entries follow.
 AssetScan scanAssets(Directory projectDir) {
   final pubspec = File('${projectDir.path}/pubspec.yaml');
   if (!pubspec.existsSync()) {
@@ -129,25 +134,13 @@ AssetScan scanAssets(Directory projectDir) {
     );
   }
 
-  final doc = loadYaml(pubspec.readAsStringSync());
-  final entries = <String>[];
-  if (doc is YamlMap) {
-    final flutter = doc['flutter'];
-    if (flutter is YamlMap) {
-      final assets = flutter['assets'];
-      if (assets is YamlList) {
-        for (final entry in assets) {
-          if (entry is String) entries.add(entry);
-        }
-      }
-    }
-  }
+  final config = GoodConfig.read(projectDir);
+  final entries = <String>[for (final entry in config.assets) entry.path];
 
   // The packed directory ships, but is not made of assets - it is made *from*
   // them. Left in, every chunk would be scanned as an asset on the next run,
   // reported as an unrecognised extension, and then packed into a chunk of its
   // own, which is a build that grows every time it is run.
-  final config = GoodConfig.read(projectDir);
   final packed = config.packOutput;
 
   final files = <String>[];
@@ -236,14 +229,15 @@ AssetScan scanAssets(Directory projectDir) {
   );
 }
 
-/// Assets on disk that `flutter: assets:` does not bundle, keyed by the pubspec
-/// line that would bundle them.
+/// Assets on disk that `good: assets:` does not declare, keyed by the pubspec
+/// line that would declare them.
 ///
-/// Flutter's directory entries are **not recursive**: `- assets/` bundles the
-/// files directly inside `assets/` and nothing deeper. So compaction writing
-/// `assets/ui/button.webp` produces a file that ships nowhere, appears in no
-/// generated enum, and sits on disk the whole time looking correct. Every new
-/// subdirectory needs its own line, and nothing about the layout says so.
+/// Directory entries are **not recursive**, here as in Flutter's own list:
+/// `- assets/` takes the files directly inside `assets/` and nothing deeper.
+/// So compaction writing `assets/ui/button.webp` produces a file that reaches
+/// no chunk, appears in no generated enum, and sits on disk the whole time
+/// looking correct. Every new subdirectory needs its own line, and nothing
+/// about the layout says so.
 ///
 /// Keyed by that line - `assets/ui/` - because the line is the entire fix, and
 /// an error that makes the reader work out its shape is most of the problem
@@ -257,7 +251,7 @@ Map<String, List<String>> unbundledAssets(Directory projectDir) {
   final output = Directory('${projectDir.path}/${config.assetOutput}');
   if (!output.existsSync()) return const <String, List<String>>{};
 
-  final declared = declaredAssetEntries(projectDir).toSet();
+  final declared = <String>{for (final entry in config.assets) entry.path};
   final root = config.assetOutput.endsWith('/')
       ? config.assetOutput
       : '${config.assetOutput}/';
@@ -299,7 +293,7 @@ String unbundledAssetsMessage(Map<String, List<String>> unbundled) {
     ..write('bundled: $listed')
     ..write(rest > 0 ? ', and $rest more.' : '.')
     ..write(
-      " Flutter's `flutter: assets:` entries are not recursive, so a "
+      ' The entries under `good: assets:` are not recursive, so a '
       'subdirectory needs a line of its own. Add to pubspec.yaml:\n',
     );
   for (final entry in unbundled.keys.toList()..sort()) {
@@ -484,9 +478,10 @@ String enginePackageOf(Directory projectDir) {
 
 /// The `flutter: assets:` entries a project declares, verbatim.
 ///
-/// Exposed on its own because two very different things need it: the scan
-/// above turns them into generated code, and `good assets compact` checks that
-/// the directories it just wrote into are among them.
+/// Flutter's list, not good's - the one thing that reads it is the build's
+/// check that the chunk directory is in it, since a chunk Flutter does not
+/// bundle is a game that fails at its first asset load with every file present
+/// on the build machine. What good packs is [GoodConfig.assets].
 List<String> declaredAssetEntries(Directory projectDir) {
   final pubspec = File('${projectDir.path}/pubspec.yaml');
   if (!pubspec.existsSync()) return const <String>[];

@@ -99,11 +99,11 @@ GenerateResult runGenerate({
   final project = projectDir;
   final scan = scanAssets(project);
 
-  // Before anything is written. An asset Flutter will not bundle produces no
-  // enum value, and today the only sign of it is a note printed by a different
-  // command; `good generate` said nothing and exited 0, so the first symptom
-  // was a missing texture in a shipped game. Failing here costs a pubspec line
-  // and catches it at the build that introduced it.
+  // Before anything is written. An asset `good: assets:` does not name
+  // produces no enum value, and the only sign of it used to be a note printed
+  // by a different command; `good generate` said nothing and exited 0, so the
+  // first symptom was a missing texture in a shipped game. Failing here costs
+  // a pubspec line and catches it at the build that introduced it.
   final unbundled = unbundledAssets(project);
   if (unbundled.isNotEmpty) {
     throw ArgumentError(unbundledAssetsMessage(unbundled));
@@ -111,7 +111,7 @@ GenerateResult runGenerate({
 
   // Also before anything is written, and not gated on the project having
   // assets: two components declaring one field name is a defect in the same
-  // class as an asset Flutter will not bundle - it costs a column in every row
+  // class as an asset nothing declares - it costs a column in every row
   // and silently sends reads and writes to the wrong one, and no run of the
   // game will ever mention it. `good generate` is where a project-level defect
   // gets refused (#107), and it is the command a build runs whether or not
@@ -143,7 +143,7 @@ GenerateResult runGenerate({
     // has the entries and no files yet, which is not a mistake.
     out.println(
       scan.declaredEntries.isEmpty
-          ? 'No assets declared under `flutter: assets:` in pubspec.yaml. '
+          ? 'No assets declared under `good: assets:` in pubspec.yaml. '
                 'Generating empty Textures and Audios enums.'
           : 'No assets found in the declared directories. Generating empty '
                 'Textures and Audios enums.',

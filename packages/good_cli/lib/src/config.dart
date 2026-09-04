@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:good_cli/src/assets/entry.dart';
 import 'package:meta/meta.dart';
 import 'package:yaml/yaml.dart';
 
@@ -7,12 +8,12 @@ import 'package:yaml/yaml.dart';
 ///
 /// ```yaml
 /// good:
-///   bundle: my_game_bundle  # the generated package, recorded not derived
-///   assets:
-///     source: assets_src/    # originals you edit and commit
-///     output: assets/        # canonical files, generated
-///     packed: assets/packed/ # release chunks, generated
-///     strip-originals: false # may a build delete art it cannot rebuild
+///   bundle: my_game_bundle      # the generated package, recorded not derived
+///   asset-source: assets_src/   # originals you edit and commit
+///   asset-output: assets/       # canonical files, generated
+///   pack-output: assets/packed/ # release chunks, generated
+///   assets:                     # what good packs, in Flutter's own shape
+///     - assets/
 ///   texture:
 ///     format: webp
 ///     quality: 90
@@ -21,18 +22,17 @@ import 'package:yaml/yaml.dart';
 ///     quality: 5
 /// ```
 ///
-/// Both `output` and `packed` have to appear in `flutter: assets:` - that list
-/// is the only thing Flutter bundles from. A release build fills `packed` and
-/// leaves `output` as it found it, so both directories ship and a packed asset
-/// is bundled twice. `strip-originals: true` empties `output` of everything the
-/// build packed - see [stripOriginals] for what that costs.
+/// [assets] is a list and the three directories are not, which is why they are
+/// keys of `good:` rather than of `good: assets:`. It says which files good
+/// owns. `flutter: assets:` stays the project's own and says what Flutter
+/// bundles by path, and the two are read separately: a file named in one is
+/// not thereby named in the other.
 ///
 /// **In the pubspec, not a `good.yaml`.** A project already has one file that
 /// says what it is and what it ships; a second one beside it is a second place
-/// to look and a second thing to keep in step. It also puts the asset
-/// *source* directory next to the `flutter: assets:` list that names the
-/// *output*, which is exactly where someone reading either will want the
-/// other.
+/// to look and a second thing to keep in step. It also puts good's asset list
+/// next to Flutter's, which is exactly where someone reading either will want
+/// the other.
 @immutable
 class GoodConfig {
   const GoodConfig({
@@ -40,7 +40,7 @@ class GoodConfig {
     required this.assetSource,
     required this.assetOutput,
     this.packOutput = 'assets/packed/',
-    this.stripOriginals = false,
+    this.assets = const <AssetEntry>[],
     required this.texture,
     required this.audio,
   });
@@ -88,25 +88,18 @@ class GoodConfig {
   /// entries bundle files and not subdirectories, so the two never overlap.
   final String packOutput;
 
-  /// Whether a build deletes the loose copy of an asset it packed.
+  /// The files good packs, in the shape `flutter: assets:` takes.
   ///
-  /// **Off by default, and nothing else turns it on.** A build that packs
-  /// leaves [assetOutput] as it found it, so every packed asset is bundled
-  /// twice: once legible in [assetOutput], once inside an encrypted chunk. The
-  /// build says nothing about it. `Image.asset` and everything else that reads
-  /// the Flutter bundle by path go on resolving those files, which is what
-  /// leaving the loose copies in place buys.
+  /// A separate list from Flutter's, and that is the point: a file here is
+  /// good's to normalize, chunk, compress and encrypt, and a file in
+  /// `flutter: assets:` is bundled and read by path and is not good's concern
+  /// at all. Read them from one list and there is no way to say which a file
+  /// is, which is why a packed asset used to be handed to Flutter's bundler as
+  /// well and ship in the clear beside the chunk holding the same bytes.
   ///
-  /// Turned on, the build deletes the loose copy of everything it packed. Those
-  /// paths stop resolving through the Flutter bundle, and only good's own asset
-  /// API reaches the bytes. A file you put in [assetOutput] by hand is packed
-  /// like any other, so it goes too - and `good assets compact` has no source
-  /// to build that one from again. The build names each of those as it deletes
-  /// it.
-  ///
-  /// Turn it on when [assetSource] holds everything and [assetOutput] is
-  /// genuinely disposable.
-  final bool stripOriginals;
+  /// The entries take Flutter's own four keys, so one moves between the lists
+  /// unchanged - see [AssetEntry].
+  final List<AssetEntry> assets;
 
   final TextureConfig texture;
   final AudioConfig audio;
@@ -136,16 +129,15 @@ class GoodConfig {
     final good = doc is YamlMap ? doc['good'] : null;
     if (good is! YamlMap) return defaults;
 
-    final assets = good['assets'];
     final texture = good['texture'];
     final audio = good['audio'];
 
     return GoodConfig(
       bundle: _packageName(good, 'bundle'),
-      assetSource: _dir(assets, 'source', defaults.assetSource),
-      assetOutput: _dir(assets, 'output', defaults.assetOutput),
-      packOutput: _dir(assets, 'packed', defaults.packOutput),
-      stripOriginals: _bool(assets, 'strip-originals', defaults.stripOriginals),
+      assetSource: _dir(good, 'asset-source', defaults.assetSource),
+      assetOutput: _dir(good, 'asset-output', defaults.assetOutput),
+      packOutput: _dir(good, 'pack-output', defaults.packOutput),
+      assets: _assets(good['assets']),
       texture: TextureConfig(
         format: _enum(
           texture,
@@ -215,9 +207,25 @@ class GoodConfig {
     return value is int ? value : fallback;
   }
 
-  static bool _bool(Object? map, String key, bool fallback) {
-    final value = map is YamlMap ? map[key] : null;
-    return value is bool ? value : fallback;
+  /// The `good: assets:` list.
+  ///
+  /// A missing key is an empty list, not an error: a project can legitimately
+  /// have no assets of good's yet, and one that has none should still build. A
+  /// key that is there and is not a list *is* an error - it is a project that
+  /// meant to declare assets and wrote something this cannot read, and the
+  /// silent reading of that is a build that ships none of them.
+  static List<AssetEntry> _assets(Object? yaml) {
+    if (yaml == null) return const <AssetEntry>[];
+    if (yaml is! YamlList) {
+      throw ArgumentError(
+        'pubspec.yaml: `good: assets:` is a ${yaml.runtimeType}, not a list of '
+        'assets. Each line under it is a path, or a map with a `path:` in it.',
+      );
+    }
+    return <AssetEntry>[
+      for (final entry in yaml)
+        AssetEntry.parse(entry, context: 'good: assets'),
+    ];
   }
 }
 

@@ -88,7 +88,7 @@ name: journal_probe
 environment:
   sdk: ^3.5.0
 
-flutter:
+good:
   assets:
     - assets/
 ''');

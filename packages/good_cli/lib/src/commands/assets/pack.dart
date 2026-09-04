@@ -26,12 +26,12 @@ import 'package:good_cli/src/verbosable.dart';
 ///
 /// # What this does not do
 ///
-/// It writes the chunks and leaves the loose assets where they are, so running
-/// `flutter build` straight after this bundles both. Removing them is `good
-/// build`'s to do, and only when the project sets `strip-originals: true`,
-/// because only there is good the one who compacted them and can say which
-/// files it is safe to delete. Deleting a working directory's assets out from
-/// under someone who asked for a pack is not this command's call to make.
+/// It writes the chunks and leaves the loose assets where they are. Nothing
+/// deletes them afterwards: which files ship is what the two asset lists say,
+/// so a plaintext copy in the bundle is a `flutter: assets:` entry to remove
+/// and not a file for a build to go and delete. Deleting a working
+/// directory's assets out from under someone who asked for a pack was never
+/// this command's call to make.
 ///
 /// # Why per chunk and not per asset
 ///
@@ -108,7 +108,7 @@ class PackCommand extends Command with Verbose {
 
     if (paths.isEmpty) {
       info.println(
-        'No assets declared under `flutter: assets:` - nothing to pack.',
+        'No assets declared under `good: assets:` - nothing to pack.',
       );
       return;
     }

@@ -525,8 +525,7 @@ File? legacyAssetKeyFile(Directory projectDir) {
 /// Empties `lib/good.generated/` and repoints the imports that named it.
 ///
 /// Deletes **strictly by plan** - one of the four names good writes, and only
-/// while the file still carries the generated header - which is the rule
-/// `stripLoose` already follows for the asset directory. A file somebody added
+/// while the file still carries the generated header. A file somebody added
 /// there is reported and left where it is, and the directory only goes away
 /// once nothing is in it.
 ///
