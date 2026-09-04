@@ -10,10 +10,13 @@
 // These cases pin the hook's semantics on one isolate. The property that
 // cannot be tested here - that the *game* isolate registers nothing - needs a
 // real spawn and lives in `game_isolate_test.dart`.
+import 'dart:typed_data';
+
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:good/src/archetype.dart';
 import 'package:good/src/asset.dart';
+import 'package:good/src/asset_kinds.dart';
 import 'package:good/src/audio/audio_clip.dart';
 import 'package:good/src/game.dart';
 import 'package:good/src/game_state.dart';
@@ -150,14 +153,19 @@ void main() {
     );
   });
 
-  test('the kernel registers its own payload type unasked', () async {
-    // `AudioClip` is the one payload the kernel ships - bytes and a container
-    // name, no canvas and no dimension - so the kernel registers its decoder
-    // and every game gets audio loading without declaring anything. That is
-    // what lets a 3D project load a sound (#93); goo3d declares no loaders at
-    // all.
+  test('the kernel registers its own payload types unasked', () async {
+    // What the kernel ships is every payload that needs no device to decode -
+    // bytes and a container name for audio, `dart:convert` for JSON and text,
+    // nothing at all for a blob. No canvas and no dimension in any of them, so
+    // the kernel registers their decoders and every game gets them without
+    // declaring anything. That is what lets a 3D project load a sound (#93)
+    // and what gives a level layout or a save file somewhere to go (#357);
+    // goo3d declares no loaders at all.
     await _boot(_BareGame.new);
     expect(AssetLoaders.isRegistered<AudioClip>(), isTrue);
+    expect(AssetLoaders.isRegistered<JsonValue>(), isTrue);
+    expect(AssetLoaders.isRegistered<String>(), isTrue);
+    expect(AssetLoaders.isRegistered<Uint8List>(), isTrue);
   });
 
   test(
