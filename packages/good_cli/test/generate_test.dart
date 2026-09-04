@@ -992,7 +992,7 @@ flutter:
       expect(player, isNot(contains('describeStruct')));
     });
 
-    test('a prefab is declared by its constructor, not an instance', () {
+    test('a prefab is the field that holds it, and says so with @sub', () {
       for (final engine in GoodEngine.values) {
         final files = scaffoldFiles(
           projectName: 'demo',
@@ -1001,10 +1001,18 @@ flutter:
         );
         expect(
           files['lib/game/scenes/main_scene.dart'],
-          contains('descriptor.has(Player.new)'),
+          contains('@sub\n  final player = Player();'),
           reason:
-              'a field initialiser has no descriptor in scope, so the '
-              'framework opens one around the constructor call',
+              'a bare constructor call tells a reader nothing on its own, so '
+              'the marker is what says the line declares a prefab. Without it '
+              'the field holds a spare Player, the scene registers no '
+              'archetype, and the project still analyzes clean - which is why '
+              'scaffold_analyze_test cannot stand in for this one',
+        );
+        expect(
+          files['lib/game/scenes/main_scene.dart'],
+          isNot(contains('descriptor.has(')),
+          reason: 'the descriptor window a prefab needed is gone',
         );
       }
     });
