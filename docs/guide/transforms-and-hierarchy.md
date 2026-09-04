@@ -133,7 +133,7 @@ whoever spawns it. `EntityStruct.of` says so in the prefab:
 class Barrel extends EntityStruct with Transform2D, WorldTransform2D, Child;
 
 class Turret extends EntityStruct with Transform2D, WorldTransform2D, Parent {
-  final barrel = EntityStruct.of(Barrel.new);
+  @sub final barrel = Barrel();
 }
 ```
 
