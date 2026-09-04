@@ -233,8 +233,17 @@ String _emptySizeClass(String name) => (StringBuffer()
       ..writeln()
       ..writeln('/// No texture sizes, because no images are declared yet.')
       ..writeln('///')
-      ..writeln('/// Declare one and this gains a `static const int')
-      ..writeln('/// <asset>Width` and `<asset>Height` pair for it.')
+      // One line, because a code span cannot cross two `///` lines:
+      // broken over two, the `<asset>` sits outside the backticks and
+      // the analyzer reports `unintended_html_in_doc_comment` - twice,
+      // in every project this writes, before its author has touched
+      // anything. `flutter analyze` exits non-zero on an info, so that
+      // is a red first build.
+      ..writeln(
+        '/// Declare one and this gains a '
+        '`static const int <asset>Width` and',
+      )
+      ..writeln('/// `<asset>Height` pair for it.')
       ..writeln('abstract final class $name {}'))
     .toString();
 
@@ -307,7 +316,7 @@ Future<void> ensureGameReady() async {
   if (missing.isEmpty) return;
   throw StateError(
     'Missing \${missing.length} asset(s) this build declares:\\n'
-    '\${missing.map((k) => '  \\\${k.source.description}').join('\\n')}\\n'
+    '\${missing.map((k) => '  \${k.source.description}').join('\\n')}\\n'
     'The install may be incomplete, or the pubspec may declare an asset that '
     'was never shipped. Re-running `$command` refreshes the declared set.',
   );
