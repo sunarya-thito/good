@@ -238,8 +238,13 @@ dev_dependencies:
   flutter_lints: any
 
 good:
+  flavors:
+    development: raw
+    paid: bundled
   assets:
-    - assets/
+    - path: assets/
+      flavors: [paid]
+      platforms: [android, ios, windows]
 ''');
     File(
       '${dir.path}/analysis_options.yaml',
@@ -270,6 +275,7 @@ good:
     File('${lib.path}/use.dart').writeAsStringSync('''
 import 'package:goo2d/goo2d.dart';
 
+import 'audios.dart';
 import 'textures.dart';
 
 const List<SpriteFrame> frames = <SpriteFrame>[
@@ -290,6 +296,12 @@ const NineSliceBorder border = NineSliceBorder.pixels(
 );
 
 int get pixels => Textures.sheet.width * Textures.sheet.height;
+
+// A constrained enum overrides two getters `LocalEnumAssetKey` supplies, and
+// `available` is what a game asks before reading an asset a build may not
+// ship. Both halves have to compile against the real mixin, which is what
+// this file is for.
+bool get shipped => Textures.sheet.available && Audios.theme.available;
 ''');
 
     final config = _absolutePackageConfig(root, 'goo2d');

@@ -325,6 +325,106 @@ good:
     });
   });
 
+  group('a key that this build may not ship', () {
+    // Generation never varies by platform or flavor. A key that vanished on
+    // Android would be a file that compiles on Windows and not there, and #56
+    // already bans resolving anything by a name string - so every declared
+    // asset gets a value, and the value carries what would have excluded it.
+    const String constrained = '''
+name: demo
+good:
+  flavors:
+    development: raw
+    paid: bundled
+  assets:
+    - path: assets/
+      flavors: [paid]
+      platforms: [android, ios]
+''';
+
+    test('carries the declaring entry constraints onto the asset', () {
+      final scan = scanAssets(_project(constrained, ['assets/hd.png']));
+      expect(scan.textures.single.flavors, <String>{'paid'});
+      expect(scan.textures.single.platforms, <String>{'android', 'ios'});
+    });
+
+    test('writes them onto the enum value', () {
+      final source = emitTextures(
+        scanAssets(_project(constrained, ['assets/hd.png'])),
+        command: 'good generate',
+        drawsTextures: true,
+      );
+      expect(source, contains("flavors: <String>{'paid'}"));
+      expect(source, contains("platforms: <String>{'android', 'ios'}"));
+      expect(source, contains('final Set<String> flavors;'));
+      expect(source, contains('final Set<String> platforms;'));
+    });
+
+    test('and the value is still there whatever this build ships', () {
+      final source = emitTextures(
+        scanAssets(_project(constrained, ['assets/hd.png'])),
+        command: 'good generate',
+        drawsTextures: true,
+      );
+      expect(
+        source,
+        allOf(contains('  hd('), contains("    'assets/hd.png',")),
+        reason:
+            'an unshipped asset still takes an address, and addresses go into '
+            'component rows that both isolates have to agree about',
+      );
+    });
+
+    test('an unconstrained project generates what it always did', () {
+      // The two fields cost a project that ships everything everywhere
+      // nothing: `LocalEnumAssetKey` answers both with an empty set, so
+      // nothing is emitted unless something is constrained.
+      final source = emitTextures(
+        scanAssets(_project(_pubspecWithAssets, ['assets/hd.png'])),
+        command: 'good generate',
+        drawsTextures: true,
+      );
+      expect(source, isNot(contains('flavors')));
+      expect(source, isNot(contains('platforms')));
+      expect(
+        source,
+        contains('const Textures(this.path, this.width, this.height);'),
+      );
+    });
+
+    test('one constrained asset gives every value in that enum the fields', () {
+      const String mixed = '''
+name: demo
+good:
+  flavors:
+    development: raw
+    paid: bundled
+  assets:
+    - assets/
+    - path: assets/hd/
+      flavors: [paid]
+''';
+      final source = emitTextures(
+        scanAssets(
+          _project(mixed, <String>['assets/base.png', 'assets/hd/big.png']),
+        ),
+        command: 'good generate',
+        drawsTextures: true,
+      );
+      expect(source, contains("base('assets/base.png', 0, 0),"));
+      expect(source, contains("flavors: <String>{'paid'}"));
+    });
+
+    test('the readiness check skips what this build does not ship', () {
+      // Otherwise every build that used the feature fails its own startup
+      // check on assets that are absent on purpose.
+      expect(
+        emitReadiness(command: 'good generate'),
+        contains('if (!key.available) continue;'),
+      );
+    });
+  });
+
   group('emitTextures', () {
     test('emits one enum value per texture, with its bundle path', () {
       final dir = _project(_pubspecWithAssets, [
@@ -1138,9 +1238,19 @@ good:
     test('adds the dependency and both asset entries', () {
       final patched = patchedPubspecLines(flutterCreated, 'goo2d')!;
       expect(patched[3], '  goo2d: $engineConstraint');
+      // Both directories, each gated on the flavor that ships it. A fresh
+      // project maps no flavors of its own, so `dev` and `prod` are
+      // synthesized - and the two entries are then distinguishable, which an
+      // unflavoured pair is not. That is what stops a packing build shipping
+      // the originals beside the chunks holding the same bytes (#270).
       expect(
         patched,
-        containsAllInOrder(<String>['    - assets/', '    - assets/packed/']),
+        containsAllInOrder(<String>[
+          '    - path: assets/',
+          '      flavors: [dev]',
+          '    - path: assets/packed/',
+          '      flavors: [prod]',
+        ]),
       );
       expect(
         patched,

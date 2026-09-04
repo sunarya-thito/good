@@ -93,6 +93,8 @@ good:
       final dir = _project('''
 name: demo
 good:
+  flavors:
+    paid: bundled
   assets:
     - path: assets/premium/
       platforms: [android, ios]
@@ -148,5 +150,99 @@ good:
         ),
       );
     });
+  });
+
+  group('good: flavors:', () {
+    void refuses(String name, String pubspec, Matcher message) {
+      test(name, () {
+        expect(
+          () => GoodConfig.read(_project(pubspec)),
+          throwsA(
+            isA<ArgumentError>().having(
+              (e) => '${e.message}',
+              'message',
+              message,
+            ),
+          ),
+        );
+      });
+    }
+
+    test('is empty for a project that declares none', () {
+      expect(GoodConfig.read(_project('name: demo')).flavors, isEmpty);
+    });
+
+    test('synthesizes dev and prod there, and only there', () {
+      // A project that maps nothing has nothing to map, and two unflavoured
+      // entries cannot be told apart - both ship. The synthesized pair is the
+      // same rule applied to that case, not a second mechanism.
+      final bare = GoodConfig.read(_project('name: demo'));
+      expect(bare.rawFlavors, <String>['dev']);
+      expect(bare.bundledFlavors, <String>['prod']);
+
+      final named = GoodConfig.read(
+        _project('''
+name: demo
+good:
+  flavors:
+    free: bundled
+    paid: bundled
+    workshop: raw
+'''),
+      );
+      expect(named.rawFlavors, <String>['workshop']);
+      expect(named.bundledFlavors, <String>['free', 'paid']);
+    });
+
+    refuses('a pipeline that is not one', '''
+name: demo
+good:
+  flavors:
+    development: loose
+''', allOf(contains('loose'), contains('raw'), contains('bundled')));
+
+    refuses('a name a pubspec entry could not carry', '''
+name: demo
+good:
+  flavors:
+    "dev build": raw
+''', contains('is not a flavor name'));
+
+    refuses('a map that is not one', '''
+name: demo
+good:
+  flavors:
+    - development
+''', contains('not a map'));
+
+    refuses(
+      'an asset entry naming a flavor nothing maps',
+      '''
+name: demo
+good:
+  flavors:
+    development: raw
+    production: bundled
+  assets:
+    - path: assets/premium/
+      flavors: [paid]
+''',
+      // A typo here is silent otherwise: the raw copy intersects to nothing
+      // and ships nowhere, and the chunk ships anyway, so the asset exists in
+      // one build and not the other for a reason nothing states.
+      allOf(
+        contains('assets/premium/'),
+        contains('paid'),
+        contains('development, production'),
+      ),
+    );
+
+    refuses('an asset entry with flavors in a project that maps none', '''
+name: demo
+good:
+  assets:
+    - path: assets/premium/
+      flavors: [paid]
+''', contains('declares no flavors at all'));
   });
 }

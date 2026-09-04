@@ -1,7 +1,8 @@
 import 'dart:typed_data';
 
-import 'package:flutter/foundation.dart' show FlutterError;
-import 'package:flutter/services.dart' show AssetBundle, rootBundle;
+import 'package:flutter/foundation.dart'
+    show FlutterError, TargetPlatform, defaultTargetPlatform, kIsWeb;
+import 'package:flutter/services.dart' show AssetBundle, appFlavor, rootBundle;
 import 'package:meta/meta.dart';
 import 'package:good/src/data.dart';
 import 'package:good/src/scannable.dart';
@@ -247,6 +248,55 @@ class BundleMount extends AssetMount {
   String get description => bundle == null ? 'the app bundle' : 'a bundle';
 }
 
+// --- what this build ships -------------------------------------------------
+
+/// Whether an asset declaring [flavors] and [platforms] is in this build.
+///
+/// The bundler's rule, run again on the running side. Flutter decides what to
+/// bundle with `matchesFlavor` and `matchesPlatform`
+/// (`flutter_tools/lib/src/asset.dart`); this asks the same two questions of
+/// the same two sets, so a key and the bundle agree without the key having to
+/// consult it.
+bool _shipsHere(Set<String> flavors, Set<String> platforms) {
+  // Flavor first, and short-circuiting, because it is the half that folds:
+  // `appFlavor` is a `const String?` over `FLUTTER_APP_FLAVOR`, so this
+  // compares against a compile-time constant and reads nothing at run time.
+  if (flavors.isNotEmpty) {
+    final flavor = appFlavor;
+    if (flavor == null || !flavors.contains(flavor)) return false;
+  }
+  if (platforms.isEmpty) return true;
+  return platforms.contains(_currentPlatformName);
+}
+
+/// This build's platform, spelled the way a pubspec asset entry spells it.
+///
+/// Flutter's spelling and not Dart's: `platforms:` is matched against
+/// `TargetPlatform.osName` (`flutter_tools/lib/src/build_info.dart`), where
+/// `macOS` is `macos` and `iOS` is `ios`. Any other spelling here would make
+/// an entry that bundled correctly report itself absent on the platform it
+/// shipped to.
+///
+/// The web is asked first. [defaultTargetPlatform] on the web reports the
+/// platform the *browser* is running on - a Flutter web app on a Mac answers
+/// `macOS` - and what a web build ships is what `platforms: [web]` names.
+///
+/// `fuchsia` is a name `platforms:` does not accept, which is not an omission:
+/// Flutter's own valid set is the six a pubspec may write, so a
+/// platform-constrained entry ships nowhere on Fuchsia and this reports the
+/// same thing rather than pretending otherwise.
+String get _currentPlatformName {
+  if (kIsWeb) return 'web';
+  return switch (defaultTargetPlatform) {
+    TargetPlatform.android => 'android',
+    TargetPlatform.fuchsia => 'fuchsia',
+    TargetPlatform.iOS => 'ios',
+    TargetPlatform.linux => 'linux',
+    TargetPlatform.macOS => 'macos',
+    TargetPlatform.windows => 'windows',
+  };
+}
+
 /// One loadable asset's **identity**: which asset this is, and nothing else.
 ///
 /// Identity is `(T, source)` - the payload type and where the bytes come from.
@@ -267,9 +317,69 @@ class BundleMount extends AssetMount {
 /// ```
 @immutable
 class AssetKey<T> {
-  const AssetKey(this.source);
+  const AssetKey(
+    this.source, {
+    this.flavors = const <String>{},
+    this.platforms = const <String>{},
+  });
 
   final AssetSource source;
+
+  /// The build flavors that ship this asset. Empty ships in all of them.
+  ///
+  /// The same set the pubspec entry declaring the file wrote, carried onto
+  /// the key so [available] can be answered without touching the bundle. See
+  /// [available] for what an empty set means.
+  final Set<String> flavors;
+
+  /// The target platforms that ship this asset. Empty ships on all of them.
+  ///
+  /// Names are Flutter's - `macos`, `ios` - not Dart's. See [available].
+  final Set<String> platforms;
+
+  /// Whether this build ships this asset at all.
+  ///
+  /// A predicate over the key's own declared constraints, and nothing else.
+  /// It reads no manifest, stats no file and starts no load, so it is
+  /// answerable before anything has been loaded and it never confuses "not
+  /// shipped" with "not loaded yet" - which [Asset.isLoaded] is the question
+  /// for.
+  ///
+  /// ```dart
+  /// if (Textures.playerHd.available) {
+  ///   entity.texture[e] = Textures.playerHd.pack();
+  /// }
+  /// ```
+  ///
+  /// Both halves are the same rule Flutter's own bundler applies when it
+  /// decides what goes into the build (`flutter_tools/lib/src/asset.dart`,
+  /// `matchesFlavor` and `matchesPlatform`): an empty set ships everywhere,
+  /// and a non-empty one ships only where it names. The flavor half reads
+  /// [appFlavor], which is a compile-time constant, so nothing consults the
+  /// environment at run time and a flavor this asset never ships in is a
+  /// comparison against a constant.
+  ///
+  /// **A key exists whether or not its asset shipped.** Generation never
+  /// varies by platform or flavor, so a file that draws on Windows and not on
+  /// Android is a branch here and not a name that fails to resolve on one of
+  /// them. The address is generated either way - addresses go into component
+  /// rows and have to agree across both isolates, so they cannot depend on
+  /// what a given build bundled. What an unshipped asset has no payload for is
+  /// [Asset.value], which throws naming the constraint that excluded it.
+  ///
+  /// Two divergences worth knowing, both from the bundler and neither
+  /// fixable here:
+  ///
+  ///  * `flutter test` bundles for `TargetPlatform.tester`, which matches
+  ///    every entry whatever its `platforms:`, while [defaultTargetPlatform]
+  ///    in a widget test reports an ordinary platform. So a
+  ///    platform-constrained asset is present in a test bundle and this still
+  ///    answers for the platform the test says it is on. Override
+  ///    `debugDefaultTargetPlatformOverride` to test the other branch.
+  ///  * `--flavor` is not passed to a plain `flutter run`, so an asset
+  ///    declared under any flavor is excluded from an unflavoured run and
+  ///    this says so.
+  bool get available => _shipsHere(flavors, platforms);
 
   /// The payload type this key names, as a runtime value.
   ///
@@ -560,6 +670,19 @@ final class Asset<T> implements ScannableField, IntRepresentable {
     final resolved = _resolved;
     final value = resolved._value;
     if (value == null) {
+      // Two different failures, and telling them apart is the whole reason
+      // `available` exists. An asset this build never shipped has no payload
+      // by declaration, and saying "it was never loaded" would send the
+      // reader hunting for a load that was never going to happen.
+      if (!key.available) {
+        throw StateError(
+          '${key.debugLabel} is declared (address ${resolved._address}) but '
+          'this build does not ship it, so it has no payload to read. '
+          '${_excludedBecause(key)} Ask the key for `available` before '
+          'reading `value`: the key exists and holds its address in every '
+          'build, and only the bytes are conditional.',
+        );
+      }
       throw StateError(
         '${key.debugLabel} is declared (address ${resolved._address}) but was '
         'never loaded on this isolate, so its payload cannot be read. Asset '
@@ -585,6 +708,28 @@ final class Asset<T> implements ScannableField, IntRepresentable {
   @override
   String toString() =>
       'Asset($debugLabel @${_declared == null ? 'unbound' : _resolved._address})';
+}
+
+/// Which declared constraint kept [key] out of this build, in a sentence.
+///
+/// Both halves are reported when both exclude, rather than the first one
+/// found: an asset constrained on flavor *and* platform that is read on the
+/// wrong platform of the right flavor is a different fix from the other way
+/// round, and a message naming one of two reasons is a message that sends
+/// half its readers to the wrong line of the pubspec.
+String _excludedBecause(AssetKey<Object?> key) {
+  final reasons = <String>[
+    if (key.flavors.isNotEmpty)
+      'it ships in the ${key.flavors.join(', ')} flavor(s) and this build is '
+          '${appFlavor ?? 'unflavoured'}',
+    if (key.platforms.isNotEmpty &&
+        !key.platforms.contains(_currentPlatformName))
+      'it ships on ${key.platforms.join(', ')} and this build is '
+          '$_currentPlatformName',
+  ];
+  if (reasons.isEmpty) return '';
+  return 'Declared in pubspec.yaml under `good: assets:`: '
+      '${reasons.join(', and ')}.';
 }
 
 /// Declares [key] and returns the handle to keep in a field - the third
@@ -799,6 +944,12 @@ final class Assets {
         'thing on both sides.',
       );
     }
+    // Declared, addressed, and not in this build. Loading it would ask the
+    // bundle for a path the bundler deliberately left out, and the failure
+    // would take down the whole scene load - so a scene may freely declare an
+    // asset only some flavors ship. The handle comes back unloaded, and
+    // reading `value` on it says which constraint excluded it.
+    if (!key.available) return Future<Asset<T>>.value(asset);
     if (asset.isLoaded) return Future<Asset<T>>.value(asset);
     final inFlight = _loading[identity];
     if (inFlight != null) return inFlight.then((_) => asset);
@@ -1003,6 +1154,18 @@ mixin EnumAssetKey<T> implements AssetKey<T> {
   @override
   Type get payloadType => T;
 
+  /// Empty unless the enum declares a field of its own. An enum value with no
+  /// flavor constraint ships in every flavor - see [AssetKey.available].
+  @override
+  Set<String> get flavors => const <String>{};
+
+  /// Empty unless the enum declares a field of its own. See [flavors].
+  @override
+  Set<String> get platforms => const <String>{};
+
+  @override
+  bool get available => _shipsHere(flavors, platforms);
+
   @override
   Asset<T> newAsset() => Asset<T>._(this);
 
@@ -1035,6 +1198,18 @@ mixin LocalEnumAssetKey<T> implements EnumAssetKey<T> {
 
   @override
   Type get payloadType => T;
+
+  /// Empty unless the enum declares a field of its own - `good generate`
+  /// writes one only for a project whose `good: assets:` constrains an entry.
+  @override
+  Set<String> get flavors => const <String>{};
+
+  /// Empty unless the enum declares a field of its own. See [flavors].
+  @override
+  Set<String> get platforms => const <String>{};
+
+  @override
+  bool get available => _shipsHere(flavors, platforms);
 
   @override
   Asset<T> newAsset() => Asset<T>._(this);

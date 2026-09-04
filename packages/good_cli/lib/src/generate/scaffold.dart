@@ -1,4 +1,7 @@
+import 'package:good_cli/src/assets/entry.dart';
+import 'package:good_cli/src/config.dart';
 import 'package:good_cli/src/generate/bundle.dart';
+import 'package:good_cli/src/generate/flutter_assets.dart';
 import 'package:yaml/yaml.dart';
 
 /// Which engine package a new project is built against.
@@ -95,15 +98,27 @@ String pubspecPatch(String package) =>
 dependencies:
   $package: $engineConstraint
 
-flutter:
-  assets:
-    - assets/
-    - assets/packed/
+${flutterAssetsPatch(scaffoldConfig)}
 
 good:
   assets:
     - assets/
 ''';
+
+/// What `good: assets:` says in a project nobody has configured yet.
+///
+/// A fresh project declares one directory and no flavors, so
+/// [GoodConfig.resolvedFlavors] synthesizes `dev` and `prod` and
+/// [goodFlutterAssets] gates the originals on the first and the chunks on the
+/// second. Built here rather than read from disk, because the pubspec being
+/// patched is the one that has no `good:` section yet.
+GoodConfig get scaffoldConfig => GoodConfig(
+  assetSource: GoodConfig.defaults.assetSource,
+  assetOutput: GoodConfig.defaults.assetOutput,
+  assets: <AssetEntry>[AssetEntry(uri: Uri.parse('assets/'))],
+  texture: GoodConfig.defaults.texture,
+  audio: GoodConfig.defaults.audio,
+);
 
 /// The version range a scaffolded project depends on.
 ///
@@ -181,14 +196,15 @@ List<String>? patchedPubspecLines(List<String> lines, String package) {
   if (!hasAssets) {
     patched.insertAll(material + 1, <String>[
       '',
-      '  # What Flutter bundles and reads by path: assets/ so a development',
-      '  # run reads the loose files, assets/packed/ so a release build\'s',
-      '  # chunks ship. Which of those files good packs is `good: assets:`',
-      '  # below, a separate list and the only one good reads.',
+      '  # Written by `good generate` and rewritten on every run. A dev build',
+      '  # ships the loose files under assets/ and a prod build ships the',
+      '  # chunks under assets/packed/, so no build carries both copies of an',
+      '  # asset. Rename these flavors, or add your own, under',
+      '  # `good: flavors:`. Entries that are not good\'s are left alone.',
       '  # Keep your originals in assets_src/; assets/ is generated.',
       '  assets:',
-      '    - assets/',
-      '    - assets/packed/',
+      for (final entry in goodFlutterAssets(scaffoldConfig))
+        ...assetEntryLines(entry, '    '),
     ]);
   }
   if (!hasDependency) {
@@ -241,8 +257,9 @@ List<String>? patchedPubspecLines(List<String> lines, String package) {
 /// Why the packed directory exists in a fresh project with nothing in it.
 String _packedGitkeep() => '''
 # `good build` writes its chunks here, and `flutter: assets:` lists this
-# directory so they ship. What goes into them is what `good: assets:` names;
-# the loose copies of those files stay where they are.
+# directory under the flavors that ship bundled - `prod`, until the project
+# names its own under `good: flavors:`. The flavors that ship raw get the
+# loose files instead, so no build carries both copies.
 #
 # Generated. Safe to delete; `good build` writes it again.
 ''';
@@ -810,7 +827,9 @@ String _gitkeep(String command, String bundle) =>
     '''
 # Drop images here, list them under `good: assets:` in pubspec.yaml, then
 # run `$command`'s sibling: `good generate`. That writes ../$bundle/, where
-# each asset becomes a value of the `Textures` enum.
+# each asset becomes a value of the `Textures` enum - and rewrites
+# `flutter: assets:` so a dev build ships these files and a prod build ships
+# the chunks made from them.
 #
 # Nothing generated is written into lib/. The package good generates sits
 # beside it, so every file under lib/ is one you wrote.

@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:good_cli/src/assets/entry.dart';
 import 'package:good_cli/src/config.dart';
 import 'package:good_cli/src/generate/bundle.dart';
 import 'package:good_cli/src/generate/engine_dependency.dart';
@@ -15,6 +16,8 @@ class DiscoveredAsset {
     required this.path,
     required this.kind,
     this.size,
+    this.flavors = const <String>{},
+    this.platforms = const <String>{},
   });
 
   /// The Dart identifier this becomes - `planePlayerBlue`.
@@ -41,6 +44,22 @@ class DiscoveredAsset {
   /// A caller emitting a number for every texture has to pick something for
   /// those; see `emitTextures`.
   final ImageSize? size;
+
+  /// The flavors the declaring entry ships this file in, empty for all of
+  /// them - carried onto the generated key so `AssetKey.available` can answer
+  /// without consulting the bundle.
+  final Set<String> flavors;
+
+  /// The platforms the declaring entry ships this file on, empty for all of
+  /// them. See [flavors].
+  final Set<String> platforms;
+
+  /// Whether this file needs anything said about it beyond its path.
+  ///
+  /// The generated enum gains its two constraint fields only when some asset
+  /// in it is constrained, so the common project - one that ships everything
+  /// everywhere - generates exactly what it generated before flavors existed.
+  bool get isConstrained => flavors.isNotEmpty || platforms.isNotEmpty;
 
   @override
   String toString() => '$identifier -> $path (${kind.name})';
@@ -143,11 +162,16 @@ AssetScan scanAssets(Directory projectDir) {
   // own, which is a build that grows every time it is run.
   final packed = config.packOutput;
 
-  final files = <String>[];
-  for (final entry in entries) {
-    if (entry == packed) continue;
-    if (entry.endsWith('/')) {
-      final dir = Directory('${projectDir.path}/$entry');
+  // Path -> the entry that declared it, so a file inherits the `flavors:`
+  // and `platforms:` of the line that named it. The first entry to name a
+  // path wins: two entries reaching one file is a pubspec saying two things
+  // about it, and the one written first is the one a reader finds.
+  final files = <String, AssetEntry>{};
+  for (final entry in config.assets) {
+    final path = entry.path;
+    if (path == packed) continue;
+    if (path.endsWith('/')) {
+      final dir = Directory('${projectDir.path}/$path');
       if (!dir.existsSync()) continue;
       for (final child in dir.listSync()) {
         if (child is! File) continue;
@@ -157,13 +181,14 @@ AssetScan scanAssets(Directory projectDir) {
         // that last compacted under an older version still has one until its
         // next run, and .gitkeep is ordinary.
         if (name.startsWith('.')) continue;
-        files.add('$entry$name');
+        files.putIfAbsent('$path$name', () => entry);
       }
-    } else if (!entry.startsWith(packed)) {
-      files.add(entry);
+    } else if (!path.startsWith(packed)) {
+      files.putIfAbsent(path, () => entry);
     }
   }
-  files.sort(); // Stable output: codegen that reorders itself churns diffs.
+  // Stable output: codegen that reorders itself churns diffs.
+  final paths = files.keys.toList()..sort();
 
   final textures = <DiscoveredAsset>[];
   final audio = <DiscoveredAsset>[];
@@ -176,7 +201,7 @@ AssetScan scanAssets(Directory projectDir) {
     AssetKind.audio: <String, String>{},
   };
 
-  for (final path in files) {
+  for (final path in paths) {
     final kind = AssetKind.of(path);
     final seen = byIdentifier[kind];
     if (seen == null) {
@@ -217,6 +242,8 @@ AssetScan scanAssets(Directory projectDir) {
       size: kind == AssetKind.texture
           ? readImageSize(File('${projectDir.path}/$path'))
           : null,
+      flavors: files[path]!.flavors,
+      platforms: files[path]!.platforms,
     );
     (kind == AssetKind.texture ? textures : audio).add(asset);
   }
@@ -476,23 +503,37 @@ String enginePackageOf(Directory projectDir) {
   return candidates.first;
 }
 
-/// The `flutter: assets:` entries a project declares, verbatim.
+/// The `flutter: assets:` entries a project declares.
 ///
 /// Flutter's list, not good's - the one thing that reads it is the build's
-/// check that the chunk directory is in it, since a chunk Flutter does not
-/// bundle is a game that fails at its first asset load with every file present
-/// on the build machine. What good packs is [GoodConfig.assets].
-List<String> declaredAssetEntries(Directory projectDir) {
+/// check that the chunk directory is in it and gated to the flavor being
+/// built, since a chunk Flutter does not bundle is a game that fails at its
+/// first asset load with every file present on the build machine. What good
+/// packs is [GoodConfig.assets].
+///
+/// Parsed with [AssetEntry], not read as strings. `good generate` writes the
+/// map form here - a bare path cannot say which flavors ship it - so a
+/// string-only read would find no chunk directory in a pubspec that declares
+/// one on every line.
+List<AssetEntry> declaredAssetEntries(Directory projectDir) {
   final pubspec = File('${projectDir.path}/pubspec.yaml');
-  if (!pubspec.existsSync()) return const <String>[];
+  if (!pubspec.existsSync()) return const <AssetEntry>[];
   final doc = loadYaml(pubspec.readAsStringSync());
-  if (doc is! YamlMap) return const <String>[];
+  if (doc is! YamlMap) return const <AssetEntry>[];
   final flutter = doc['flutter'];
-  if (flutter is! YamlMap) return const <String>[];
+  if (flutter is! YamlMap) return const <AssetEntry>[];
   final assets = flutter['assets'];
-  if (assets is! YamlList) return const <String>[];
-  return <String>[
-    for (final e in assets)
-      if (e is String) e,
-  ];
+  if (assets is! YamlList) return const <AssetEntry>[];
+  final entries = <AssetEntry>[];
+  for (final node in assets) {
+    try {
+      entries.add(AssetEntry.parse(node, context: 'flutter: assets'));
+    } on ArgumentError {
+      // Flutter's list, not good's. An entry good cannot read is one good has
+      // no business refusing - it is read here only to answer a question
+      // about the chunk directory.
+      continue;
+    }
+  }
+  return entries;
 }
