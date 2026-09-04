@@ -58,14 +58,23 @@ class GenerateResult {
 /// exist yet is one whose first `flutter run` fails, and telling someone to run
 /// a second command is a worse answer than running it.
 ///
-/// # Everything it writes goes in one package beside the project
+/// # Almost everything it writes goes in one package beside the project
 ///
 /// Not `lib/good.generated/` any more. The generated Dart and the generated
 /// chunks are one artifact from one input, and splitting them by file type -
 /// code inside the project, bytes beside it - would leave "may good overwrite
-/// this" with two answers. Split by **author** instead: `lib/` is the person's,
-/// entirely, and the package next to it is good's, entirely. See
-/// `bundle.dart` for the marker that makes the second half provable.
+/// this" with two answers. Split by **author** instead: the package next to
+/// `lib/` is good's, entirely. See `bundle.dart` for the marker that makes
+/// that provable.
+///
+/// The one file that cannot live there is `lib/src/declarations.g.dart`,
+/// which is the carve-out #313 makes for exactly this case. A collector casts
+/// to the class it reads and names it in a `const` table, so a table keyed by
+/// the person's own `Player` has to sit in a library that can name `Player`;
+/// the bundle depends on the project and not the other way round. It carries
+/// the same "do not edit" banner every other generated file does, and
+/// `_declarations` below names it on every run rather than writing it
+/// quietly.
 ///
 /// # Rewritten in place, never cleared and refilled
 ///
@@ -75,8 +84,7 @@ class GenerateResult {
 /// the same way: `asset_key.dart` is written once and must survive every later
 /// run, and a clear that succeeded followed by a write that failed would leave
 /// a package that exists, is depended on, and has no `lib/`. The set of
-/// generated files is fixed at four, so there is nothing a rewrite can leave
-/// stale.
+/// generated files is fixed, so there is nothing a rewrite can leave stale.
 ///
 /// [pubGet] is the resolve step. It is on by default and only tests and CI
 /// turn it off - see the comment at the call below for why leaving it to the
@@ -433,7 +441,7 @@ void _migrate(Directory project, BundlePackage bundle, VerboseOutput out) {
   );
   if (migration.isEmpty) return;
   if (migration.moved.isNotEmpty) {
-    out.printf('Moved %s out of %s/ - lib/ is yours now.\n', [
+    out.printf('Moved %s out of %s/, which is gone now.\n', [
       migration.moved.join(', '),
       legacyGeneratedDir,
     ]);

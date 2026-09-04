@@ -876,6 +876,8 @@ String _gitkeep(String command, String bundle) =>
 # run `$command`'s sibling: `good generate`. That writes ../$bundle/, where
 # each asset becomes a value of the `Textures` enum.
 #
-# Nothing generated is written into lib/. The package good generates sits
-# beside it, so every file under lib/ is one you wrote.
+# The package good generates sits beside lib/, not in it. The one exception
+# is lib/src/declarations.g.dart, which holds the list of what each of your
+# own classes declares - a table that names Player has to sit where Player
+# can be named. Everything else under lib/ is a file you wrote.
 ''';
