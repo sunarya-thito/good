@@ -190,7 +190,8 @@ class Box2DPhysicsSystem extends GameSystem
   // Transform2D is required, not optional: a body with no transform has
   // nowhere to report its position, and silently skipping such an entity
   // would look exactly like physics not working.
-  final _bodies = Query.where()
+  @internal
+  final bodies = Query.where()
       .withAll(RigidBody2D, Transform2D)
       .withOptional(Collider2D)
       .build();
@@ -343,7 +344,8 @@ class Box2DPhysicsSystem extends GameSystem
 
   // Effector entities are a different population from bodies: a wind zone
   // has a region and a transform and usually no RigidBody2D at all.
-  final _effectorZones = Query.all(Effector2D, Transform2D);
+  @internal
+  final effectorZones = Query.all(Effector2D, Transform2D);
 
   /// Applies every declared effector, once, before the step.
   ///
@@ -358,7 +360,7 @@ class Box2DPhysicsSystem extends GameSystem
   /// queries - an exact boundary is not something a force field's player can
   /// see anyway.
   void _applyEffectors() {
-    for (final group in _effectorZones.groups()) {
+    for (final group in effectorZones.groups()) {
       final zone = group<Effector2D>();
       if (zone.effectors.isEmpty) continue;
       final transform = group<Transform2D>();
@@ -977,7 +979,7 @@ class Box2DPhysicsSystem extends GameSystem
   /// pull still writes back to the right row.
   int _fill() {
     var index = 0;
-    for (final group in _bodies.groups()) {
+    for (final group in bodies.groups()) {
       final body = group<RigidBody2D>();
       final transform = group<Transform2D>();
 

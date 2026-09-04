@@ -1886,7 +1886,8 @@ class GameRenderer2D extends GameSystem
   // per-archetype answer the storage layer gives for free - not a test inside
   // the loop. No archetype that predates screen space carries the bit, so
   // this clause changes nothing about what an existing game draws.
-  final _renderables = Query.where()
+  @internal
+  final renderables = Query.where()
       .withAll(Renderable2D, Transform2D)
       .withNone(ScreenTransform2D)
       .withOptional(WorldTransform2D)
@@ -1901,7 +1902,8 @@ class GameRenderer2D extends GameSystem
   // groups in its own layer. A game has a handful of screen archetypes and
   // the skipped ones cost a getter and a comparison, against a second query
   // object and a second set of boundaries to keep in step.
-  final _screenRenderables = Query.where()
+  @internal
+  final screenRenderables = Query.where()
       .withAll(Renderable2D, Transform2D, ScreenTransform2D)
       .build();
 
@@ -1910,11 +1912,12 @@ class GameRenderer2D extends GameSystem
   // the archetype carries the mixin and drawn from its local transform where
   // it does not.
   //
-  // Separate from `_renderables` because `Text2D` is a plain `Component` an
+  // Separate from `renderables` because `Text2D` is a plain `Component` an
   // entity carries with or without `Renderable2D`: a sign is a panel sprite
   // and a label, a damage number is a label and nothing else, and neither one
   // can be expressed as a clause on the other query.
-  final _labels = Query.where()
+  @internal
+  final labels = Query.where()
       .withAll(Text2D, Transform2D)
       .withOptional(WorldTransform2D)
       .build();
@@ -1924,7 +1927,8 @@ class GameRenderer2D extends GameSystem
   // like any other, not a field a presentation system owns. Requiring
   // `WorldTransform2D` on it as well means a camera parented to the player
   // works with no special case here.
-  final _cameras = Query.all(Camera, WorldTransform2D);
+  @internal
+  final cameras = Query.all(Camera, WorldTransform2D);
 
   /// One projection for the lifetime of the system - re-resolved each tick,
   /// never rebuilt, because building one per tick would be an allocation on
@@ -2388,7 +2392,7 @@ class GameRenderer2D extends GameSystem
     final written = debugDraw.writeBatch(
       view,
       DrawData2D.batchHeaderBytes,
-      _projection..resolve(_cameras, cameraView),
+      _projection..resolve(cameras, cameraView),
     );
     final offset =
         DrawData2D.batchHeaderBytes + written * DrawSpriteData2D.strideBytes;
@@ -2695,7 +2699,7 @@ class GameRenderer2D extends GameSystem
     // A second query and not a clause on the first: `Renderable2D` and
     // `Text2D` are independent, an entity may carry either or both, and a
     // label has no `Sprite` to read a width, a frame or an inset from.
-    for (final group in _labels.groups()) {
+    for (final group in labels.groups()) {
       final text = group<Text2D>();
       // Per archetype, so a prefab that declared no font is skipped once for
       // every entity of it rather than once each. A font is the atlas and the
@@ -2861,7 +2865,7 @@ class GameRenderer2D extends GameSystem
     // slightly different mappings - picking that disagreed with drawing by a
     // constant would mean clicking next to what you can see. No camera is
     // not an error: the projection resolves to the identity plus centring.
-    final projection = _projection..resolve(_cameras, cameraView);
+    final projection = _projection..resolve(cameras, cameraView);
     // Pass one: collect what is going to be drawn. Nothing is written to the
     // byte scratch yet, because the order is not known until every candidate
     // has been seen.
@@ -2906,12 +2910,12 @@ class GameRenderer2D extends GameSystem
     // a frame over budget loses is its backdrop first and its pinned layer
     // last. A HUD does not vanish because twenty thousand particles were
     // queued ahead of it.
-    _fillSprites(_screenRenderables, ScreenLayer.behind);
+    _fillSprites(screenRenderables, ScreenLayer.behind);
     queue.beginWorldLayer();
-    _fillSprites(_renderables, null);
+    _fillSprites(renderables, null);
     _fillLabels();
     queue.beginFrontLayer();
-    _fillSprites(_screenRenderables, ScreenLayer.front);
+    _fillSprites(screenRenderables, ScreenLayer.front);
 
     if (!debugSkipZSort) queue.sortByZ();
     // The budget, spent now that depth is known. On a frame that fits this is

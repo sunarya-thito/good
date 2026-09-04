@@ -106,7 +106,8 @@ class WorldTransform3DSystem extends GameSystem
 
   // withOptional(Child) because an entity is a root whether it never mixes
   // in Child at all, or mixes it in but happens to be unparented.
-  final _roots = Query.where()
+  @internal
+  final roots = Query.where()
       .withAll(WorldTransform3D, Transform3D)
       .withOptional(Child)
       .build();
@@ -161,7 +162,7 @@ class WorldTransform3DSystem extends GameSystem
     // group, and each resolve is a registry lookup plus a runtime subtype test
     // against a type *variable*. Four of those per entity was the single
     // largest thing in the 2D system that produced no answer.
-    for (final group in _roots.groups()) {
+    for (final group in roots.groups()) {
       // Guaranteed by the query's `withAll`, so `Transform3D` and not
       // `Transform3D?`.
       final local = group<Transform3D>();

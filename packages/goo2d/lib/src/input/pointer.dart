@@ -6,6 +6,7 @@ import 'package:goo2d/src/data/camera.dart';
 import 'package:goo2d/src/data/collider.dart';
 import 'package:goo2d/src/data/world_transform.dart';
 import 'package:goo2d/src/render/render_2d.dart';
+import 'package:meta/meta.dart';
 
 /// One pointer interaction with one entity - a finger, a stylus, or the mouse.
 ///
@@ -280,9 +281,12 @@ class PointerPickingSystem extends GameSystem with FixedTickable {
   Entity? get hovered => _hovered;
   Entity? _hovered;
 
-  final _pressables = Query.all(PointerReceiver, Collider2D, WorldTransform2D);
-  final _hoverables = Query.all(HoverReceiver, Collider2D, WorldTransform2D);
-  final _cameras = Query.all(Camera, WorldTransform2D);
+  @internal
+  final pressables = Query.all(PointerReceiver, Collider2D, WorldTransform2D);
+  @internal
+  final hoverables = Query.all(HoverReceiver, Collider2D, WorldTransform2D);
+  @internal
+  final cameras = Query.all(Camera, WorldTransform2D);
 
   late final PointerPickEvent _event = PointerPickEvent._();
 
@@ -328,13 +332,13 @@ class PointerPickingSystem extends GameSystem with FixedTickable {
       // one that can be right for both.
       final view = game.viewOfContact(contact) ?? views[0];
       if (!identical(view, resolved)) {
-        projection.resolve(_cameras, view);
+        projection.resolve(cameras, view);
         resolved = view;
       }
       final viewSpace = contact.viewSpace;
       final worldX = projection.viewToWorldX(viewSpace.x);
       final worldY = projection.viewToWorldY(viewSpace.y);
-      final picked = _pick(_pressables, worldX, worldY);
+      final picked = _pick(pressables, worldX, worldY);
       if (picked == null) continue;
 
       final screenSpace = contact.screenSpace;
@@ -371,14 +375,14 @@ class PointerPickingSystem extends GameSystem with FixedTickable {
     // Falls back to the first declared view when nothing named one: a
     // headless harness driving `movePointer` without a view, and every
     // single-view game, where the fallback and the answer are the same view.
-    projection.resolve(_cameras, game.pointerView ?? views[0]);
+    projection.resolve(cameras, game.pointerView ?? views[0]);
     final position = cursor.value;
     worldSpace.setValues(
       projection.viewToWorldX(position.viewSpace.x),
       projection.viewToWorldY(position.viewSpace.y),
     );
 
-    final hovering = _pick(_hoverables, worldSpace.x, worldSpace.y);
+    final hovering = _pick(hoverables, worldSpace.x, worldSpace.y);
     final previous = _hovered;
     if (!identical(hovering, previous)) {
       // Exit before enter, so a handler that swaps a shared highlight sees
@@ -405,7 +409,7 @@ class PointerPickingSystem extends GameSystem with FixedTickable {
     final pressed = click.wasPressedThisFrame;
     final released = click.wasReleasedThisFrame;
     if (!pressed && !released) return;
-    final target = _pick(_pressables, worldSpace.x, worldSpace.y);
+    final target = _pick(pressables, worldSpace.x, worldSpace.y);
     if (target == null) return;
     _fillFromCursor(target, position);
     final receiver = target<PointerReceiver>().component;

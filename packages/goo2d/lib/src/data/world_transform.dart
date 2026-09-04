@@ -101,7 +101,8 @@ class WorldTransformSystem extends GameSystem
 
   // withOptional(Child) because an entity is a root whether it never mixes
   // in Child at all, or mixes it in but happens to be unparented.
-  final _roots = Query.where()
+  @internal
+  final roots = Query.where()
       .withAll(WorldTransform2D, Transform2D)
       .withOptional(Child)
       .build();
@@ -169,7 +170,7 @@ class WorldTransformSystem extends GameSystem
     // be a different archetype entirely. That is the right split - a flat
     // scene, which is the overwhelmingly common one, pays nothing for the
     // hierarchy case it is not using.
-    for (final group in _roots.groups()) {
+    for (final group in roots.groups()) {
       // Guaranteed by the query's `withAll`, so `Transform2D` and not
       // `Transform2D?`.
       final local = group<Transform2D>();

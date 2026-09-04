@@ -29,7 +29,7 @@ import 'package:good/good.dart';
 List<ScannableField> _worldTransform3DSystem(Object object) {
   final owner = object as WorldTransform3DSystem;
   return <ScannableField>[
-    // WorldTransform3DSystem._roots: private, unreachable.
+    owner.roots,
     owner.mountEvent,
     owner.unmountEvent,
   ];
