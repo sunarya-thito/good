@@ -258,6 +258,19 @@ abstract class DataDescriptor {
   /// The field is [IntRepresentation.bitWidth] bits wide, so a representation
   /// that only ever hands out a few hundred values costs a row a byte or two,
   /// not a fixed four.
+  ///
+  /// [initialValue] is packed at the reservation pass and not where the
+  /// column is written, so a value that is not worth an `int` yet can still
+  /// be one. `Field.packed(assets.of<Texture>(), Asset.of(key))` in a field
+  /// initialiser is the case that needs it: the handle carries a key and no
+  /// address until the scene registering its owner binds it, which happens
+  /// after the collect pass has read the field. Packing at the declaration
+  /// threw out of the constructor. Nothing about a default sizes the column,
+  /// so the deferral moves no bits.
+  ///
+  /// A handle the column defaults to is itself declared - it takes an address
+  /// and a place in the scene's footprint the same way one a field holds
+  /// does, so the scene loads the asset a column plainly names.
   PackedPointer<T> hasPacked<T extends IntRepresentable>(
     IntRepresentation<T> repr,
     T initialValue,

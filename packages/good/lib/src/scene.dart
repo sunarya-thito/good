@@ -882,6 +882,17 @@ final class _AssetDescriptor implements AssetDescriptor {
   /// against is a row layout and a listener set. This descriptor addresses
   /// assets, and says so by taking only what it can address.
   void declareOne(ScannableField declaration) {
+    // A packed column defaulting to an asset holds a handle no field of its
+    // own holds - `Field.packed(assets.of<T>(), Asset.of(key))` - and that
+    // handle is an asset declaration like any other. Taken before the type
+    // test below, because the column itself is not an asset and would
+    // otherwise be skipped with its default unaddressed: the pack deferred to
+    // the reservation pass would then throw, and the scene would not load a
+    // texture it plainly names.
+    if (declaration is NestedDeclaration) {
+      final nested = declaration.nestedDeclaration;
+      if (nested != null) declareOne(nested);
+    }
     if (declaration is! Asset<Object?>) return;
     // `bind` hands back the handle the identity is addressed on, which is
     // this one the first time and somebody else's the second. The footprint

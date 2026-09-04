@@ -209,6 +209,26 @@ abstract interface class _Declared implements ScannableField {
   void realize(ArchetypeStorage storage);
 }
 
+/// A declaration whose **initial value** is itself a declaration.
+///
+/// `Field.packed(assets.of<Texture>(), Asset.of(key))` is the one shape that
+/// is: the field holds the column, and the handle inside it is an asset
+/// declaration no field of its own holds. A pass that resolves the outer one
+/// does not resolve the inner, so without this the asset would never be
+/// addressed and never be part of the scene's footprint - the column would
+/// stamp an address nothing issued, and the scene would not load the texture
+/// it plainly names.
+///
+/// Only the pass that can act on the inner declaration asks for it, the way
+/// `ArchetypeDataDescriptor` and `_AssetDescriptor` each take the
+/// declarations they can act on and leave the rest. Null is the ordinary
+/// answer: a column defaulting to a plain value has nothing nested.
+abstract interface class NestedDeclaration implements ScannableField {
+  /// The declaration this one's initial value is, or null when it is a plain
+  /// value.
+  ScannableField? get nestedDeclaration;
+}
+
 abstract base class _Field<T> extends DataPointer<T>
     implements ArchetypeField, _Declared {
   /// The storage this column was given at [realize].
@@ -857,15 +877,34 @@ final class _Float64Field extends _ByteAlignedField<double> {
 /// `IntRepresentation<X>` is. Nothing constructs one except the two declare
 /// paths that already checked the element is a representation, so the two
 /// casts here cannot fail.
-abstract base class _PackedField<T> extends _Field<T> {
-  _PackedField(this._bits);
+abstract base class _PackedField<T> extends _Field<T>
+    implements NestedDeclaration {
+  _PackedField(this._bits, this._initialValue);
 
   /// The integer field holding the packed bits. Declared and owned here, and
   /// deliberately **not** registered with the storage itself - this field's
   /// own [writeInitialValue] drives it, so registering both would stamp the
   /// initial value twice. Which is also why [_reserve] binds it rather than
   /// realizing it.
-  final _Field<int> _bits;
+  final _ValueField<int> _bits;
+
+  /// The default the declaration named, held as the value and not as its
+  /// bits. Null for a column that was given none.
+  ///
+  /// Packed at [_reserve] and not where the column is built, because a value
+  /// is not always worth an int yet at that point. `Asset.of(key)` carries a
+  /// key and nothing else until the scene registering its owner binds it,
+  /// and that happens after the collect pass reads the field and before the
+  /// reservation pass runs - so packing at the declaration threw
+  /// "no scene ever declared it" out of the constructor. Nothing about a
+  /// default sizes the column ([IntRepresentation.bitWidth] does), so
+  /// deferring it moves no bits and no row.
+  ///
+  /// Only the scalar packed columns defer. `hasArray` against a
+  /// representation still packs its `initialValue` where the array is
+  /// declared, so an array of assets cannot be written as a field
+  /// initialiser yet.
+  final T? _initialValue;
 
   /// The representation the stored ints mean something against.
   ///
@@ -877,8 +916,25 @@ abstract base class _PackedField<T> extends _Field<T> {
   /// [_DeclaredPackedField] holds.
   IntRepresentation<IntRepresentable> get _repr;
 
+  /// The asset, or whatever else declares itself, that this column's default
+  /// is - so the pass that resolves one can reach it. See
+  /// [NestedDeclaration].
   @override
-  void _reserve(ArchetypeStorage storage) => _bits.attach(storage);
+  ScannableField? get nestedDeclaration {
+    final initial = _initialValue;
+    return initial is ScannableField ? initial : null;
+  }
+
+  @override
+  void _reserve(ArchetypeStorage storage) {
+    final initial = _initialValue;
+    // Before the attach, so the width is reserved from the representation
+    // either way and only the stamped value depends on this.
+    if (initial != null) {
+      _bits.initialValue = (initial as IntRepresentable).pack();
+    }
+    _bits.attach(storage);
+  }
 
   @override
   T operator [](Entity entity) => _repr.unpack(_bits[entity]) as T;
@@ -894,7 +950,7 @@ abstract base class _PackedField<T> extends _Field<T> {
 /// [_PackedField] against the representation the declaration named - which
 /// is every packed column except the camera view.
 base class _DeclaredPackedField<T> extends _PackedField<T> {
-  _DeclaredPackedField(super.bits, this._declaredRepr);
+  _DeclaredPackedField(super.bits, super.initialValue, this._declaredRepr);
 
   final IntRepresentation<IntRepresentable> _declaredRepr;
 
@@ -917,7 +973,7 @@ base class _DeclaredPackedField<T> extends _PackedField<T> {
 /// the declaration exactly as every other packed column's are. Only a *read*
 /// consults the table, which is why resolving it later costs nothing.
 final class _CameraViewField extends _PackedField<CameraView> {
-  _CameraViewField(super.bits);
+  _CameraViewField(super.bits, super.initialValue);
 
   @override
   IntRepresentation<IntRepresentable> get _repr => _storage.scene.cameraViews;
@@ -931,7 +987,7 @@ final class _CameraViewField extends _PackedField<CameraView> {
 final class _PackedPointerField<T extends IntRepresentable>
     extends _DeclaredPackedField<T>
     implements PackedPointer<T> {
-  _PackedPointerField(super.bits, super.repr);
+  _PackedPointerField(super.bits, super.initialValue, super.repr);
 
   @override
   int packedAt(Entity entity) => _bits[entity];
@@ -1029,12 +1085,24 @@ final class _HeapObjectField<T> extends _Field<T>
 /// reads the value without first seeing the flag set. That keeps the
 /// `null` write to a single byte read-modify-write instead of also zeroing
 /// up to 8 bytes.
-base class _OptionalField<T> extends _Field<T?> {
+base class _OptionalField<T> extends _Field<T?> implements NestedDeclaration {
   _OptionalField(this._value, this._initialPresent);
 
   int _flagByte = 0;
   int _flagMask = 0;
   final _Field<T> _value;
+
+  /// Forwarded, because `optPacked` is the column an asset default is most
+  /// often written on and this wrapper is what a field holds - the value half
+  /// is reachable from nowhere else.
+  @override
+  ScannableField? get nestedDeclaration {
+    // Tested against the concrete column and not against
+    // [NestedDeclaration]: Dart promotes to a subtype only, and the packed
+    // column is the one value half that has anything to answer.
+    final value = _value;
+    return value is _PackedField<T> ? value.nestedDeclaration : null;
+  }
 
   @override
   void _reserve(ArchetypeStorage storage) {
@@ -2063,11 +2131,8 @@ _Field<T> _elementColumn<T>(DataElement<T> element, T? initialValue) {
     case IntRepresentation<IntRepresentable>():
       final repr = element as IntRepresentation<IntRepresentable>;
       return _DeclaredPackedField<T>(
-        _intColumn(
-          _checkBitWidth(repr),
-          false,
-          (initialValue as IntRepresentable?)?.pack() ?? 0,
-        ),
+        _intColumn(_checkBitWidth(repr), false, 0),
+        initialValue,
         repr,
       );
   }
@@ -2288,7 +2353,8 @@ abstract base class _ColumnDescriptor implements DataDescriptor {
     T initialValue,
   ) => _declared(
     _PackedPointerField<T>(
-      _intColumn(_checkBitWidth(repr), false, initialValue.pack()),
+      _intColumn(_checkBitWidth(repr), false, 0),
+      initialValue,
       repr,
     ),
   );
@@ -2300,7 +2366,8 @@ abstract base class _ColumnDescriptor implements DataDescriptor {
   ]) => _declared(
     _OptionalField<T>(
       _DeclaredPackedField<T>(
-        _intColumn(_checkBitWidth(repr), false, initialValue?.pack() ?? 0),
+        _intColumn(_checkBitWidth(repr), false, 0),
+        initialValue,
         repr,
       ),
       initialValue != null,
@@ -2316,11 +2383,8 @@ abstract base class _ColumnDescriptor implements DataDescriptor {
       _declared(
         _OptionalField<CameraView>(
           _CameraViewField(
-            _intColumn(
-              CameraViewTable.viewBitWidth,
-              false,
-              initialValue?.pack() ?? 0,
-            ),
+            _intColumn(CameraViewTable.viewBitWidth, false, 0),
+            initialValue,
           ),
           initialValue != null,
         ),
