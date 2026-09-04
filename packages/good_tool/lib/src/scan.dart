@@ -1033,9 +1033,14 @@ class FixtureScan {
 /// `_Game` in 17. [ScanSources.typesByName] keeps one of each, so a supertype
 /// walk through it would flatten one file's `_Scene` using another file's
 /// mixins and hand back a row that belongs to neither. So each library is
-/// walked against its own types laid over the `lib/` ones, and nothing from a
-/// second test file is ever in scope - which is also what Dart says, since no
-/// test file here imports another.
+/// walked against the `lib/` types and [LibraryScopes], which is its own types
+/// plus what it imports and nothing else.
+///
+/// That last part was once "its own types, since no test file imports
+/// another", and `goo2d/example` is a package of fixtures where they all do:
+/// every case extends the `DemoGame` one file declares for all of them, and
+/// each of those failed the `Scannable` test, got no collector, and killed
+/// every test in its library at the first `collectDeclarations`.
 ///
 /// [tabled] names the packages that have a `lib/` table, which is not every
 /// package read: one declaring no scanned class of its own gets no
@@ -1055,6 +1060,7 @@ FixtureScan scanFixtures({
   // walked.
   final markers = scannableAnnotationNames(sources);
   final libDirs = <String>[for (final package in packages) package.libDir];
+  final scopes = LibraryScopes(sources);
   final paths = sources.units.keys.toList()..sort();
   for (final path in paths) {
     if (!libDirs.any((lib) => p.isWithin(lib, path))) continue;
@@ -1083,12 +1089,11 @@ FixtureScan scanFixtures({
     for (final path in paths) {
       if (!roots.any((root) => p.isWithin(root, path))) continue;
       final unit = sources.units[path]!;
-      // The library's own types win. A fixture named after something in a
-      // `lib/` - and there are several - is the one this file declares.
-      final scope = <String, ScannedType>{
-        ...libTypes,
-        for (final type in unit.types) type.name: type,
-      };
+      // The library's own types win, then what it imports. A fixture named
+      // after something in a `lib/` - and there are several - is the one this
+      // file declares, and one it inherits across a library boundary is the
+      // one it imported rather than whichever a name map happened to keep.
+      final scope = <String, ScannedType>{...libTypes, ...scopes.scopeOf(path)};
       final declaredHere = <String>{for (final type in unit.types) type.name};
 
       final collectors = <FixtureCollector>[];

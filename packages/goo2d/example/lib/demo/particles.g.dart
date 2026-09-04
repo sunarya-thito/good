@@ -92,6 +92,39 @@ List<ScannableField> _collect$SwirlSystem(Object object) {
   ];
 }
 
+List<ScannableField> _collect$ParticlesState(Object object) {
+  final owner = object as ParticlesState;
+  return <ScannableField>[
+    owner.fixedTickEvent,
+    owner.tickEvent,
+    owner.gameMountedEvent,
+    owner.gameUnmountedEvent,
+    owner.appHiddenEvent,
+    owner.appShownEvent,
+    owner.entitySpawnedEvent,
+    owner.entityDespawnedEvent,
+    owner.sceneLoadedEvent,
+    owner.sceneUnloadedEvent,
+  ];
+}
+
+List<ScannableField> _collect$ParticlesGame(Object object) {
+  final owner = object as ParticlesGame;
+  return <ScannableField>[
+    owner.caseMicros,
+    owner.systemMicros,
+    owner.bestSystemMicros,
+    owner.stepMicros,
+    owner.presentMicros,
+    owner.advanceMicros,
+    owner.intervalMicros,
+    owner.renderMicros,
+    owner.stepsPerAdvance,
+    owner.spawnedCount,
+    owner.spritesDrawn,
+  ];
+}
+
 /// Every fixture this library declares, and how to read one.
 ///
 /// It carries the package's own generated table as a
@@ -106,6 +139,8 @@ const GeneratedDeclarations _particlesDeclarations =
         DeclarationCollector(Eye, _collect$Eye),
         DeclarationCollector(Galaxy, _collect$Galaxy),
         DeclarationCollector(SwirlSystem, _collect$SwirlSystem),
+        DeclarationCollector(ParticlesState, _collect$ParticlesState),
+        DeclarationCollector(ParticlesGame, _collect$ParticlesGame),
       ],
       dependencies: <GeneratedDeclarations>[
         goo2dDeclarations,

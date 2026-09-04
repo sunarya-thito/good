@@ -176,11 +176,47 @@ List<ScannableField> _collect$JointSystem(Object object) {
   ];
 }
 
+List<ScannableField> _collect$JointState(Object object) {
+  final owner = object as JointState;
+  return <ScannableField>[
+    owner.fixedTickEvent,
+    owner.tickEvent,
+    owner.gameMountedEvent,
+    owner.gameUnmountedEvent,
+    owner.appHiddenEvent,
+    owner.appShownEvent,
+    owner.entitySpawnedEvent,
+    owner.entityDespawnedEvent,
+    owner.sceneLoadedEvent,
+    owner.sceneUnloadedEvent,
+  ];
+}
+
 List<ScannableField> _collect$JointStats(Object object) {
   final owner = object as _JointStats;
   return <ScannableField>[
     owner.mountEvent,
     owner.unmountEvent,
+  ];
+}
+
+List<ScannableField> _collect$JointGame(Object object) {
+  final owner = object as JointGame;
+  return <ScannableField>[
+    owner.intactJoints,
+    owner.brokenJoints,
+    owner.peakJointForce,
+    owner.caseMicros,
+    owner.systemMicros,
+    owner.bestSystemMicros,
+    owner.stepMicros,
+    owner.presentMicros,
+    owner.advanceMicros,
+    owner.intervalMicros,
+    owner.renderMicros,
+    owner.stepsPerAdvance,
+    owner.spawnedCount,
+    owner.spritesDrawn,
   ];
 }
 
@@ -200,7 +236,9 @@ const GeneratedDeclarations _jointsDeclarations =
         DeclarationCollector(Eye, _collect$Eye),
         DeclarationCollector(JointScene, _collect$JointScene),
         DeclarationCollector(JointSystem, _collect$JointSystem),
+        DeclarationCollector(JointState, _collect$JointState),
         DeclarationCollector(_JointStats, _collect$JointStats),
+        DeclarationCollector(JointGame, _collect$JointGame),
       ],
       dependencies: <GeneratedDeclarations>[
         goo2dDeclarations,

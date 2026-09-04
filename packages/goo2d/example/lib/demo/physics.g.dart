@@ -194,6 +194,46 @@ List<ScannableField> _collect$SandboxSystem(Object object) {
   ];
 }
 
+List<ScannableField> _collect$PhysicsState(Object object) {
+  final owner = object as PhysicsState;
+  return <ScannableField>[
+    owner.fixedTickEvent,
+    owner.tickEvent,
+    owner.gameMountedEvent,
+    owner.gameUnmountedEvent,
+    owner.appHiddenEvent,
+    owner.appShownEvent,
+    owner.entitySpawnedEvent,
+    owner.entityDespawnedEvent,
+    owner.sceneLoadedEvent,
+    owner.sceneUnloadedEvent,
+  ];
+}
+
+List<ScannableField> _collect$PhysicsGame(Object object) {
+  final owner = object as PhysicsGame;
+  return <ScannableField>[
+    owner.physicsMicros,
+    owner.solverThreads,
+    owner.physicsBodies,
+    owner.escapedBodies,
+    owner.awakeBodies,
+    owner.touchingPairs,
+    owner.broadPhasePairs,
+    owner.caseMicros,
+    owner.systemMicros,
+    owner.bestSystemMicros,
+    owner.stepMicros,
+    owner.presentMicros,
+    owner.advanceMicros,
+    owner.intervalMicros,
+    owner.renderMicros,
+    owner.stepsPerAdvance,
+    owner.spawnedCount,
+    owner.spritesDrawn,
+  ];
+}
+
 /// Every fixture this library declares, and how to read one.
 ///
 /// It carries the package's own generated table as a
@@ -212,6 +252,8 @@ const GeneratedDeclarations _physicsDeclarations =
         DeclarationCollector(_PhysicsPhaseStart, _collect$PhysicsPhaseStart),
         DeclarationCollector(_PhysicsPhaseEnd, _collect$PhysicsPhaseEnd),
         DeclarationCollector(SandboxSystem, _collect$SandboxSystem),
+        DeclarationCollector(PhysicsState, _collect$PhysicsState),
+        DeclarationCollector(PhysicsGame, _collect$PhysicsGame),
       ],
       dependencies: <GeneratedDeclarations>[
         goo2dDeclarations,

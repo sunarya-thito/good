@@ -122,6 +122,36 @@ class ScannedExport {
   final Set<String> hidden;
 }
 
+/// One `import` directive, with whatever its combinators let through.
+///
+/// Held apart from [ScannedExport] because the two answer different
+/// questions. An export decides what a library *publishes*, which is what
+/// `Imports` walks to write a generated import; an import decides what a
+/// library can *name*, which is what [LibraryScopes] walks to resolve a
+/// written one.
+@immutable
+class ScannedImport {
+  const ScannedImport({
+    required this.uri,
+    required this.prefix,
+    required this.shown,
+    required this.hidden,
+  });
+
+  final String uri;
+
+  /// The `as p` name, or null.
+  ///
+  /// Recorded so a prefixed import can be left out of a scope. Its names are
+  /// reachable only as `p.Name`, and every name this scan resolves is written
+  /// bare - a supertype, a field's value type - so counting them would let a
+  /// library name something it cannot.
+  final String? prefix;
+
+  final Set<String> shown;
+  final Set<String> hidden;
+}
+
 /// One call in a field initialiser, as it is written.
 ///
 /// A chain is a list of these, head first: `Query.where().withAll(A).build()`
@@ -377,6 +407,7 @@ class ScannedUnit {
   const ScannedUnit({
     required this.path,
     required this.declaredNames,
+    required this.imports,
     required this.exports,
     required this.types,
     required this.variables,
@@ -387,6 +418,13 @@ class ScannedUnit {
 
   /// Every top-level name it declares.
   final Set<String> declaredNames;
+
+  /// Its `import` directives, in the order they are written.
+  ///
+  /// What a name written in this file is allowed to mean. `_Quad` is declared
+  /// in three files under `goo2d/test`, so which one a line naming it means is
+  /// settled by what that line's own library imported and by nothing else.
+  final List<ScannedImport> imports;
 
   final List<ScannedExport> exports;
   final List<ScannedType> types;
@@ -434,6 +472,205 @@ class ScanSources {
     }
     return byName;
   }
+}
+
+/// The file one directive URI names, or null where this walk cannot say.
+///
+/// [libDirs] maps a package name to that package's `lib/`. A `dart:` URI, a
+/// relative one climbing out of the trees read, and a `package:` URI naming
+/// something not in [libDirs] all answer null - the walk did not read them, so
+/// anything it said about the names in them would be made up.
+String? resolveDirectiveUri(
+  String uri, {
+  required String from,
+  required Map<String, String> libDirs,
+}) {
+  if (uri.startsWith('package:')) {
+    final rest = uri.substring('package:'.length);
+    final slash = rest.indexOf('/');
+    if (slash <= 0) return null;
+    final lib = libDirs[rest.substring(0, slash)];
+    if (lib == null) return null;
+    return p.normalize(p.join(lib, rest.substring(slash + 1)));
+  }
+  if (uri.contains(':')) return null;
+  return p.normalize(p.join(p.dirname(from), uri));
+}
+
+/// What one library resolves a written name to, laid over the map a pass
+/// already walks with.
+///
+/// # Two questions that look alike
+///
+/// **A name written in a file** means whatever that file declared or imported.
+/// `_Quad` is declared in three files under `goo2d/test` and one of them is a
+/// struct, so a map keyed by name alone answers with whichever came first in
+/// path order and the other two libraries get somebody else's class.
+///
+/// **A supertype two links up** is reached from a library that never imported
+/// it. `A extends B` in one file and `B extends C` in another says nothing
+/// about `C` being in scope where `A` is written, and it does not have to be.
+///
+/// So this is a layer and not an answer. Narrowing a pass to one library's
+/// imports gets the first question right and loses the top of every chain;
+/// what [over] does is keep the pass's own map underneath for the second
+/// question and let the library's own view win the first.
+///
+/// # What the library's own view holds
+///
+/// Its own types, then everything its `import` directives reach - followed
+/// through `export`, and through those libraries' own imports in turn. Wider
+/// than Dart's scope at that last step, on purpose: what the walk wants here
+/// is a superclass chain, and a fixture's crosses libraries the bottom of it
+/// never imported. Narrow where it counts - a library that reaches nothing of
+/// another gets nothing of it, so one file's `_Scene` is never flattened
+/// through another file's mixins.
+///
+/// A prefixed import contributes nothing. Its names are reachable only as
+/// `p.Name`, and every name resolved off this is written bare.
+class LibraryScopes {
+  LibraryScopes(ScanSources sources) : _units = sources.units;
+
+  final Map<String, ScannedUnit> _units;
+  final Map<String, Map<String, ScannedType>> _scopes =
+      <String, Map<String, ScannedType>>{};
+  final Map<String, Map<String, ScannedType>> _namespaces =
+      <String, Map<String, ScannedType>>{};
+  final Map<String, Set<String>> _closures = <String, Set<String>>{};
+  Map<String, String>? _libDirs;
+
+  /// The types the library at [path] can name, its own winning.
+  Map<String, ScannedType> scopeOf(String path) =>
+      _scopes.putIfAbsent(path, () {
+        final scope = <String, ScannedType>{};
+        final reached = <String>{};
+        _reach(path, scope, reached);
+        _closures[path] = reached;
+        return scope;
+      });
+
+  /// Every library the one at [path] reaches, itself included.
+  ///
+  /// The same walk [scopeOf] makes, answered as files rather than as names -
+  /// which is what says *whose* generated table a fixture part has to name. A
+  /// package's pubspec cannot say it: `goo2d` does not depend on
+  /// `goo2d_physics_box2d` and a fixture under `goo2d/example` imports it
+  /// anyway.
+  ///
+  /// Holds a path the walk resolved and did not read - a generated file left
+  /// out of it, say. It still names the package it is in, which is the only
+  /// thing asked of it here.
+  Set<String> closureOf(String path) {
+    scopeOf(path);
+    return _closures[path]!;
+  }
+
+  /// [scopeOf] over [base], for a pass that has to keep its own map.
+  ///
+  /// [base] itself comes back where the library disagrees with it about
+  /// nothing, which is every file declaring no name a second library declares
+  /// too - nearly all of them, and the reason this is not a copy per file.
+  Map<String, ScannedType> over(Map<String, ScannedType> base, String path) {
+    final scope = scopeOf(path);
+    for (final entry in scope.entries) {
+      if (identical(base[entry.key], entry.value)) continue;
+      return <String, ScannedType>{...base, ...scope};
+    }
+    return base;
+  }
+
+  void _reach(String path, Map<String, ScannedType> into, Set<String> seen) {
+    if (!seen.add(path)) return;
+    final unit = _units[path];
+    if (unit == null) return;
+    for (final entry in _namespaceOf(path).entries) {
+      into.putIfAbsent(entry.key, () => entry.value);
+    }
+    for (final import in unit.imports) {
+      if (import.prefix != null) continue;
+      final target = resolveDirectiveUri(
+        import.uri,
+        from: path,
+        libDirs: _packageLibDirs,
+      );
+      if (target == null) continue;
+      if (import.shown.isEmpty && import.hidden.isEmpty) {
+        _reach(target, into, seen);
+        continue;
+      }
+      final nested = <String, ScannedType>{};
+      _reach(target, nested, seen);
+      nested.forEach((name, type) {
+        if (import.shown.isNotEmpty && !import.shown.contains(name)) return;
+        if (import.hidden.contains(name)) return;
+        into.putIfAbsent(name, () => type);
+      });
+    }
+  }
+
+  /// What the library at [path] declares, plus what its exports let through.
+  Map<String, ScannedType> _namespaceOf(String path) =>
+      _namespaces.putIfAbsent(path, () {
+        final namespace = <String, ScannedType>{};
+        _collectExports(path, namespace, <String>{});
+        return namespace;
+      });
+
+  void _collectExports(
+    String path,
+    Map<String, ScannedType> into,
+    Set<String> seen,
+  ) {
+    if (!seen.add(path)) return;
+    final unit = _units[path];
+    if (unit == null) return;
+    for (final type in unit.types) {
+      into.putIfAbsent(type.name, () => type);
+    }
+    for (final export in unit.exports) {
+      final target = resolveDirectiveUri(
+        export.uri,
+        from: path,
+        libDirs: _packageLibDirs,
+      );
+      if (target == null) continue;
+      final nested = <String, ScannedType>{};
+      _collectExports(target, nested, seen);
+      nested.forEach((name, type) {
+        if (export.shown.isNotEmpty && !export.shown.contains(name)) return;
+        if (export.hidden.contains(name)) return;
+        into.putIfAbsent(name, () => type);
+      });
+    }
+  }
+
+  /// Every package whose `lib/` the walk read, to that directory.
+  ///
+  /// Off the pubspec beside each `lib/` a scanned file sits under, rather than
+  /// off a package list handed in: `goo2d/example` is a package of its own,
+  /// its files name each other `package:goo2d_example/...`, and it is a
+  /// fixture root rather than anything the tool generates into.
+  Map<String, String> get _packageLibDirs =>
+      _libDirs ??= _readPackageLibDirs(_units.keys);
+}
+
+Map<String, String> _readPackageLibDirs(Iterable<String> paths) {
+  final byName = <String, String>{};
+  final examined = <String>{};
+  for (final path in paths) {
+    var dir = p.dirname(path);
+    while (true) {
+      final parent = p.dirname(dir);
+      if (parent == dir) break;
+      if (p.basename(dir) == 'lib' && examined.add(dir)) {
+        final facts = readPubspecFacts(File(p.join(parent, 'pubspec.yaml')));
+        final name = facts?.name;
+        if (name != null) byName.putIfAbsent(name, () => dir);
+      }
+      dir = parent;
+    }
+  }
+  return byName;
 }
 
 // ---------------------------------------------------------------------------
@@ -524,12 +761,13 @@ ScanSources readSources(
 
 ScannedUnit _readUnit(String path, CompilationUnit unit) {
   final declaredNames = <String>{};
+  final imports = <ScannedImport>[];
   final exports = <ScannedExport>[];
   final types = <ScannedType>[];
   final variables = <ScannedField>[];
 
   for (final directive in unit.directives) {
-    if (directive is! ExportDirective) continue;
+    if (directive is! NamespaceDirective) continue;
     final uri = directive.uri.stringValue;
     if (uri == null) continue;
     final shown = <String>{};
@@ -541,7 +779,18 @@ ScannedUnit _readUnit(String path, CompilationUnit unit) {
         hidden.addAll(combinator.hiddenNames.map((name) => name.name));
       }
     }
-    exports.add(ScannedExport(uri: uri, shown: shown, hidden: hidden));
+    if (directive is ExportDirective) {
+      exports.add(ScannedExport(uri: uri, shown: shown, hidden: hidden));
+    } else if (directive is ImportDirective) {
+      imports.add(
+        ScannedImport(
+          uri: uri,
+          prefix: directive.prefix?.name,
+          shown: shown,
+          hidden: hidden,
+        ),
+      );
+    }
   }
 
   for (final declaration in unit.declarations) {
@@ -576,6 +825,7 @@ ScannedUnit _readUnit(String path, CompilationUnit unit) {
   return ScannedUnit(
     path: path,
     declaredNames: declaredNames,
+    imports: imports,
     exports: exports,
     types: types,
     variables: variables,
@@ -1748,6 +1998,7 @@ class DeclarationScan {
 /// one per user of it.
 DeclarationScan scanDeclarations(ScanSources sources) {
   final typesByName = sources.typesByName;
+  final scopes = LibraryScopes(sources);
   final declarers = <ScannedDeclarer>[];
   final refusals = <DeclarationRefusal>[];
   final unresolved = <DeclarationRefusal>[];
@@ -1758,8 +2009,15 @@ DeclarationScan scanDeclarations(ScanSources sources) {
   final paths = sources.units.keys.toList()..sort();
   for (final path in paths) {
     final unit = sources.units[path]!;
+    // What this library means by a name it writes. `_Quad` names a struct in
+    // one fixture and a plain class in two others, and a report resolving it
+    // through one map keyed by name answered with whichever came first in
+    // path order - so the declaration holding the struct was neither counted
+    // nor named anywhere. A silent undercount here is worse than a missing
+    // one: this is the report the decision to convert a package is read off.
+    final scope = scopes.over(typesByName, path);
     for (final variable in unit.variables) {
-      if (!isDeclarationField(variable, typesByName)) continue;
+      if (!isDeclarationField(variable, scope)) continue;
       refusals.add(
         DeclarationRefusal(
           owner: p.split(path).last,
@@ -1774,14 +2032,14 @@ DeclarationScan scanDeclarations(ScanSources sources) {
       );
     }
     for (final type in unit.types) {
-      if (!isSubtypeOf(type.name, scannableRoot, typesByName)) continue;
+      if (!isSubtypeOf(type.name, scannableRoot, scope)) continue;
       final declarations = <ScannedDeclaration>[];
       for (final field in type.fields) {
         // Before the declaration test, because the declaration test is what
         // cannot be answered. A field whose initialiser stopped half way is
         // reported whatever it turns out to hold: going quiet here is how a
         // declaration disappears from every list at once.
-        final resolution = resolveValueType(field, typesByName);
+        final resolution = resolveValueType(field, scope);
         if (resolution != null && resolution.problem != null) {
           unresolved.add(
             DeclarationRefusal(
@@ -1793,7 +2051,7 @@ DeclarationScan scanDeclarations(ScanSources sources) {
           );
           continue;
         }
-        if (!isDeclarationField(field, typesByName)) continue;
+        if (!isDeclarationField(field, scope)) continue;
         final valueType = resolution!.type!;
         if (field.isStatic) {
           refusals.add(
@@ -1841,7 +2099,7 @@ DeclarationScan scanDeclarations(ScanSources sources) {
           );
           continue;
         }
-        if (!isCollectedDeclarationField(field, typesByName, markers)) {
+        if (!isCollectedDeclarationField(field, scope, markers)) {
           unmarked['${type.name}.${field.name}'] =
               'a bare constructor call holds it and nothing at the line says '
               'it declares anything - `$valueType()` is spelled the way a '

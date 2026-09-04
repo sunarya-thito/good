@@ -99,6 +99,11 @@ class Imports {
   final Map<String, ScannedUnit> _units;
   final Map<String, EnginePackage> _byName;
 
+  /// Where each package the tool writes into keeps its `lib/`.
+  late final Map<String, String> _libDirs = <String, String>{
+    for (final entry in _byName.entries) entry.key: entry.value.libDir,
+  };
+
   /// Each package's entry-library namespace, walked once per package.
   final Map<String, Map<String, String>> _namespaces =
       <String, Map<String, String>>{};
@@ -195,19 +200,14 @@ class Imports {
   }
 
   /// Turns one directive URI into a path this pass may have read.
-  String? _resolveUri(String uri, {required String from}) {
-    if (uri.startsWith('dart:')) return null;
-    if (uri.startsWith('package:')) {
-      final rest = uri.substring('package:'.length);
-      final slash = rest.indexOf('/');
-      if (slash <= 0) return null;
-      final target = _byName[rest.substring(0, slash)];
-      if (target == null) return null;
-      return p.normalize(p.join(target.libDir, rest.substring(slash + 1)));
-    }
-    if (uri.contains(':')) return null;
-    return p.normalize(p.join(p.dirname(from), uri));
-  }
+  ///
+  /// Against the packages generation writes into, which is the whole of what
+  /// an entry library's namespace can be built from. `LibraryScopes` asks the
+  /// same question of a wider set - a fixture package like `goo2d/example`
+  /// counts there and never here - so the map differs and the resolution does
+  /// not.
+  String? _resolveUri(String uri, {required String from}) =>
+      resolveDirectiveUri(uri, from: from, libDirs: _libDirs);
 }
 
 /// The `dart:core` names a column's value type can be spelled with.

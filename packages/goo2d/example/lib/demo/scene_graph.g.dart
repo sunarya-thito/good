@@ -156,6 +156,39 @@ List<ScannableField> _collect$CritterSystem(Object object) {
   ];
 }
 
+List<ScannableField> _collect$SceneGraphState(Object object) {
+  final owner = object as SceneGraphState;
+  return <ScannableField>[
+    owner.fixedTickEvent,
+    owner.tickEvent,
+    owner.gameMountedEvent,
+    owner.gameUnmountedEvent,
+    owner.appHiddenEvent,
+    owner.appShownEvent,
+    owner.entitySpawnedEvent,
+    owner.entityDespawnedEvent,
+    owner.sceneLoadedEvent,
+    owner.sceneUnloadedEvent,
+  ];
+}
+
+List<ScannableField> _collect$SceneGraphGame(Object object) {
+  final owner = object as SceneGraphGame;
+  return <ScannableField>[
+    owner.caseMicros,
+    owner.systemMicros,
+    owner.bestSystemMicros,
+    owner.stepMicros,
+    owner.presentMicros,
+    owner.advanceMicros,
+    owner.intervalMicros,
+    owner.renderMicros,
+    owner.stepsPerAdvance,
+    owner.spawnedCount,
+    owner.spritesDrawn,
+  ];
+}
+
 /// Every fixture this library declares, and how to read one.
 ///
 /// It carries the package's own generated table as a
@@ -171,6 +204,8 @@ const GeneratedDeclarations _sceneGraphDeclarations =
         DeclarationCollector(Eye, _collect$Eye),
         DeclarationCollector(Swarm, _collect$Swarm),
         DeclarationCollector(CritterSystem, _collect$CritterSystem),
+        DeclarationCollector(SceneGraphState, _collect$SceneGraphState),
+        DeclarationCollector(SceneGraphGame, _collect$SceneGraphGame),
       ],
       dependencies: <GeneratedDeclarations>[
         goo2dDeclarations,

@@ -931,6 +931,226 @@ class Turret extends EntityStruct {
       );
     });
 
+    // A fixture library that imports another and subclasses across the
+    // boundary. The scope each library is walked against is its own types
+    // over the `lib/` ones, and the premise written beside it - that no test
+    // file imports another - is false of `goo2d/example`, where every case
+    // extends the `DemoGame` one file declares for all of them. The class
+    // fails the `Scannable` test, gets no collector, and every test in the
+    // library dies at the first `collectDeclarations`.
+    test('reads a fixture that extends one another library declares', () async {
+      final repo = fakeRepo(<FakePackage>[declarationKernel()]);
+      final root = p.join(repo.path, 'packages', 'good');
+      File(p.join(root, 'test', 'a_base_test.dart'))
+        ..parent.createSync(recursive: true)
+        ..writeAsStringSync('''
+import 'package:good/good.dart';
+
+class Barrel extends EntityStruct {}
+
+class Turret extends EntityStruct {
+  @sub
+  final barrel = Barrel();
+}
+''');
+      File(p.join(root, 'test', 'b_derived_test.dart'))
+        ..parent.createSync(recursive: true)
+        ..writeAsStringSync('''
+import 'package:good/good.dart';
+
+import 'a_base_test.dart';
+
+class Mortar extends Turret {}
+''');
+      final packages = repoPackages(repo);
+      final scan = scanFixtures(
+        packages: packages,
+        sources: readFixtureSources(packages, packages),
+        tabled: <String>{'good'},
+      );
+      final derived = scan.libraries.singleWhere(
+        (library) => library.path.endsWith('b_derived_test.dart'),
+      );
+      final mortar = derived.collectors.singleWhere(
+        (collector) => collector.type == 'Mortar',
+      );
+
+      // The declaration comes down the superclass, so the walk had to reach
+      // both `Turret` and the `Barrel` its field holds.
+      expect(
+        <String>[for (final field in mortar.fields) field.name],
+        <String>['barrel'],
+      );
+    });
+
+    // The other half of the same rule, and the half nothing measured. Two
+    // fixture libraries in one package declaring one name is the ordinary
+    // case here - `_Scene` is written in 23 files under `good/test` and
+    // `_Game` in 17 - and a scope wide enough to hold both flattens one
+    // file's class through the other file's mixins. Widening it to every
+    // fixture type in the package leaves the whole suite green and rewrites
+    // six committed parts: `hierarchy_test` gains `owner.hits` three times
+    // over and `query_test` loses `owner.x` and `owner.y` twice, which is a
+    // row laid out wrong rather than a row missing.
+    test('keeps two libraries declaring one name apart', () async {
+      final repo = fakeRepo(<FakePackage>[declarationKernel()]);
+      final root = p.join(repo.path, 'packages', 'good');
+      File(p.join(root, 'test', 'a_first_test.dart'))
+        ..parent.createSync(recursive: true)
+        ..writeAsStringSync('''
+import 'package:good/good.dart';
+
+class FirstBarrel extends EntityStruct {}
+
+mixin _Extras on Component {
+  @sub
+  final first = FirstBarrel();
+}
+
+class Shot extends EntityStruct with _Extras {}
+''');
+      File(p.join(root, 'test', 'b_second_test.dart'))
+        ..parent.createSync(recursive: true)
+        ..writeAsStringSync('''
+import 'package:good/good.dart';
+
+class SecondBarrel extends EntityStruct {}
+
+mixin _Extras on Component {
+  @sub
+  final second = SecondBarrel();
+}
+
+class Blast extends EntityStruct with _Extras {}
+''');
+      final packages = repoPackages(repo);
+      final scan = scanFixtures(
+        packages: packages,
+        sources: readFixtureSources(packages, packages),
+        tabled: <String>{'good'},
+      );
+
+      List<String> fieldsOf(String file, String type) {
+        final library = scan.libraries.singleWhere(
+          (library) => library.path.endsWith(file),
+        );
+        final collector = library.collectors.singleWhere(
+          (collector) => collector.type == type,
+        );
+        return <String>[for (final field in collector.fields) field.name];
+      }
+
+      // Neither library imports the other, so neither `_Extras` is in the
+      // other's scope at all - and the second one is what a name map keyed
+      // over the package would have thrown away.
+      expect(fieldsOf('a_first_test.dart', 'Shot'), <String>['first']);
+      expect(fieldsOf('b_second_test.dart', 'Blast'), <String>['second']);
+    });
+    // The same crossing written the way `goo2d/example` writes it: a package
+    // of its own under `example/`, whose files name each other by
+    // `package:` URI rather than by a relative path.
+    test('follows a package: URI between two fixture libraries', () async {
+      final repo = fakeRepo(<FakePackage>[declarationKernel()]);
+      final example = p.join(repo.path, 'packages', 'good', 'example');
+      File(p.join(example, 'pubspec.yaml'))
+        ..parent.createSync(recursive: true)
+        ..writeAsStringSync(
+          'name: good_example\n'
+          '\n'
+          'environment:\n'
+          '  sdk: ^3.12.1\n',
+        );
+      File(p.join(example, 'lib', 'base.dart'))
+        ..parent.createSync(recursive: true)
+        ..writeAsStringSync('''
+import 'package:good/good.dart';
+
+class Barrel extends EntityStruct {}
+
+class Turret extends EntityStruct {
+  @sub
+  final barrel = Barrel();
+}
+''');
+      File(p.join(example, 'lib', 'derived.dart'))
+        ..parent.createSync(recursive: true)
+        ..writeAsStringSync('''
+import 'package:good/good.dart';
+
+import 'package:good_example/base.dart';
+
+class Mortar extends Turret {}
+''');
+      final packages = repoPackages(repo);
+      final scan = scanFixtures(
+        packages: packages,
+        sources: readFixtureSources(packages, packages),
+        tabled: <String>{'good'},
+      );
+      final derived = scan.libraries.singleWhere(
+        (library) => library.path.endsWith('derived.dart'),
+      );
+      final mortar = derived.collectors.singleWhere(
+        (collector) => collector.type == 'Mortar',
+      );
+
+      expect(
+        <String>[for (final field in mortar.fields) field.name],
+        <String>['barrel'],
+      );
+    });
+
+    // `--declarations` is the report that says what still needs converting,
+    // and it resolved every written name through one map keyed by name. A
+    // fixture type whose name a second fixture library also declares lost to
+    // whichever came first in path order, so the declaration holding it was
+    // neither counted nor named - a silent undercount in the tool the
+    // decision "this package is done" is read off.
+    test('resolves a fixture name a second library also declares', () async {
+      final repo = fakeRepo(<FakePackage>[declarationKernel()]);
+      final root = p.join(repo.path, 'packages', 'good');
+      // First in path order, so this is the `_Quad` a shared name map keeps.
+      File(p.join(root, 'test', 'a_plain_test.dart'))
+        ..parent.createSync(recursive: true)
+        ..writeAsStringSync('''
+import 'package:good/good.dart';
+
+class _Quad {
+  const _Quad();
+}
+
+class Painter extends EntityStruct {
+  final hp = Field.int32(1);
+}
+''');
+      File(p.join(root, 'test', 'b_scene_test.dart'))
+        ..parent.createSync(recursive: true)
+        ..writeAsStringSync('''
+import 'package:good/good.dart';
+
+class _Quad extends EntityStruct {
+  final hp = Field.int32(1);
+}
+
+class Stage extends EntityStruct {
+  @sub
+  final quad = _Quad();
+}
+''');
+      final packages = repoPackages(repo);
+      final scan = scanDeclarations(readFixtureSources(packages, packages));
+      final stage = scan.declarers.singleWhere(
+        (declarer) => declarer.type == 'Stage',
+      );
+
+      expect(
+        <String>[
+          for (final declaration in stage.declarations) declaration.name,
+        ],
+        <String>['quad'],
+      );
+    });
+
     // A package with no scanned class in its `lib/` gets no
     // `declarations.g.dart`, so the name a fixture part would otherwise
     // depend on is written nowhere. `good_net_p2p` is that package here: its

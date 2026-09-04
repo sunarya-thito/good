@@ -29,6 +29,39 @@ List<ScannableField> _collect$OriginProbe(Object object) {
   ];
 }
 
+List<ScannableField> _collect$ProbedState(Object object) {
+  final owner = object as _ProbedState;
+  return <ScannableField>[
+    owner.fixedTickEvent,
+    owner.tickEvent,
+    owner.gameMountedEvent,
+    owner.gameUnmountedEvent,
+    owner.appHiddenEvent,
+    owner.appShownEvent,
+    owner.entitySpawnedEvent,
+    owner.entityDespawnedEvent,
+    owner.sceneLoadedEvent,
+    owner.sceneUnloadedEvent,
+  ];
+}
+
+List<ScannableField> _collect$ProbedGame(Object object) {
+  final owner = object as _ProbedGame;
+  return <ScannableField>[
+    owner.caseMicros,
+    owner.systemMicros,
+    owner.bestSystemMicros,
+    owner.stepMicros,
+    owner.presentMicros,
+    owner.advanceMicros,
+    owner.intervalMicros,
+    owner.renderMicros,
+    owner.stepsPerAdvance,
+    owner.spawnedCount,
+    owner.spritesDrawn,
+  ];
+}
+
 /// Every fixture this library declares, and how to read one.
 ///
 /// It carries the package's own generated table as a
@@ -39,6 +72,8 @@ const GeneratedDeclarations _swarmOriginFlashTestDeclarations =
       package: 'goo2d/example/test/swarm_origin_flash_test.dart',
       collectors: <DeclarationCollector>[
         DeclarationCollector(_OriginProbe, _collect$OriginProbe),
+        DeclarationCollector(_ProbedState, _collect$ProbedState),
+        DeclarationCollector(_ProbedGame, _collect$ProbedGame),
       ],
       dependencies: <GeneratedDeclarations>[
         goo2dDeclarations,
