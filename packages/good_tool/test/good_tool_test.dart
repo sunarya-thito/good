@@ -1407,6 +1407,7 @@ class Spawner<T extends EntityStruct> extends EntityStruct {
             .importFor(generatedDeclarationsType, demo)
             .imports,
         dependencies: const <EnginePackage>[],
+        regenerate: const <String>['Regenerate with `dart run good_tool`.'],
       );
       expect(
         written,

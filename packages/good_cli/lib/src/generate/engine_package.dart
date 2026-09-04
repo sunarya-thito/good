@@ -120,26 +120,37 @@ class EnginePackage {
 
   /// What this package's generated collector table is called -
   /// `goo2dDeclarations`.
-  String get declarationsName => '${_camelName}Declarations';
+  String get declarationsName => declarationsTableName(name);
 
   /// What this package's generated table is called - `goo2dComponentBits`.
   ///
   /// Derived from the package name, so it is unique across one run by
   /// construction and needs no list to keep in step.
-  String get componentBitsName => '${_camelName}ComponentBits';
+  String get componentBitsName => '${packageIdentifier(name)}ComponentBits';
+}
 
-  /// The package name as one lower-camel word - `goo2dPhysicsBox2d`.
-  ///
-  /// Derived from the package name, so every table named off it is unique
-  /// across one run by construction and needs no list to keep in step.
-  String get _camelName {
-    final words = name.split('_');
-    return <String>[
-      words.first,
-      for (final word in words.skip(1))
-        if (word.isNotEmpty) word[0].toUpperCase() + word.substring(1),
-    ].join();
-  }
+/// What [package]'s generated collector table is called.
+///
+/// A function as well as [EnginePackage.declarationsName] because two things
+/// have to agree on it and only one of them has a package to ask: the
+/// generator writes the table, and `good create` writes the
+/// `Game.declarations` override that names it. A project whose scaffold named
+/// it any other way would not compile, and the compile error would be about a
+/// generated file the person did not write.
+String declarationsTableName(String package) =>
+    '${packageIdentifier(package)}Declarations';
+
+/// A package name as one lower-camel word - `goo2dPhysicsBox2d`.
+///
+/// Derived from the package name, so every table named off it is unique across
+/// one run by construction and needs no list to keep in step.
+String packageIdentifier(String package) {
+  final words = package.split('_');
+  return <String>[
+    words.first,
+    for (final word in words.skip(1))
+      if (word.isNotEmpty) word[0].toUpperCase() + word.substring(1),
+  ].join();
 }
 
 /// One file the tool would write, and what it would hold.

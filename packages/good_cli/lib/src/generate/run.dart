@@ -5,6 +5,7 @@ import 'package:good_cli/src/command.dart';
 import 'package:good_cli/src/generate/assets.dart';
 import 'package:good_cli/src/generate/bundle.dart';
 import 'package:good_cli/src/generate/engine_dependency.dart';
+import 'package:good_cli/src/generate/project_declarations.dart';
 import 'package:good_cli/src/generate/scan.dart';
 import 'package:good_cli/src/generate/templates.dart';
 import 'package:good_cli/src/verbosable.dart';
@@ -262,6 +263,12 @@ GenerateResult runGenerate({
     for (final path in writes.keys) {
       out.printf('Would write %s\n', [path]);
     }
+    // Named without scanning for it. The path is a function of the project
+    // name and nothing else, and the scan needs a resolved project - which a
+    // dry run is entitled not to be.
+    out.printf('Would write %s\n', [
+      projectPackages(project).project.declarationsFile.path,
+    ]);
     if (Directory(p.join(project.path, legacyGeneratedDir)).existsSync()) {
       out.printf('Would move %s into %s and repoint its imports\n', [
         legacyGeneratedDir,
@@ -296,6 +303,14 @@ GenerateResult runGenerate({
   _recordBundle(project, bundle, out);
   _resolve(project, bundle, out, verbose, pubGet: pubGet);
 
+  final declarations = _declarations(
+    project,
+    out,
+    verbose,
+    command: command,
+    pubGet: pubGet,
+  );
+
   final problems = bundleProblems(
     projectDir: project,
     bundle: bundle,
@@ -316,7 +331,90 @@ GenerateResult runGenerate({
     scan.textures.length,
     scan.audio.length,
   ]);
-  return GenerateResult(bundle: bundle, fileCount: writes.length);
+  return GenerateResult(
+    bundle: bundle,
+    fileCount: writes.length + declarations,
+  );
+}
+
+/// Writes the project's own declaration collectors, and says how many files
+/// that was.
+///
+/// # Why it is here and not in the bundle package
+///
+/// A collector casts to the class it reads and names that class in a `const`
+/// table, so the table for `Player` can only live in the library that can name
+/// `Player`. The bundle depends on the project and not the other way round, so
+/// there is no spelling of this that fits in it - which is the carve-out #313
+/// makes.
+///
+/// # Why it runs after the resolve and not with the other four files
+///
+/// Because it reads the engine. `WalkgameGame extends Game2D` is a class with
+/// declarations only if `Game2D` reaches `Scannable`, and that chain lies
+/// inside `goo2d` and `good`, which are found through the project's package
+/// config. `good create` writes the engine dependency into the pubspec seconds
+/// before calling this, so before [_resolve] there is no config naming it.
+///
+/// # Why an unresolved project is skipped rather than refused
+///
+/// Only under `--no-pub-get`, which says in as many words that the resolve is
+/// somebody else's to run. Everywhere else this is a refusal, raised by
+/// [projectDeclarations] with the engine named: a project that resolves
+/// nothing and writes a table anyway is the silent failure this exists to
+/// remove.
+int _declarations(
+  Directory project,
+  VerboseOutput out,
+  VerboseOutput verbose, {
+  required String command,
+  required bool pubGet,
+}) {
+  final ProjectDeclarations declarations;
+  try {
+    declarations = projectDeclarations(project, command: command);
+  } on ArgumentError {
+    if (pubGet) rethrow;
+    out.println(
+      '--no-pub-get: this project resolves no engine package, so its '
+      'declaration collectors were not written. Generate again after a '
+      '`flutter pub get` - nothing it starts will boot until you do.',
+    );
+    return 0;
+  }
+
+  final skipped = declarations.skipped.keys.toList()..sort();
+  for (final key in skipped) {
+    // Loud rather than verbose. Each of these is a declaration that reserves
+    // no column, so it is a hole in a row of the person's own entity, and the
+    // run that writes the table is the only thing that knows where.
+    out.printf('No collector entry for %s - %s\n', [
+      key,
+      declarations.skipped[key],
+    ]);
+  }
+
+  final file = declarations.file;
+  if (file == null) {
+    // Not an error, and not silent either. A project with no game, no scene
+    // and no prefab of its own has no table to name and nothing that would
+    // import one; a project that has them and lands here is looking at the
+    // reason on the line above.
+    out.println(
+      'No class under lib/ declares anything, so no declaration table was '
+      'written.',
+    );
+    return 0;
+  }
+
+  file.file.parent.createSync(recursive: true);
+  file.file.writeAsStringSync(file.contents);
+  out.printf('Wrote %s\n', [file.file.path]);
+  verbose.printf('%s collector(s) reading %s declaration(s).\n', [
+    declarations.classes,
+    declarations.declarations,
+  ]);
+  return 1;
 }
 
 /// Moves a project off `lib/good.generated/`.

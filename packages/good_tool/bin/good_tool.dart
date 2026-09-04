@@ -318,7 +318,13 @@ Future<void> main(List<String> arguments) async {
   final files = <GeneratedFile>[
     ...accessorFiles(accessors, packages),
     ...componentBitsFiles(bits, packages, imports, known: readable),
-    ...declarationFiles(collectors, packages, imports, known: readable),
+    ...declarationFiles(
+      collectors,
+      packages,
+      imports,
+      known: readable,
+      regenerate: _regenerateWithGoodTool,
+    ),
   ];
   final absent = <EnginePackage, String>{
     for (final package in missingExports(
@@ -332,7 +338,13 @@ Future<void> main(List<String> arguments) async {
     ))
       package: package.componentBitsExport,
     for (final package in missingDeclarationExports(
-      declarationFiles(collectors, packages, imports, known: readable),
+      declarationFiles(
+        collectors,
+        packages,
+        imports,
+        known: readable,
+        regenerate: _regenerateWithGoodTool,
+      ),
       packages,
     ))
       package: package.declarationsExport,
@@ -778,3 +790,17 @@ String _displayPath(List<EnginePackage> packages, String path) {
   }
   return full;
 }
+
+/// What a file this tool writes says about getting it written again.
+///
+/// Verbatim what the committed files carry, and it says two things a project's
+/// copy of the same file does not: run it from `packages/good_tool`, and
+/// commit the result. Those hold because these files ship inside published
+/// packages - `good generate` writes the same shape into a project and neither
+/// sentence is true there. See `emitDeclarations`.
+const List<String> _regenerateWithGoodTool = <String>[
+  'Regenerate with `dart run good_tool` from',
+  'packages/good_tool, and commit what changes.',
+  '`dart run good_tool --check` is what CI runs; it fails if',
+  'this file is not what the generator would write.',
+];

@@ -1,4 +1,5 @@
 import 'package:good_cli/src/generate/bundle.dart';
+import 'package:good_cli/src/generate/engine_package.dart';
 import 'package:yaml/yaml.dart';
 
 /// Which engine package a new project is built against.
@@ -62,8 +63,8 @@ Map<String, String> scaffoldFiles({
         ? _main3D(projectName, className, gameClass, package)
         : _main2D(projectName, className, gameClass, package),
     'lib/game/$gameFile.dart': engine == GoodEngine.threeD
-        ? _game3D(className, gameClass, package)
-        : _game2D(className, gameClass, package),
+        ? _game3D(className, gameClass, package, projectName)
+        : _game2D(className, gameClass, package, projectName),
     'lib/game/scenes/main_scene.dart': engine == GoodEngine.threeD
         ? _scene3D(gameClass, gameFile, package)
         : _scene2D(package),
@@ -251,6 +252,41 @@ String _packedGitkeep() => '''
 ///
 /// Avoids `demo_game_game.dart` when the project is already called
 /// `demo_game` - a doubled suffix reads like a mistake because it is one.
+/// The `Game.declarations` override, which is what makes a game boot at all.
+///
+/// # Why every project needs this and no project can be given it by the engine
+///
+/// A declaration is a field holding its own value, so the only record of what
+/// a class declared is the fields it holds - and a running program cannot ask
+/// an object what fields it has. The list is read out of the source by
+/// `good generate` and written into `lib/src/declarations.g.dart`. The classes
+/// in it are this project's own: its game, its state, its scenes and its
+/// prefabs. No table any engine package ships knows those names.
+///
+/// # Why a getter and not a field or a constructor argument
+///
+/// `Game.start` spawns the simulation isolate, and `Isolate.spawn` deep-copies
+/// the `Game` rather than re-running its constructor - so anything a
+/// constructor installed is not installed on the far side. A getter is code,
+/// and the copy re-evaluates it there. Overriding this is the only route that
+/// survives the spawn.
+String _declarationsOverride(String projectName) =>
+    '''
+  /// What every class in this project declares, read out of the source by
+  /// `good generate`.
+  ///
+  /// The table names the engine packages' own as its dependencies, so this
+  /// one line covers the whole game.
+  ///
+  /// A getter rather than a field because `Game.start` spawns an isolate, and
+  /// the copy sent there runs no constructor. A getter is code, so it is
+  /// re-evaluated on the far side; anything a constructor had installed is
+  /// not.
+  @override
+  List<GeneratedDeclarations> get declarations =>
+      const <GeneratedDeclarations>[${declarationsTableName(projectName)}];
+''';
+
 String _gameFile(String projectName) =>
     projectName.endsWith('_game') ? projectName : '${projectName}_game';
 
@@ -281,15 +317,24 @@ String _mainShell(
 }) =>
     '''
 import 'package:flutter/material.dart';
-${imports}import 'package:$package/$package.dart';
+${imports}import 'package:${defaultBundleName(projectName)}/good.dart';
+import 'package:$package/$package.dart';
 
 import 'game/${_gameFile(projectName)}.dart';
 
-void main() {
+Future<void> main() async {
   // `ensureInitialized` before anything touches the engine: good allocates
   // native memory and decodes assets through Flutter, both of which need the
   // binding up.
   WidgetsFlutterBinding.ensureInitialized();
+  // Mounts the asset pack a release build ships, then checks that every asset
+  // this build declares is actually there - a manifest lookup and at most a
+  // stat, never a decode. In a development build the pack is empty and
+  // nothing is mounted, which is what makes assets resolve loose.
+  //
+  // Nothing else mounts it. Without this line a release build finds every
+  // packed asset missing, one at a time, in the middle of play.
+  await ensureGameReady();
   runApp(const ${className}App());
 }
 
@@ -471,15 +516,22 @@ class _NoRendererYetState extends State<_NoRendererYet>
 ''',
 );
 
-String _game2D(String className, String gameClass, String package) =>
+String _game2D(
+  String className,
+  String gameClass,
+  String package,
+  String projectName,
+) =>
     '''
 import 'package:$package/$package.dart';
 
+import '../src/declarations.g.dart';
 import 'scenes/main_scene.dart';
 
 /// The **main isolate** half: what the game *is*. Declarations live here -
 /// systems, buffers, cameras - and no simulation runs on this side.
 class $gameClass extends Game2D {
+${_declarationsOverride(projectName)}
   @override
   GameState2D<$gameClass> createState() => ${className}State();
 }
@@ -495,10 +547,16 @@ class ${className}State extends GameState2D<$gameClass> {
 }
 ''';
 
-String _game3D(String className, String gameClass, String package) =>
+String _game3D(
+  String className,
+  String gameClass,
+  String package,
+  String projectName,
+) =>
     '''
 import 'package:$package/$package.dart';
 
+import '../src/declarations.g.dart';
 import 'scenes/main_scene.dart';
 import 'systems/spin_system.dart';
 
@@ -510,6 +568,7 @@ import 'systems/spin_system.dart';
 /// at, and `goo3d` has no renderer yet (issue #43). Everything a 3D game
 /// declares, it declares here by hand - which is two overrides, both below.
 class $gameClass extends Game {
+${_declarationsOverride(projectName)}
   /// The view `main.dart` shows, and the one the camera entity in
   /// `MainScene` is pointed at.
   ///
@@ -733,7 +792,12 @@ import '../prefabs/player.dart';
 /// real; the only missing step is something that turns the result into pixels
 /// (issue #43).
 class SpinSystem extends GameSystem with FixedTickable {
-  final _players = Query.all(Transform3D, Player);
+  /// Public, and it has to be: a declaration is read back off a
+  /// constructed instance by a generated collector, that collector is
+  /// a different library, and Dart privacy is per library. A private
+  /// query reaches no collector, so nothing resolves the component
+  /// bits it named and the first fixed tick fails an assertion.
+  final players = Query.all(Transform3D, Player);
 
   double _elapsed = 0;
 
@@ -746,7 +810,7 @@ class SpinSystem extends GameSystem with FixedTickable {
   @override
   void onFixedUpdate() {
     _elapsed += state.game.fixedTimeStep.inMicroseconds / 1000000.0;
-    for (final group in _players.groups()) {
+    for (final group in players.groups()) {
       final player = group<Player>();
       for (final entity in group) {
         // Euler angles are an input format, not storage: this writes the four
