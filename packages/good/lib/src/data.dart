@@ -289,10 +289,10 @@ abstract class DataDescriptor {
   /// SpriteFrames(), ...)` - and that works because the representation is a
   /// value the writer of the line already has. A [CameraViewTable] is not:
   /// there is one per game, it reaches a component through the scene, and a
-  /// field initialiser has no scene. `late final DataPointer<CameraView?>
-  /// cameraView;` filled in from `describeStruct` was the shape that fell out
-  /// of that, and it is a double declaration - the thing this engine's
-  /// declaration rules forbid.
+  /// field initialiser has no scene.
+  /// `late final DataPointer<CameraView?> cameraView;` filled in from
+  /// `describeStruct` was the shape that fell out of that, and it is a
+  /// double declaration - the thing this engine's declaration rules forbid.
   ///
   /// Nothing about the table is a declaration input. It contributes no width
   /// ([CameraViewTable.viewBitWidth] is 8, a constant on the class, not a
