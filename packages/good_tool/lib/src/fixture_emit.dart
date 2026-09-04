@@ -37,6 +37,14 @@ List<GeneratedFile> fixtureFiles(FixtureScan scan) => <GeneratedFile>[
 /// library's `main` calls [installName], which is one line at the top of a
 /// function that is already there, and the failure when it is missing names
 /// the class it could not collect.
+///
+/// A library with no `main` gets no installer, only the table. It is entered
+/// by constructing a game, and a constructor cannot install anything the
+/// game isolate will see: `Isolate.spawn` sends the game as a deep copy, so
+/// nothing but `Game.declarations` - a getter, re-evaluated over there - is
+/// read on the copy that boots. Such a library names [FixtureLibrary.tableName]
+/// from its own getter, and an installer beside it would be a function nothing
+/// can correctly call.
 String emitFixtureDeclarations(FixtureLibrary library) {
   final buffer = StringBuffer()
     ..writeln('// GENERATED - do not edit.')
@@ -182,7 +190,10 @@ String emitFixtureDeclarations(FixtureLibrary library) {
   }
   buffer
     ..writeln('      ],')
-    ..writeln('    );')
+    ..writeln('    );');
+  // Only where something can call it - see the doc above.
+  if (!library.hasMain) return buffer.toString();
+  buffer
     ..writeln()
     ..writeln('/// Installs [${library.tableName}].')
     ..writeln('///')
@@ -198,7 +209,7 @@ String emitFixtureDeclarations(FixtureLibrary library) {
   return buffer.toString();
 }
 
-/// What a fixture library calls to install its table.
+/// What a fixture library with a `main` calls to install its table.
 ///
 /// The same name in every one of them, so the line at the top of a `main`
 /// reads identically wherever it is - and private, because a part shares the

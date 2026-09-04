@@ -909,6 +909,7 @@ class FixtureLibrary {
     required this.path,
     required this.collectors,
     required this.tables,
+    required this.hasMain,
   });
 
   /// The package the library belongs to - where its table's key comes from.
@@ -931,6 +932,16 @@ class FixtureLibrary {
 
   /// The library's own file, normalised and absolute.
   final String path;
+
+  /// Whether the library declares a top-level `main`.
+  ///
+  /// What decides whether the part carries an installer. A `main` is the only
+  /// thing that ever called one: a library entered any other way - a game
+  /// library, entered by constructing the game - installs its table through
+  /// `Game.declarations`, which is a getter and so survives the deep copy
+  /// `Isolate.spawn` makes, and names the table itself. Emitting an installer
+  /// there writes a function nothing can correctly call.
+  final bool hasMain;
 
   /// Its collectors, in the order the classes are declared in.
   final List<FixtureCollector> collectors;
@@ -1174,6 +1185,7 @@ FixtureScan scanFixtures({
           path: path,
           collectors: collectors,
           tables: tables,
+          hasMain: unit.declaredNames.contains('main'),
         ),
       );
     }

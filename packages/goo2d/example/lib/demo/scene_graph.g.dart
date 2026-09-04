@@ -211,13 +211,3 @@ const GeneratedDeclarations _sceneGraphDeclarations =
         goo2dDeclarations,
       ],
     );
-
-/// Installs [_sceneGraphDeclarations].
-///
-/// Called first thing in this library's `main`. Nothing runs
-/// on import in Dart, so a table that is never installed is a
-/// table nothing has - and the first registration says so by
-/// naming the class it could not collect.
-void _installDeclarations() => DeclarationRegistry.installGenerated(
-  const <GeneratedDeclarations>[_sceneGraphDeclarations],
-);
