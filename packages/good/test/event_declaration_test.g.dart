@@ -78,6 +78,13 @@ List<ScannableField> _collect$FieldGame(Object object) {
   return const <ScannableField>[];
 }
 
+List<ScannableField> _collect$Pair(Object object) {
+  final owner = object as _Pair;
+  return <ScannableField>[
+    owner.eager,
+  ];
+}
+
 /// Every fixture this library declares, and how to read one.
 ///
 /// It carries the package's own generated table as a
@@ -93,6 +100,7 @@ const GeneratedDeclarations _eventDeclarationTestDeclarations =
         DeclarationCollector(_NotedScene, _collect$NotedScene),
         DeclarationCollector(_FieldState, _collect$FieldState),
         DeclarationCollector(_FieldGame, _collect$FieldGame),
+        DeclarationCollector(_Pair, _collect$Pair),
       ],
       dependencies: <GeneratedDeclarations>[
         goodDeclarations,

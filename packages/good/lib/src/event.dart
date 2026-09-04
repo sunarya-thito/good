@@ -484,7 +484,7 @@ abstract class ListenerCollector {
 /// itself, by overriding [collectListeners] and offering what it composes.
 /// That is what makes an event declared high up reach everything below it
 /// while one declared on a prefab reaches only that prefab.
-mixin EventBus on GameListener {
+mixin EventBus on GameListener implements Scannable {
   /// Whether `EventBinder.bind` has run over this owner - see its note on why
   /// a second pass has to throw rather than quietly double every list.
   bool _didBind = false;

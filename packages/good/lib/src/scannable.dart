@@ -39,8 +39,13 @@ import 'package:meta/meta.dart';
 ///
 /// Implemented by the roots a user builds on - `Component` (so every
 /// component mixin and every `EntityStruct` carries it), `SceneStruct`,
-/// `GameState`, `GameSystem`, `Game` and `TimelineStruct` - never by a user
-/// directly.
+/// `GameState`, `GameSystem`, `Game`, `TimelineStruct` and `EventBus` -
+/// never by a user directly.
+///
+/// `EventBus` is here because `EventBinder.bind` calls `collectDeclarations`
+/// on one, so a class mixing it in is read off at boot whether or not it is
+/// any of the others. A listener that is not an `EventBus` never reaches that
+/// call, which is why the marker sits on the mixin and not on `GameListener`.
 ///
 /// It says nothing about *what* the class declares. That is the field's type,
 /// which is [ScannableField]'s question.
