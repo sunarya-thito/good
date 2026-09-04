@@ -1,29 +1,8 @@
-import 'dart:io';
-
-import 'package:good_tool/src/engine_packages.dart';
 import 'package:good_tool/src/scan.dart';
-import 'package:meta/meta.dart';
 
-/// One file the tool would write, and what it would hold.
-@immutable
-class GeneratedFile {
-  const GeneratedFile({required this.file, required this.contents});
+// ignore: implementation_imports
+import 'package:good_cli/src/generate/engine_package.dart';
 
-  final File file;
-  final String contents;
-
-  /// Whether what is on disk already matches [contents].
-  ///
-  /// Read as bytes and compared as text, so a checkout that normalised line
-  /// endings does not read as a stale file. Git is configured to write CRLF in
-  /// this repository's working copies, and `--check` comparing raw bytes would
-  /// then fail on every file on Windows and pass on Linux.
-  bool get isCurrent =>
-      file.existsSync() &&
-      _normalise(file.readAsStringSync()) == _normalise(contents);
-
-  static String _normalise(String text) => text.replaceAll('\r\n', '\n');
-}
 
 /// The files [scan] would have this repository carry.
 ///

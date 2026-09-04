@@ -17,10 +17,11 @@ import 'package:analyzer/dart/analysis/utilities.dart';
 import 'package:analyzer/dart/ast/ast.dart';
 import 'package:analyzer/dart/ast/token.dart';
 import 'package:analyzer/dart/ast/visitor.dart';
-import 'package:good_tool/src/engine_packages.dart';
 import 'package:meta/meta.dart';
 import 'package:path/path.dart' as p;
 import 'package:pub_semver/pub_semver.dart';
+// ignore: implementation_imports
+import 'package:good_cli/src/generate/engine_package.dart';
 
 /// One `[Reference]` in a doc comment whose name is written nowhere.
 @immutable

@@ -1,7 +1,11 @@
-import 'package:good_tool/src/accessor_emit.dart';
-import 'package:good_tool/src/engine_packages.dart';
-import 'package:good_tool/src/imports.dart';
-import 'package:good_tool/src/scan.dart';
+// Beside the scan that feeds it, for the reason `declaration_collectors.dart`
+// gives: this file is written for each engine package by the repository's own
+// generator and for a user's project by `good generate`, and one artifact
+// takes one emitter.
+
+import 'package:good_cli/src/generate/declaration_collectors.dart';
+import 'package:good_cli/src/generate/engine_package.dart';
+import 'package:good_cli/src/generate/imports.dart';
 
 /// The files [scan] would have this repository carry.
 ///
@@ -13,8 +17,10 @@ import 'package:good_tool/src/scan.dart';
 /// for why an empty entry has to be written.
 ///
 /// [known] is every package the scan read, where [packages] is the subset
-/// being written into - the same split [componentBitsFiles] makes, and for the
-/// same reason (#305).
+/// being written into - the same split the component-bit emitter makes, and
+/// for the same reason (#305). It is what lets a project's table name
+/// `goo2dDeclarations` as a dependency without generating into a copy of
+/// `goo2d` in a pub cache.
 List<GeneratedFile> declarationFiles(
   DeclarationCollectorScan scan,
   List<EnginePackage> packages,

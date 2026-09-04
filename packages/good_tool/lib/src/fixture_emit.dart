@@ -1,7 +1,10 @@
 import 'package:path/path.dart' as p;
 
-import 'package:good_tool/src/accessor_emit.dart';
 import 'package:good_tool/src/scan.dart';
+// ignore: implementation_imports
+import 'package:good_cli/src/generate/engine_package.dart';
+// ignore: implementation_imports
+import 'package:good_cli/src/generate/declaration_collectors.dart';
 
 /// A part beside every test or example library that declares a fixture.
 ///
