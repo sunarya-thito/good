@@ -46,17 +46,12 @@ class _Scene extends SceneStruct {
 
   _Scene();
 
-  late final _Node node;
-  late final _Leaf leaf;
-  late final _Plain plain;
-
-  @override
-  void describeScene(SceneDescriptor descriptor) {
-    super.describeScene(descriptor);
-    node = descriptor.has(_Node.new);
-    leaf = descriptor.has(_Leaf.new);
-    plain = descriptor.has(_Plain.new);
-  }
+  @sub
+  final node = _Node();
+  @sub
+  final leaf = _Leaf();
+  @sub
+  final plain = _Plain();
 }
 
 /// Spawns a parent and a child from *inside* the fixed tick, once, on the

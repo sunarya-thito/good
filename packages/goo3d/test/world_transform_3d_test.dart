@@ -48,19 +48,14 @@ class _Scene extends SceneStruct {
 
   _Scene();
 
-  late final _Node node;
-  late final _Leaf leaf;
-  late final _Group group;
-  late final _Prop prop;
-
-  @override
-  void describeScene(SceneDescriptor descriptor) {
-    super.describeScene(descriptor);
-    node = descriptor.has(_Node.new);
-    leaf = descriptor.has(_Leaf.new);
-    group = descriptor.has(_Group.new);
-    prop = descriptor.has(_Prop.new);
-  }
+  @sub
+  final node = _Node();
+  @sub
+  final leaf = _Leaf();
+  @sub
+  final group = _Group();
+  @sub
+  final prop = _Prop();
 }
 
 /// Spawns from inside a tick, as a real game does - before
