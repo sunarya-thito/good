@@ -35,6 +35,10 @@ dependencies:
   flutter:
     sdk: flutter
 
+good:
+  assets:
+    - assets/
+
 flutter:
   uses-material-design: true
 
@@ -298,7 +302,12 @@ void main() {
     });
 
     test('refuses a recorded name that is not a package name', () {
-      final project = _project('$_pubspec\ngood:\n  bundle: Demo Bundle\n');
+      // Into the one `good:` section the fixture already has: a second
+      // top-level key of the same name is a pubspec nothing can read, which
+      // is a different refusal from the one this test is about.
+      final project = _project(
+        _pubspec.replaceFirst('good:\n', 'good:\n  bundle: Demo Bundle\n'),
+      );
       expect(() => _generate(project), _refusesWith(contains('package name')));
     });
   });
@@ -564,7 +573,7 @@ void main() {
         '// I took the header off\n',
         reason:
             'deleting strictly by plan means the plan is the four names *and* '
-            'the header - the same rule stripLoose follows for assets',
+            'the header',
       );
     });
   });

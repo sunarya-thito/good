@@ -118,7 +118,7 @@ class _NullOutput implements VerboseOutput {
 
 const String _pubspecWithAssets = '''
 name: demo
-flutter:
+good:
   assets:
     - assets/
 ''';
@@ -207,7 +207,7 @@ void main() {
       final dir = _project(
         '''
 name: demo
-flutter:
+good:
   assets:
     - assets/
     - assets/packed/
@@ -237,7 +237,7 @@ flutter:
       final dir = _project(
         '''
 name: demo
-flutter:
+good:
   assets:
     - assets/only.png
 ''',
@@ -297,7 +297,7 @@ flutter:
       final dir = _project(
         '''
 name: demo
-flutter:
+good:
   assets:
     - assets/
     - assets/ui/
@@ -632,7 +632,7 @@ flutter:
     test('the caller can name the package instead', () {
       final dir = _project(
         'name: demo\ndependencies:\n  goo2d: ^0.1.0\n\n'
-        'flutter:\n  assets:\n    - assets/\n',
+        'good:\n  assets:\n    - assets/\n',
         <String>['assets/player.png'],
       );
       runGenerate(
@@ -806,7 +806,7 @@ flutter:
       () {
         final dir = _project(
           'name: demo\ndependencies:\n  goo2d: ^0.3.0\n\n'
-          'flutter:\n  assets:\n    - assets/\n',
+          'good:\n  assets:\n    - assets/\n',
           <String>['assets/player.png'],
         );
         resolvePackages(dir, engineGraph);
@@ -1277,7 +1277,7 @@ flutter:
       final dir = _project(
         '''
 name: demo
-flutter:
+good:
   assets:
     - assets/
     - assets/ui/
@@ -1291,7 +1291,7 @@ flutter:
       final dir = _project(
         '''
 name: demo
-flutter:
+good:
   assets:
     - assets/
     - assets/ui/button.png
@@ -1455,7 +1455,7 @@ mixin Velocity on Component {
       final dir = _project(
         '''
 name: demo
-flutter:
+good:
   assets:
     - assets/
     - assets/ui/
@@ -1791,7 +1791,7 @@ flutter:
         'dependencies:\n'
         '  demo_physics: ^0.1.0\n'
         '  goo2d: ^0.3.0\n\n'
-        'flutter:\n  assets:\n    - assets/\n',
+        'good:\n  assets:\n    - assets/\n',
         <String>['assets/player.png', 'assets/theme.ogg'],
       );
       resolvePackages(dir, <String, List<String>>{
@@ -1840,7 +1840,7 @@ flutter:
         'name: demo\n'
         'dependencies:\n'
         '  demo_physics: ^0.1.0\n\n'
-        'flutter:\n  assets:\n    - assets/\n',
+        'good:\n  assets:\n    - assets/\n',
         <String>['assets/player.png'],
       );
       resolvePackages(dir, <String, List<String>>{
@@ -1874,7 +1874,7 @@ flutter:
         'name: demo\n'
         'dependencies:\n'
         '  goo3d: ^0.1.0\n\n'
-        'flutter:\n  assets:\n    - assets/\n',
+        'good:\n  assets:\n    - assets/\n',
         <String>['assets/player.png'],
       );
       resolvePackages(dir, <String, List<String>>{

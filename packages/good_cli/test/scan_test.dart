@@ -811,7 +811,7 @@ class Barrel extends EntityStruct {}
   group('scanScenes', () {
     const String pubspec = '''
 name: demo
-flutter:
+good:
   assets:
     - assets/
 ''';

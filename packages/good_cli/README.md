@@ -36,9 +36,9 @@ good build windows            # also: linux, android, ios
 ```
 
 `good build` runs the pipeline first, so the release bundle carries the packed
-chunks. It carries the loose copies as well, unless the project sets
-`strip-originals: true` under `good: assets:` - which also stops `Image.asset`
-resolving those paths.
+chunks. What else it carries is what `flutter: assets:` says: that list and
+`good: assets:` are read separately, so a file good packs is not thereby handed
+to Flutter's bundler.
 
 ## Next
 

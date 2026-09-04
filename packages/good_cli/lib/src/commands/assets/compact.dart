@@ -4,7 +4,6 @@ import 'package:good_cli/src/assets/compact.dart' as impl;
 import 'package:good_cli/src/assets/ffmpeg.dart';
 import 'package:good_cli/src/command.dart';
 import 'package:good_cli/src/config.dart';
-import 'package:good_cli/src/generate/assets.dart';
 import 'package:good_cli/src/parsers.dart';
 import 'package:good_cli/src/verbosable.dart';
 
@@ -20,8 +19,8 @@ import 'package:good_cli/src/verbosable.dart';
 ///
 /// # Why development uses the output too
 ///
-/// The output directory is what `flutter: assets:` lists, so `flutter run` and
-/// a shipped build load byte-identical files. The alternative - development
+/// The output directory is what both asset lists name, so `flutter run` and a
+/// shipped build load byte-identical files. The alternative - development
 /// loads the source art, release loads the converted art - means every format
 /// bug appears for the first time in a release build, which is the worst place
 /// to find one.
@@ -162,7 +161,7 @@ class CompactCommand extends Command with Verbose {
     GoodConfig config,
     impl.CompactPlan plan,
   ) {
-    final declared = declaredAssetEntries(project).toSet();
+    final declared = <String>{for (final entry in config.assets) entry.path};
     final needed = <String>{};
     for (final step in plan.steps) {
       final slash = step.output.lastIndexOf('/');
@@ -178,8 +177,8 @@ class CompactCommand extends Command with Verbose {
       ..println('')
       ..println(
         'These directories now hold assets but are not listed under '
-        '`flutter: assets:` in pubspec.yaml, so Flutter will not bundle them '
-        'and `good generate` will not see them:',
+        '`good: assets:` in pubspec.yaml, so `good generate` will not see '
+        'them and nothing will pack them:',
       );
     for (final dir in missing) {
       info.printf('  - %s\n', [dir]);

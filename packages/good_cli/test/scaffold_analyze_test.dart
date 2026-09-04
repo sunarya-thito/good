@@ -237,7 +237,7 @@ ${imports.map((String p) => '  $p: any\n').join()}
 dev_dependencies:
   flutter_lints: any
 
-flutter:
+good:
   assets:
     - assets/
 ''');
@@ -350,7 +350,7 @@ dependencies:
 dev_dependencies:
   flutter_lints: any
 
-flutter:
+good:
   assets:
     - assets/
 ''');
