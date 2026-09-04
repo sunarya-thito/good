@@ -1037,16 +1037,74 @@ ScanSources readFixtureSources(
   );
 }
 
+/// A supertype a fixture is built on that this run read no source for.
+///
+/// A fixture's supertype chain is not closed by the pubspec of the package
+/// it lives in, and that is what separates this from every other name the
+/// walk fails to resolve. `goo2d/example` imports `goo2d_physics_box2d` and
+/// `goo2d` does not depend on it - the dependency runs the other way - so
+/// widening a run to the packages its targets depend on, which is what
+/// `enginePackages` does, never reaches it. A class in a `lib/` has no such
+/// gap: everything above it is named by that package's own pubspec, and
+/// those are all read.
+///
+/// Reported and not swallowed, because what the walk hands back on a name it
+/// cannot follow is a shorter list, and a collector's list is the order every
+/// row of that archetype is laid out in. There is no symptom: the file is
+/// written, the run exits 0, and the next narrow `--check` reads the short
+/// row as current.
+@immutable
+class UnreachableSupertype {
+  const UnreachableSupertype({
+    required this.type,
+    required this.path,
+    required this.supertype,
+    required this.packages,
+  });
+
+  /// The fixture whose row it would have been part of - `Anchor`.
+  final String type;
+
+  /// The library declaring [type], normalised and absolute.
+  final String path;
+
+  /// The name in an `extends` or `with` clause above [type] that nothing read
+  /// declares - `RigidBody2D`.
+  final String supertype;
+
+  /// Every package [path]'s imports reach that this run read no `lib/` for,
+  /// sorted.
+  ///
+  /// Where the name would have come from, as far as anything here can say. An
+  /// import carries no promise about which of its names a line meant, so this
+  /// is a list to act on rather than an answer - and it is the list somebody
+  /// staring at an unresolved identifier needs, because what they have to do
+  /// is name a package to `--dir`.
+  final List<String> packages;
+}
+
 /// Every fixture library one run would write a part for.
 @immutable
 class FixtureScan {
-  const FixtureScan({required this.libraries, required this.collectorCount});
+  const FixtureScan({
+    required this.libraries,
+    required this.collectorCount,
+    required this.unreachable,
+  });
 
   /// The libraries, sorted by path.
   final List<FixtureLibrary> libraries;
 
   /// How many collectors they hold between them.
   final int collectorCount;
+
+  /// Every supertype a fixture is built on that this run read no source for.
+  ///
+  /// The caller stops on it - see [UnreachableSupertype]. Reported here rather
+  /// than thrown for the reason the whole of this file states: a caller that
+  /// only wants the counts can have them without a process exiting underneath
+  /// it.
+  final List<UnreachableSupertype> unreachable;
 }
 
 /// Every class declared under a package's `test/` or `example/` that a
@@ -1107,6 +1165,7 @@ FixtureScan scanFixtures({
   }
 
   final libraries = <FixtureLibrary>[];
+  final unreachable = <UnreachableSupertype>[];
   var collectorCount = 0;
   for (final package in packages) {
     final roots = <String>[
@@ -1146,6 +1205,28 @@ FixtureScan scanFixtures({
       for (final type in unit.types) {
         if (type.isAbstract) continue;
         if (!isSubtypeOf(type.name, scannableRoot, scope)) continue;
+        // The same chain the flattening walks and no other clause, so what
+        // is named here is exactly what would have gone missing from the row.
+        // Asked only of a class a collector is written for, which is what
+        // keeps it from refusing everything: such a class's construction
+        // chain bottoms out in a `Scannable` root, those are declared in
+        // `good`, and every run reads `good`. Measured - each package in this
+        // repository scanned on its own reports nothing here, except `goo2d`,
+        // which reports `RigidBody2D`.
+        final missing = <String>{...unresolvedSupertypes(type, scope)};
+        if (missing.isNotEmpty) {
+          final unread = scopes.unreadPackagesOf(path).toList()..sort();
+          for (final name in missing) {
+            unreachable.add(
+              UnreachableSupertype(
+                type: type.name,
+                path: path,
+                supertype: name,
+                packages: unread,
+              ),
+            );
+          }
+        }
         var functionName = '_collect\$${type.name.replaceFirst('_', '')}';
         while (!taken.add(functionName)) {
           functionName = '$functionName\$';
@@ -1191,5 +1272,9 @@ FixtureScan scanFixtures({
     }
   }
   libraries.sort((a, b) => a.path.compareTo(b.path));
-  return FixtureScan(libraries: libraries, collectorCount: collectorCount);
+  return FixtureScan(
+    libraries: libraries,
+    collectorCount: collectorCount,
+    unreachable: unreachable,
+  );
 }

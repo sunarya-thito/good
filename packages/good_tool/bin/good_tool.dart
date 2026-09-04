@@ -509,6 +509,21 @@ void _tests(
     tabled: collectors.byPackage.keys.toSet(),
     known: readable,
   );
+  // Before anything is written, and before `--check` compares anything. A
+  // collector missing the columns of a supertype nothing read is a row laid
+  // out wrong, and writing it is what makes the next narrow `--check` call it
+  // current - see [UnreachableSupertype].
+  if (scan.unreachable.isNotEmpty) {
+    stderr.writeln(
+      unreachableSupertypeMessage(
+        scan,
+        (path) => _displayPath(packages, path),
+      ),
+    );
+    exitCode = 65;
+    return;
+  }
+
   final files = fixtureFiles(scan);
   final absent = missingPartDirectives(scan.libraries);
 

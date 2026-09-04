@@ -565,6 +565,36 @@ class LibraryScopes {
     return _closures[path]!;
   }
 
+  /// Every package a library in [path]'s closure imports and this walk read
+  /// no `lib/` for.
+  ///
+  /// The names a name could have come from, for a pass that has a name it
+  /// could not resolve and nothing else to say about it. It is a candidate
+  /// list and not an answer - an import carries no promise about which of
+  /// its names a line meant - but it is the list the caller is looking at,
+  /// and the alternative is reporting a bare identifier that nobody can act
+  /// on.
+  ///
+  /// A prefixed import is in it, unlike in [scopeOf]. There the question is
+  /// what a bare name may mean and a prefixed import answers nothing; here it
+  /// is which package went unread, and one imported behind a prefix went
+  /// unread just the same.
+  Set<String> unreadPackagesOf(String path) {
+    final unread = <String>{};
+    for (final file in closureOf(path)) {
+      for (final import in _units[file]?.imports ?? const <ScannedImport>[]) {
+        if (!import.uri.startsWith('package:')) continue;
+        final rest = import.uri.substring('package:'.length);
+        final slash = rest.indexOf('/');
+        if (slash <= 0) continue;
+        final name = rest.substring(0, slash);
+        if (_packageLibDirs.containsKey(name)) continue;
+        unread.add(name);
+      }
+    }
+    return unread;
+  }
+
   /// [scopeOf] over [base], for a pass that has to keep its own map.
   ///
   /// [base] itself comes back where the library disagrees with it about
@@ -2291,6 +2321,11 @@ List<ScannedDeclaration>? _ringFrom(
 /// package that was not read holds whatever it holds, and this reports what
 /// it can see rather than guessing - which is why `good_tool` reads a
 /// package's engine dependencies even when it writes into only one of them.
+/// What comes back then is a shorter list, and a shorter list is a different
+/// row rather than a smaller answer, so [unresolvedSupertypes] answers this
+/// same walk with the names that stopped it - what a caller about to write a
+/// file refuses on.
+///
 /// # What is in it that a collector does not write
 ///
 /// Every field whose *type* is a declaration, including the bare-constructor
@@ -2348,6 +2383,51 @@ List<ScannedDeclaration> flattenedDeclarations(
     }
   }
   return flattened;
+}
+
+/// Every name in [type]'s construction chain that [typesByName] does not hold.
+///
+/// The walk [flattenedDeclarations] makes, answered as the names that stopped
+/// it. That one skips a supertype it cannot resolve and hands back what it
+/// could see, so a class whose mixin is written in a package the run never
+/// read gets a shorter list, in the same order, with nothing said. That list
+/// is a row layout: the short one is not a smaller answer to the same
+/// question, it is a different archetype.
+///
+/// The same clauses and no others, which is why it is written out here rather
+/// than read off [ScannedType.supertypes]. An `implements` clause carries no
+/// fields and a mixin's `on` clause is initialised by the applying class, so
+/// neither can shorten a row and neither belongs in this list.
+///
+/// Nothing is decided here. Whether an unresolved name is a package the run
+/// should have been pointed at depends on where it was pointed, and only the
+/// caller knows that.
+List<String> unresolvedSupertypes(
+  ScannedType type,
+  Map<String, ScannedType> typesByName, {
+  Set<String>? seen,
+}) {
+  final visited = seen ?? <String>{};
+  if (!visited.add(type.name)) return const <String>[];
+  final missing = <String>[];
+  for (final mixin in type.mixins.reversed) {
+    final applied = typesByName[mixin];
+    if (applied == null) {
+      missing.add(mixin);
+      continue;
+    }
+    missing.addAll(unresolvedSupertypes(applied, typesByName, seen: visited));
+  }
+  final superclass = type.superclass;
+  if (superclass != null) {
+    final above = typesByName[superclass];
+    if (above == null) {
+      missing.add(superclass);
+    } else {
+      missing.addAll(unresolvedSupertypes(above, typesByName, seen: visited));
+    }
+  }
+  return missing;
 }
 
 /// What a run refusing over a deferred declaration says.

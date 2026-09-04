@@ -146,6 +146,81 @@ void _write(Directory repo, String path, String contents) =>
       ..parent.createSync(recursive: true)
       ..writeAsStringSync(contents);
 
+/// A repository whose example is built on a package its own pubspec does not
+/// reach.
+///
+/// `physics` depends on `goo2d` and `goo2d` does not depend on `physics`, so
+/// nothing a run over `goo2d` resolves from a pubspec reaches `RigidBody2D`.
+/// The example imports it anyway, which is what `goo2d/example` does here.
+Directory _narrowRepo() {
+  final repo = fakeRepo(<FakePackage>[
+    declarationKernel(),
+    const FakePackage(
+      'goo2d',
+      dependencies: <String>['good'],
+      files: <String, String>{
+        'goo2d.dart':
+            "export 'package:good/good.dart';\nexport 'src/transform.dart';\n",
+        'src/transform.dart': '''
+import 'package:good/good.dart';
+
+class Pivot extends EntityStruct {}
+
+mixin Transform2D on Component {
+  @sub
+  final transformPivot = Pivot();
+}
+''',
+      },
+    ),
+    const FakePackage(
+      'physics',
+      dependencies: <String>['goo2d'],
+      files: <String, String>{
+        'physics.dart': "export 'src/rigid_body.dart';\n",
+        'src/rigid_body.dart': '''
+import 'package:good/good.dart';
+
+class Bolt extends EntityStruct {}
+
+mixin RigidBody2D on Component {
+  @sub
+  final bodyBolt = Bolt();
+}
+''',
+      },
+    ),
+  ]);
+  final example = p.join(repo.path, 'packages', 'goo2d', 'example');
+  File(p.join(example, 'pubspec.yaml'))
+    ..parent.createSync(recursive: true)
+    ..writeAsStringSync(
+      'name: goo2d_example\n'
+      'publish_to: "none"\n'
+      '\n'
+      'environment:\n'
+      '  sdk: ^3.12.1\n',
+    );
+  File(p.join(example, 'lib', 'demo.dart'))
+    ..parent.createSync(recursive: true)
+    ..writeAsStringSync('''
+import 'package:goo2d/goo2d.dart';
+import 'package:physics/physics.dart';
+
+part 'demo.g.dart';
+
+class Anchor extends EntityStruct with RigidBody2D, Transform2D {
+  @sub
+  final anchorSlack = Pivot();
+}
+
+void main() {
+  _installDeclarations();
+}
+''');
+  return repo;
+}
+
 void main() {
   group('the generated file runs', () {
     test('and each property reads and writes its own column', () async {
@@ -622,6 +697,83 @@ void main() {
               'business writing into a copy of it in a pub cache',
         );
       }
+    }, timeout: const Timeout(Duration(minutes: 3)));
+
+    // A `--dir` set that is not closed under what the fixtures are built on.
+    // `goo2d` does not depend on `physics` - the dependency runs the other
+    // way - and its example imports it and mixes one of its components in, so
+    // a run naming only `goo2d` and what its pubspec reaches reads no
+    // `RigidBody2D` at all. The walk that lays out a row skips a supertype it
+    // cannot resolve, so what came of that was a collector short every
+    // column below it, written, and exit 0.
+    test('--tests refuses a fixture supertype it read no package for', () async {
+      final repo = _narrowRepo();
+
+      final result = await _tool(repo, const <String>[
+        '--tests',
+        '--dir',
+        'packages/good',
+        '--dir',
+        'packages/goo2d',
+      ]);
+
+      expect(result.exitCode, 65, reason: '${result.stdout}${result.stderr}');
+      expect(result.stderr, contains('Anchor'));
+      expect(result.stderr, contains('RigidBody2D'));
+      expect(
+        result.stderr,
+        contains('physics'),
+        reason:
+            'the name alone is not actionable - what the caller has to do is '
+            'name the package the run never read',
+      );
+      expect(
+        File(
+          p.join(
+            repo.path,
+            'packages',
+            'goo2d',
+            'example',
+            'lib',
+            'demo.g.dart',
+          ),
+        ).existsSync(),
+        isFalse,
+        reason:
+            'a short row must not reach disk - once it is committed, the next '
+            'narrow --check calls it current',
+      );
+    }, timeout: const Timeout(Duration(minutes: 3)));
+
+    // The other half of the same measurement: a run that is closed is not
+    // refused, and the row it writes holds both mixins in construction order.
+    test('--tests writes the whole row when the closure is named', () async {
+      final repo = _narrowRepo();
+
+      final result = await _tool(repo, const <String>[
+        '--tests',
+        '--dir',
+        'packages',
+      ]);
+
+      expect(result.exitCode, 0, reason: '${result.stdout}${result.stderr}');
+      expect(
+        File(
+          p.join(
+            repo.path,
+            'packages',
+            'goo2d',
+            'example',
+            'lib',
+            'demo.g.dart',
+          ),
+        ).readAsStringSync(),
+        stringContainsInOrder(<String>[
+          'owner.anchorSlack',
+          'owner.transformPivot',
+          'owner.bodyBolt',
+        ]),
+      );
     }, timeout: const Timeout(Duration(minutes: 3)));
   });
 

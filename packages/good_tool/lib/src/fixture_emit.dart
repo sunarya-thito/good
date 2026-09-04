@@ -216,6 +216,53 @@ String emitFixtureDeclarations(FixtureLibrary library) {
 /// library's privacy and nothing outside calls it.
 const String installName = '_installDeclarations';
 
+/// What a run stopping over a supertype it read no source for says.
+///
+/// [display] names files the way the caller names files, exactly as
+/// `declarationRefusalMessage`'s does.
+///
+/// The packages are named last and once, rather than beside each line: a
+/// narrow run over one package reports the same missing package for every
+/// fixture built on it, and the thing to do about all of them is one `--dir`.
+String unreachableSupertypeMessage(
+  FixtureScan scan,
+  String Function(String path) display,
+) {
+  final lines = StringBuffer()
+    ..writeln('A fixture is built on a supertype this run read no source for:')
+    ..writeln();
+  for (final missing in scan.unreachable) {
+    lines.writeln(
+      '  ${display(missing.path)}: ${missing.type} is built on '
+      '${missing.supertype}',
+    );
+  }
+  final packages = <String>{
+    for (final missing in scan.unreachable) ...missing.packages,
+  }.toList()..sort();
+  lines
+    ..writeln()
+    ..writeln(
+      packages.isEmpty
+          ? 'Nothing those libraries import went unread, so the name is '
+                'declared in no package this run was pointed at and in none '
+                'they reach. Check the spelling before widening the run.'
+          : 'Those libraries import ${packages.join(', ')}, which no --dir '
+                'named. A fixture reaches a package its own package does not '
+                'depend on - the dependency runs the other way - so widening '
+                'the run to what the targets depend on never gets there.',
+    )
+    ..writeln()
+    ..writeln(
+      'The list a collector hands back is the order every row of that '
+      'archetype is laid out in, so a supertype the walk cannot follow is not '
+      'a shorter answer to the same question - it is every column below it '
+      'gone from the row, in a file that is committed and that the next '
+      'narrow --check reads as current. Nothing is written.',
+    );
+  return lines.toString();
+}
+
 /// Every fixture library whose own file does not carry its `part` directive.
 ///
 /// Hand-written and reported rather than inserted, exactly as the barrel
