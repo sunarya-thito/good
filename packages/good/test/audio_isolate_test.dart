@@ -163,6 +163,13 @@ class _IsolateAudioGame extends Game {
   /// Written on the game isolate, read here. The only way a number gets back.
   final uploaded = Channel.int32(-1);
 
+  /// Named here as well as installed in `main`, because the two reach
+  /// different isolates: `main` runs on this one and a spawned copy reads
+  /// this getter.
+  @override
+  List<GeneratedDeclarations> get declarations =>
+      const <GeneratedDeclarations>[_audioIsolateTestDeclarations];
+
   @override
   GameState createState() => _IsolateAudioState();
 

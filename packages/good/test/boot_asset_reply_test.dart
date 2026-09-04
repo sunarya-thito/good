@@ -177,6 +177,13 @@ abstract class _BootLoadGame extends Game {
     loaders.register<_Blob>(const _BlobLoader());
   }
 
+  /// Named here as well as installed in `main`, because the two reach
+  /// different isolates: `main` runs on this one and a spawned copy reads
+  /// this getter. Both subclasses inherit it.
+  @override
+  List<GeneratedDeclarations> get declarations =>
+      const <GeneratedDeclarations>[_bootAssetReplyTestDeclarations];
+
   @override
   GameState createState() => _BootLoadState();
 }

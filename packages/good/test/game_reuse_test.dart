@@ -50,6 +50,13 @@ class _Reuse extends Game {
   @override
   Duration get fixedTimeStep => const Duration(milliseconds: 10);
 
+  /// Named here as well as installed in `main`, because the two reach
+  /// different isolates: `main` runs on this one and a spawned copy reads
+  /// this getter.
+  @override
+  List<GeneratedDeclarations> get declarations =>
+      const <GeneratedDeclarations>[_gameReuseTestDeclarations];
+
   @override
   GameState createState() => _ReuseState();
 }

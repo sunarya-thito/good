@@ -55,6 +55,16 @@ late Game run;
 // rate, and this isolate waits on tick notifications rather than spinning.
 // That is the engine's actual usage, and it runs clean.
 
+/// Named on every game in this file as well as installed in `main`,
+/// because the two reach different isolates: `main` runs on this one and a
+/// spawned copy reads the getter. Thirteen games here, so the table is named
+/// once.
+mixin _Declares on Game {
+  @override
+  List<GeneratedDeclarations> get declarations =>
+      const <GeneratedDeclarations>[_gameIsolateTestDeclarations];
+}
+
 mixin _Moving on Component {
   final x = Field.float64();
 
@@ -256,7 +266,7 @@ class _DyingState extends GameState<_DyingGame> {
   }
 }
 
-class _DyingGame extends Game {
+class _DyingGame extends Game with _Declares {
   @override
   int get pageSize => 4096;
 
@@ -288,7 +298,7 @@ class _RandomIsolateState extends GameState<_RandomIsolateGame> {
   }
 }
 
-class _RandomIsolateGame extends Game {
+class _RandomIsolateGame extends Game with _Declares {
   @override
   int get pageSize => 4096;
 
@@ -311,7 +321,7 @@ class _RandomIsolateGame extends Game {
   }
 }
 
-class _IsolateGame extends Game {
+class _IsolateGame extends Game with _Declares {
   @override
   int get pageSize => 4096;
 
@@ -388,7 +398,7 @@ class _PingState extends GameState<_PingGame> {
   }
 }
 
-class _PingGame extends Game {
+class _PingGame extends Game with _Declares {
   @override
   int get pageSize => 4096;
 
@@ -439,7 +449,7 @@ class _ChannelState extends GameState<_ChannelGame> {
   }
 }
 
-class _ChannelGame extends Game {
+class _ChannelGame extends Game with _Declares {
   @override
   int get pageSize => 4096;
 
@@ -503,7 +513,7 @@ class _InputProbeState extends GameState<_InputProbeGame> {
   }
 }
 
-class _InputProbeGame extends Game {
+class _InputProbeGame extends Game with _Declares {
   @override
   int get pageSize => 4096;
 
@@ -651,7 +661,7 @@ class _TexturedState extends GameState<_TexturedGame> {
   }
 }
 
-class _TexturedGame extends Game {
+class _TexturedGame extends Game with _Declares {
   @override
   int get pageSize => 4096;
 
@@ -740,7 +750,7 @@ class _LateState extends GameState<_LateGame> {
   }
 }
 
-class _LateGame extends Game {
+class _LateGame extends Game with _Declares {
   @override
   int get pageSize => 4096;
 
@@ -814,7 +824,7 @@ class _UnloadState extends GameState<_UnloadGame> {
   }
 }
 
-class _UnloadGame extends Game {
+class _UnloadGame extends Game with _Declares {
   @override
   int get pageSize => 4096;
 
@@ -919,7 +929,7 @@ class _AskingState extends GameState<_AskingGame> {
   }
 }
 
-class _AskingGame extends Game {
+class _AskingGame extends Game with _Declares {
   @override
   int get pageSize => 4096;
 
@@ -1040,7 +1050,7 @@ class _PausedAskState extends GameState<_PausedAskGame> {
   }
 }
 
-class _PausedAskGame extends Game {
+class _PausedAskGame extends Game with _Declares {
   @override
   int get pageSize => 4096;
 
@@ -1196,7 +1206,7 @@ class _CensusIsolateState extends GameState<_CensusIsolateGame> {
   }
 }
 
-class _CensusIsolateGame extends Game {
+class _CensusIsolateGame extends Game with _Declares {
   @override
   int get pageSize => 4096;
 
@@ -1263,7 +1273,7 @@ class _RegistrarState extends GameState<_RegistrarGame> {
   }
 }
 
-class _RegistrarGame extends Game {
+class _RegistrarGame extends Game with _Declares {
   @override
   int get pageSize => 4096;
 

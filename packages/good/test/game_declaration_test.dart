@@ -36,6 +36,13 @@ abstract class _BareGame extends Game {
   @override
   Duration get fixedTimeStep => const Duration(milliseconds: 5);
 
+  /// Named here as well as installed in `main`, because the two reach
+  /// different isolates: `main` runs on this one and a spawned copy reads
+  /// this getter. Every game here but the crossing one inherits it.
+  @override
+  List<GeneratedDeclarations> get declarations =>
+      const <GeneratedDeclarations>[_gameDeclarationTestDeclarations];
+
   @override
   GameState createState() => _BareState();
 }
@@ -132,6 +139,13 @@ class _CrossingGame extends Game {
 
   final first = Channel.int32();
   final second = Channel.int32();
+
+  /// Named here as well as installed in `main`, because the two reach
+  /// different isolates: `main` runs on this one and a spawned copy reads
+  /// this getter.
+  @override
+  List<GeneratedDeclarations> get declarations =>
+      const <GeneratedDeclarations>[_gameDeclarationTestDeclarations];
 
   @override
   GameState createState() => _CrossingState();
