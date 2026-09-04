@@ -292,9 +292,6 @@ class DamageNumber extends EntityStruct
   late final TextureAsset atlas;
 
   @override
-  int get textCapacity => 8;
-
-  @override
   void describeAssets(AssetDescriptor descriptor) {
     super.describeAssets(descriptor);
     atlas = descriptor.has(fontKey);
@@ -307,6 +304,7 @@ class DamageNumber extends EntityStruct
   @override
   void describeStruct(DataDescriptor data) {
     super.describeStruct(data);
+    textCodeUnits.length = 8;
     textCellWidth.initialValue = 8;
     textCellHeight.initialValue = 12;
   }
