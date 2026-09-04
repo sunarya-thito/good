@@ -133,12 +133,16 @@ String emitFixtureDeclarations(FixtureLibrary library) {
       )
       ..writeln('/// the engine classes a fixture is built on as well.');
   } else {
+    // Two shapes, one sentence, because the old text said only the first
+    // and the second is now reachable: `joints.dart` sits in `goo2d`, which
+    // does have a table, and names `goo2d_physics_box2d`'s because that is
+    // what it imports.
     buffer
-      ..writeln('/// This package declares no scanned class of its own, so it')
-      ..writeln('/// has no table for this one to depend on. What it carries')
-      ..writeln('/// instead are the tables of the packages it depends on, so')
-      ..writeln('/// that installing this still installs the collectors for')
-      ..writeln('/// the engine classes a fixture is built on.');
+      ..writeln('/// It carries the generated tables this library imports,')
+      ..writeln('/// so installing this installs the collectors for the')
+      ..writeln('/// engine classes a fixture is built on as well. Not this')
+      ..writeln("/// package's own: either it has none, or one of these")
+      ..writeln('/// already names it.');
   }
   buffer
     ..writeln(

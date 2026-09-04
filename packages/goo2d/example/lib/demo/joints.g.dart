@@ -222,9 +222,11 @@ List<ScannableField> _collect$JointGame(Object object) {
 
 /// Every fixture this library declares, and how to read one.
 ///
-/// It carries the package's own generated table as a
-/// dependency, so installing this installs the collectors for
-/// the engine classes a fixture is built on as well.
+/// It carries the generated tables this library imports,
+/// so installing this installs the collectors for the
+/// engine classes a fixture is built on as well. Not this
+/// package's own: either it has none, or one of these
+/// already names it.
 const GeneratedDeclarations _jointsDeclarations =
     GeneratedDeclarations(
       package: 'goo2d/example/lib/demo/joints.dart',
@@ -241,7 +243,7 @@ const GeneratedDeclarations _jointsDeclarations =
         DeclarationCollector(JointGame, _collect$JointGame),
       ],
       dependencies: <GeneratedDeclarations>[
-        goo2dDeclarations,
+        goo2dPhysicsBox2dDeclarations,
       ],
     );
 

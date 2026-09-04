@@ -63,11 +63,11 @@ List<ScannableField> _collect$ShooterState(Object object) {
 
 /// Every fixture this library declares, and how to read one.
 ///
-/// This package declares no scanned class of its own, so it
-/// has no table for this one to depend on. What it carries
-/// instead are the tables of the packages it depends on, so
-/// that installing this still installs the collectors for
-/// the engine classes a fixture is built on.
+/// It carries the generated tables this library imports,
+/// so installing this installs the collectors for the
+/// engine classes a fixture is built on as well. Not this
+/// package's own: either it has none, or one of these
+/// already names it.
 const GeneratedDeclarations _multiplayerTestDeclarations =
     GeneratedDeclarations(
       package: 'good_net_p2p/test/multiplayer_test.dart',
@@ -78,7 +78,6 @@ const GeneratedDeclarations _multiplayerTestDeclarations =
         DeclarationCollector(ShooterState, _collect$ShooterState),
       ],
       dependencies: <GeneratedDeclarations>[
-        goodDeclarations,
         goodNetDeclarations,
       ],
     );

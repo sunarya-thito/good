@@ -917,11 +917,16 @@ class FixtureLibrary {
   /// The generated tables this one depends on, so that installing it installs
   /// the collectors for the engine classes a fixture is built on.
   ///
-  /// Usually the library's own package, whose table already depends on the
-  /// packages it is built on. A package that declares no scanned class in its
-  /// `lib/` has no table at all - `good_net_p2p` is one - and naming one would
-  /// be naming something the generator never wrote, so what stands in for it
-  /// is the tables of the packages it depends on.
+  /// One per package whose `lib/` this library's own imports reach and that
+  /// has a table of its own. Read off the imports and not off a pubspec,
+  /// because the two disagree: `goo2d` does not depend on
+  /// `goo2d_physics_box2d`, and `goo2d/example/lib/demo/joints.dart` imports
+  /// it and boots a `Box2DPhysicsSystem` whose collector lives in its table.
+  ///
+  /// That is also what covers a package declaring no scanned class in its own
+  /// `lib/` - `good_net_p2p` is one, and naming a table the generator never
+  /// wrote stopped it analyzing. It has nothing of its own to reach, so it
+  /// reaches what it is built on and names those.
   final List<EnginePackage> tables;
 
   /// The library's own file, normalised and absolute.
@@ -961,6 +966,27 @@ class FixtureLibrary {
   /// table and as many of these as it has files that declare a fixture, and
   /// `DeclarationRegistry` installs a table once per key.
   String get tableKey => package.describe(file);
+}
+
+/// Whether [package] reaches [name] through its dependencies.
+///
+/// Over [available] and not over what a pubspec lists directly, because the
+/// chain is what carries a table: `goo2d_physics_box2d` names `goo2d`'s
+/// table, which names `good`'s, so reaching the first is reaching all three.
+bool _dependsOn(
+  EnginePackage package,
+  String name,
+  List<EnginePackage> available, {
+  Set<String>? seen,
+}) {
+  final visited = seen ?? <String>{};
+  if (!visited.add(package.name)) return false;
+  if (package.dependencies.contains(name)) return true;
+  for (final candidate in available) {
+    if (!package.dependencies.contains(candidate.name)) continue;
+    if (_dependsOn(candidate, name, available, seen: visited)) return true;
+  }
+  return false;
 }
 
 /// [readPackageSources] widened to the trees `--tests` reads.
@@ -1076,18 +1102,26 @@ FixtureScan scanFixtures({
       for (final root in package.fixtureRoots) root.path,
     ];
     if (roots.isEmpty) continue;
-    final tables = <EnginePackage>[
-      if (tabled.contains(package.name))
-        package
-      else
-        for (final candidate in available)
-          if (candidate.name != package.name &&
-              package.dependencies.contains(candidate.name) &&
-              tabled.contains(candidate.name))
-            candidate,
-    ];
     for (final path in paths) {
       if (!roots.any((root) => p.isWithin(root, path))) continue;
+      final reached = scopes.closureOf(path);
+      final named = <EnginePackage>[
+        for (final candidate in available)
+          if (tabled.contains(candidate.name) &&
+              reached.any((file) => p.isWithin(candidate.libDir, file)))
+            candidate,
+      ];
+      // A table already names the tables of the packages it is built on, so
+      // one reached through another is one named twice.
+      final tables = <EnginePackage>[
+        for (final candidate in named)
+          if (!named.any(
+            (other) =>
+                other.name != candidate.name &&
+                _dependsOn(other, candidate.name, available),
+          ))
+            candidate,
+      ];
       final unit = sources.units[path]!;
       // The library's own types win, then what it imports. A fixture named
       // after something in a `lib/` - and there are several - is the one this
