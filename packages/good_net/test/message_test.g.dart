@@ -123,11 +123,8 @@ List<ScannableField> _collect$FireRenamed(Object object) {
 }
 
 List<ScannableField> _collect$FireByHook(Object object) {
-  final owner = object as _FireByHook;
-  return <ScannableField>[
-    owner.angle,
-    owner.weapon,
-  ];
+  object as _FireByHook;
+  return const <ScannableField>[];
 }
 
 List<ScannableField> _collect$OneMessageState(Object object) {

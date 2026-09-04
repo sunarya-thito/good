@@ -29,15 +29,10 @@ class _Scene extends SceneStruct {
 
   _Scene();
 
-  late final _DefaultEye defaultEye;
-  late final _WideEye wideEye;
-
-  @override
-  void describeScene(SceneDescriptor descriptor) {
-    super.describeScene(descriptor);
-    defaultEye = descriptor.has(_DefaultEye.new);
-    wideEye = descriptor.has(_WideEye.new);
-  }
+  @sub
+  final defaultEye = _DefaultEye();
+  @sub
+  final wideEye = _WideEye();
 }
 
 /// The fixture's own view table - a headless scene has no `Game`, so it owns

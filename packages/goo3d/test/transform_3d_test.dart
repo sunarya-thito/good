@@ -25,15 +25,10 @@ class _Scene extends SceneStruct {
 
   _Scene();
 
-  late final _Turret turret;
-  late final _Enemy enemy;
-
-  @override
-  void describeScene(SceneDescriptor descriptor) {
-    super.describeScene(descriptor);
-    turret = descriptor.has(_Turret.new);
-    enemy = descriptor.has(_Enemy.new);
-  }
+  @sub
+  final turret = _Turret();
+  @sub
+  final enemy = _Enemy();
 }
 
 _Scene _scene() {

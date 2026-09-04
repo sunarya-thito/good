@@ -238,8 +238,13 @@ class _FireRenamed extends NetMessage<({double angle, int weapon})> {
 /// on one build and a peer on the other would disagree about the wire while
 /// the handshake said they agreed.
 class _FireByHook extends NetMessage<({double angle, int weapon})> {
-  late final ParamPointer<double> angle;
-  late final ParamPointer<int> weapon;
+  /// Nullable handles, not `late final` ones: the descriptor reserves these
+  /// params, so what the field holds is a reference to somebody else's
+  /// declaration and the nullability is what says so. A `late final` here
+  /// reads as a declaration, gets collected off a freshly constructed
+  /// message, and throws before `describeParams` has run at all.
+  ParamPointer<double>? angle;
+  ParamPointer<int>? weapon;
 
   @override
   void describeParams(ParamDescriptor descriptor) {
@@ -252,13 +257,13 @@ class _FireByHook extends NetMessage<({double angle, int weapon})> {
     ParamBuffer message,
     ({double angle, int weapon}) params,
   ) {
-    angle[message] = params.angle;
-    weapon[message] = params.weapon;
+    angle![message] = params.angle;
+    weapon![message] = params.weapon;
   }
 
   @override
   ({double angle, int weapon}) paramsFromBuffer(ParamBuffer message) =>
-      (angle: angle[message], weapon: weapon[message]);
+      (angle: angle![message], weapon: weapon![message]);
 }
 
 /// One message, declared under the id a peer agreed on.
