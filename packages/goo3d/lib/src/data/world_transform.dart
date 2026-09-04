@@ -48,32 +48,36 @@ mixin WorldTransform3D on Component {
   // never compares equal to anything, including itself) without a separate
   // "have I ever run" flag.
   //
-  // Public with `@internal` because a column has to be named to be collected,
-  // and the collector for a struct mixing this in is generated into that
-  // struct's own library. Private, these eleven reached no collector, so they
-  // were absent from the row and every read below addressed a column that was
-  // never reserved.
-  @internal
+  // Plain public, because a column has to be named to be collected and the
+  // collector for a struct mixing this in is generated into that struct's own
+  // library - which, for a mixin, is whatever package applies it. Private,
+  // these eleven reached no collector at all, so they were absent from the row
+  // and every read below addressed a column that was never reserved.
+  //
+  // `@hide` and not `@internal`: the name has to stay reachable from those
+  // other packages, and what is not wanted is the accessor property, so that
+  // is what is refused. See `Hide` in good's `scannable.dart`.
+  @hide
   final worldCachedOffsetX = Field.float64(double.nan);
-  @internal
+  @hide
   final worldCachedOffsetY = Field.float64(double.nan);
-  @internal
+  @hide
   final worldCachedOffsetZ = Field.float64(double.nan);
-  @internal
+  @hide
   final worldCachedRotationX = Field.float64(double.nan);
-  @internal
+  @hide
   final worldCachedRotationY = Field.float64(double.nan);
-  @internal
+  @hide
   final worldCachedRotationZ = Field.float64(double.nan);
-  @internal
+  @hide
   final worldCachedRotationW = Field.float64(double.nan);
-  @internal
+  @hide
   final worldCachedScaleX = Field.float64(double.nan);
-  @internal
+  @hide
   final worldCachedScaleY = Field.float64(double.nan);
-  @internal
+  @hide
   final worldCachedScaleZ = Field.float64(double.nan);
-  @internal
+  @hide
   final worldCachedParent = Field.optEntity();
 
   @override

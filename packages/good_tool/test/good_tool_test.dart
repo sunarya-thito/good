@@ -1096,15 +1096,17 @@ class _Spawner<T extends EntityStruct> extends EntityStruct {
       expect(written, isNot(contains('_is\$Enemy')));
     });
 
-    // A column made public with `@internal` so a collector in another library
-    // can read it still has to be internal on the property generated off it -
-    // otherwise the generator is what publishes it, and it publishes a setter
-    // into a change-detection cache. `@internal` on the getter alone is not
-    // enough: the analyzer answers about a getter and a setter separately, and
-    // the write is the half that matters here.
-    test('carries @internal from a column onto both halves', () async {
+    // A cache column has to stay plain public - the collector that reads it
+    // is generated into whatever package applies the mixin - and still has no
+    // business being `entity<Cached>().shut`. `@hide` is how a column says
+    // that, and the whole of what it does is that no property is written.
+    //
+    // Decorating the property instead is what this replaced, and the reason
+    // it had to be replaced is measurable: `@internal` carried onto both
+    // halves made every collector outside the declaring package a warning.
+    test('writes no property for a column marked @hide', () async {
       final repo = fakeRepo(<FakePackage>[
-        kernelPackage(),
+        declarationKernel(),
         const FakePackage(
           'demo',
           dependencies: <String>['good'],
@@ -1112,11 +1114,10 @@ class _Spawner<T extends EntityStruct> extends EntityStruct {
             'demo.dart': "export 'src/cached.dart';\n",
             'src/cached.dart': '''
 import 'package:good/good.dart';
-import 'package:meta/meta.dart';
 
 mixin Cached on Component {
   final cachedOpen = Field.float64();
-  @internal
+  @hide
   final cachedShut = Field.float64();
 }
 ''',
@@ -1128,31 +1129,20 @@ mixin Cached on Component {
       final cached = scan.extensions.singleWhere(
         (extension) => extension.component == 'Cached',
       );
+      expect(<String>[
+        for (final property in cached.properties) property.name,
+      ], <String>['open']);
+
+      // Recorded rather than dropped. A column with no property and no line
+      // anywhere saying so is the silence this whole pass exists to prevent.
       expect(
-        <String, List<String>>{
-          for (final property in cached.properties)
-            property.name: property.annotations,
-        },
-        <String, List<String>>{
-          'open': <String>[],
-          'shut': <String>['@internal'],
-        },
+        scan.skipped['Cached.cachedShut'],
+        allOf(contains('@hide'), contains('the column is reserved')),
       );
 
       final written = emitAccessors(
         <AccessorExtension>[cached],
         package: 'demo',
-      );
-      expect(written, contains("import 'package:meta/meta.dart';"));
-      expect(
-        written,
-        contains(
-          '  @internal\n'
-          '  double get shut => component.cachedShut[entity];\n'
-          '  @internal\n'
-          '  set shut(double newValue) => component.cachedShut[entity] = '
-          'newValue;',
-        ),
       );
       expect(
         written,
@@ -1162,6 +1152,13 @@ mixin Cached on Component {
           'newValue;',
         ),
       );
+      // Neither half, and no `@hide` left behind either - the marker decides
+      // what is emitted and is then finished with, so it never reaches the
+      // generated file.
+      expect(written, isNot(contains('shut')));
+      expect(written, isNot(contains('cachedShut')));
+      expect(written, isNot(contains('@hide')));
+      expect(written, isNot(contains("import 'package:meta/meta.dart';")));
     });
 
     test('has the component-bit table the generator would write', () async {

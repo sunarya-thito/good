@@ -58,7 +58,6 @@ class AccessorProperty {
     required this.name,
     required this.type,
     required this.column,
-    this.annotations = const <String>[],
   });
 
   /// What it is called on the accessor - `offsetX`.
@@ -69,31 +68,30 @@ class AccessorProperty {
 
   /// The field on the component the property reads - `transformOffsetX`.
   final String column;
-
-  /// The column's annotations that the property inherits - see
-  /// [narrowingColumnAnnotations]. Written as they were, `@` included.
-  final List<String> annotations;
 }
 
-/// The annotations a column hands down to the property generated off it.
+/// The annotations that keep a column out of the accessor API.
 ///
-/// A property is a second name for one column, so an annotation saying who
-/// may write the first has to say it about the second - otherwise the
-/// generator is what widens the audience, and it does it silently. That is
-/// what happened to `WorldTransform2D`'s six change-detection columns: they
-/// were made public with `@internal` so a collector in another library could
-/// read them, and shipped as undecorated public setters into a cache.
+/// A property is a second name for one column, and the audience for the two
+/// names is not always the same. `WorldTransform2D`'s six change-detection
+/// columns are the case: they have to be public, because the collector that
+/// reads them is generated into whatever package applies the mixin, and they
+/// have no business being `entity<WorldTransform2D>().worldCachedOffsetX`.
 ///
-/// The test for adding a name here is that leaving it off would make the
-/// property reachable where the column is not. `@override` and `@sub` fail
-/// it - neither says anything about who may name the field - and a
-/// documentation annotation fails it too.
+/// Decorating the property instead was tried and is what `@hide` replaced.
+/// `@internal` carried onto both halves made the property say the right thing
+/// and made every collector outside `goo2d` a warning - 98 of them in
+/// `goo2d/example` alone, which is what any user project looks like. The
+/// audience of a *column* cannot be narrowed at all; only the property's can,
+/// and refusing to write it is the whole of that.
+///
+/// The test for adding a name here is that the column is written for one
+/// system to read and the property would be a public setter into it.
+/// `@internal` fails it now - it narrows a name rather than withdrawing one,
+/// and on a mixin it narrows it to the wrong package.
 ///
 /// Written without the `@`, the way `annotationName` hands them back.
-const Set<String> narrowingColumnAnnotations = <String>{'internal'};
-
-/// The import a carried annotation needs in the generated file.
-const String metaImport = 'package:meta/meta.dart';
+const Set<String> narrowingColumnAnnotations = <String>{'hide'};
 
 /// One `extension Accessor$X on Accessor<X>`, and everything it needs.
 @immutable
@@ -200,7 +198,23 @@ class AccessorScan {
 /// A private column gets no property either. `Accessor$X` is generated into
 /// the package that declares the component, so a private field is reachable -
 /// but the property would be public, which makes a cache column part of the
-/// published API by accident. `WorldTransform2D` has five of them.
+/// published API by accident.
+///
+/// Nor does a column marked with one of [narrowingColumnAnnotations] - `@hide`
+/// - which is the same outcome asked for out loud by a column that has to stay
+/// public so a collector in another package can read it.
+///
+/// All three are recorded in [AccessorScan.skipped] and none of them puts a
+/// line in the generated file. That differs from `declarations.g.dart`, which
+/// writes `// X.y: private, unreachable.` in place, and the difference is what
+/// the two files are: that one lays out a row, so a declaration missing from
+/// it is missing from an ordered list somebody is reading positionally, and it
+/// is missing from where it would have been. An accessor extension is a set of
+/// independent members with no place a property would have been, and an absent
+/// one is not silent - naming it is a compile error at the call site, which is
+/// exactly the intent. Writing a comment for `@hide` and not for the other two
+/// would also make the file claim the census is complete when it is not; the
+/// census is `--verbose`, in one place, for all three.
 ///
 /// # The order everything comes out in
 ///
@@ -253,6 +267,23 @@ AccessorScan scanAccessors({
               'the package\'s API';
           continue;
         }
+        final hidden = <String>[
+          for (final annotation in field.annotations)
+            if (narrowingColumnAnnotations.contains(annotationName(annotation)))
+              '@$annotation',
+        ];
+        if (hidden.isNotEmpty) {
+          // Before the import and collision passes, not after: both of
+          // those answer a question about a property, and there is not
+          // going to be one. A hidden column reporting an unresolvable
+          // value type would be a complaint about code nothing is being
+          // asked to write.
+          skipped[key] =
+              'it is marked ${hidden.join(' ')} - the column is reserved '
+              'and collected as any other, and the accessor gets no '
+              'second name for it';
+          continue;
+        }
         final valueType = column.valueType!;
         final resolved = imports.importsFor(valueType, owner);
         if (resolved.problem != null) {
@@ -272,20 +303,9 @@ AccessorScan scanAccessors({
           );
           continue;
         }
-        final carried = <String>[
-          for (final annotation in field.annotations)
-            if (narrowingColumnAnnotations.contains(annotationName(annotation)))
-              '@$annotation',
-        ];
         needed.addAll(resolved.imports);
-        if (carried.isNotEmpty) needed.add(metaImport);
         properties.add(
-          AccessorProperty(
-            name: property,
-            type: valueType,
-            column: field.name,
-            annotations: carried,
-          ),
+          AccessorProperty(name: property, type: valueType, column: field.name),
         );
       }
       if (properties.isEmpty) continue;

@@ -117,11 +117,17 @@ FakePackage componentKernel({String name = 'good'}) => FakePackage(
 
 /// The `good` stand-in a collector fixture needs.
 ///
-/// [componentKernel] plus the three scan markers and the `@sub` const. What
-/// decides whether a field reaches a collector is read off this source - the
-/// supertype walk finds `ScannableField` above `EntityStruct`, and the const's
-/// written type is what makes `@sub` a marker - so a fixture spelling any of
-/// them differently gets a different answer with nothing hard-coded.
+/// [componentKernel] plus the three scan markers and the `@sub` and `@hide`
+/// consts. What decides whether a field reaches a collector is read off this
+/// source - the supertype walk finds `ScannableField` above `EntityStruct`,
+/// and the const's written type is what makes `@sub` a marker - so a fixture
+/// spelling any of them differently gets a different answer with nothing
+/// hard-coded.
+///
+/// `Hide` deliberately implements nothing. Implementing `ScannableAnnotation`
+/// would put `hide` in the set `isCollectedDeclarationField` tests a bare
+/// constructor against, and `@hide final spare = Barrel();` would register a
+/// child prefab - which is the fixture's job to keep honest.
 FakePackage declarationKernel({String name = 'good'}) => FakePackage(
   name,
   files: <String, String>{
@@ -147,6 +153,12 @@ class Sub implements ScannableAnnotation {
 }
 
 const Sub sub = Sub._();
+
+class Hide {
+  const Hide._();
+}
+
+const Hide hide = Hide._();
 
 class GeneratedDeclarations {
   const GeneratedDeclarations({

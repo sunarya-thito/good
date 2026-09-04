@@ -1,6 +1,5 @@
 import 'package:goo2d/goo2d.dart';
 import 'package:goo2d_ffi_box2d/goo2d_ffi_box2d.dart';
-import 'package:meta/meta.dart';
 
 /// How the physics backend treats a body.
 ///
@@ -191,11 +190,11 @@ mixin RigidBody2D on Component {
   // equals anything, including itself. The same trick, for the same reason,
   // as WorldTransform2D's own cache defaults: it removes the need for a
   // separate "have I ever synced this" flag.
-  @internal
+  @hide
   final bodySyncedX = Field.float64(double.nan);
-  @internal
+  @hide
   final bodySyncedY = Field.float64(double.nan);
-  @internal
+  @hide
   final bodySyncedAngle = Field.float64(double.nan);
 
   /// The [BodyType2D] Box2D was last told to simulate this body as, which is
@@ -217,7 +216,7 @@ mixin RigidBody2D on Component {
   /// row whose handle is still 0, and `_createBody` seeds this column through
   /// `_applyBodyType` on the way past - so by the time anything compares the
   /// two, both hold what the shim was told.
-  @internal
+  @hide
   final bodySyncedType = Field.enumOf(
     BodyType2D.values,
     BodyType2D.dynamicBody,

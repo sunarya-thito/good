@@ -27,7 +27,6 @@ import 'package:goo2d/src/data/transform.dart';
 import 'package:goo2d/src/data/world_transform.dart';
 import 'package:goo2d/src/render/text_2d.dart';
 import 'package:good/good.dart';
-import 'package:meta/meta.dart';
 
 /// Camera's columns, one property each - for code
 /// touching **one** entity.
@@ -137,66 +136,6 @@ extension Accessor$WorldTransform2D on Accessor<WorldTransform2D> {
   double get worldRotation => component.worldRotation[entity];
   set worldRotation(double newValue) =>
       component.worldRotation[entity] = newValue;
-
-  /// `worldCachedOffsetX` on this entity, from the published snapshot.
-  ///
-  /// One entity. A system walking many indexes
-  /// `component.worldCachedOffsetX` instead.
-  @internal
-  double get worldCachedOffsetX => component.worldCachedOffsetX[entity];
-  @internal
-  set worldCachedOffsetX(double newValue) =>
-      component.worldCachedOffsetX[entity] = newValue;
-
-  /// `worldCachedOffsetY` on this entity, from the published snapshot.
-  ///
-  /// One entity. A system walking many indexes
-  /// `component.worldCachedOffsetY` instead.
-  @internal
-  double get worldCachedOffsetY => component.worldCachedOffsetY[entity];
-  @internal
-  set worldCachedOffsetY(double newValue) =>
-      component.worldCachedOffsetY[entity] = newValue;
-
-  /// `worldCachedRotation` on this entity, from the published snapshot.
-  ///
-  /// One entity. A system walking many indexes
-  /// `component.worldCachedRotation` instead.
-  @internal
-  double get worldCachedRotation => component.worldCachedRotation[entity];
-  @internal
-  set worldCachedRotation(double newValue) =>
-      component.worldCachedRotation[entity] = newValue;
-
-  /// `worldCachedScaleX` on this entity, from the published snapshot.
-  ///
-  /// One entity. A system walking many indexes
-  /// `component.worldCachedScaleX` instead.
-  @internal
-  double get worldCachedScaleX => component.worldCachedScaleX[entity];
-  @internal
-  set worldCachedScaleX(double newValue) =>
-      component.worldCachedScaleX[entity] = newValue;
-
-  /// `worldCachedScaleY` on this entity, from the published snapshot.
-  ///
-  /// One entity. A system walking many indexes
-  /// `component.worldCachedScaleY` instead.
-  @internal
-  double get worldCachedScaleY => component.worldCachedScaleY[entity];
-  @internal
-  set worldCachedScaleY(double newValue) =>
-      component.worldCachedScaleY[entity] = newValue;
-
-  /// `worldCachedParent` on this entity, from the published snapshot.
-  ///
-  /// One entity. A system walking many indexes
-  /// `component.worldCachedParent` instead.
-  @internal
-  Entity? get worldCachedParent => component.worldCachedParent[entity];
-  @internal
-  set worldCachedParent(Entity? newValue) =>
-      component.worldCachedParent[entity] = newValue;
 }
 
 /// Text2D's columns, one property each - for code

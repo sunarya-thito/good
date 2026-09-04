@@ -41,22 +41,26 @@ mixin WorldTransform2D on Component {
   // sees "changed" (NaN never compares equal to anything, including
   // itself) without a separate "have I ever run" flag.
   //
-  // Public with `@internal` because a column has to be named to be collected,
-  // and the collector for a struct mixing this in is generated into that
-  // struct's own library. Private, these six reached no collector, so they
-  // were absent from the row and every read below addressed a column that was
-  // never reserved.
-  @internal
+  // Plain public, because a column has to be named to be collected and the
+  // collector for a struct mixing this in is generated into that struct's own
+  // library - which, for a mixin, is whatever package applies it. Private,
+  // these six reached no collector at all, so they were absent from the row
+  // and every read below addressed a column that was never reserved.
+  //
+  // `@hide` and not `@internal`: the name has to stay reachable from those
+  // other packages, and what is not wanted is the accessor property, so that
+  // is what is refused. See `Hide` in good's `scannable.dart`.
+  @hide
   final worldCachedOffsetX = Field.float64(double.nan);
-  @internal
+  @hide
   final worldCachedOffsetY = Field.float64(double.nan);
-  @internal
+  @hide
   final worldCachedRotation = Field.float64(double.nan);
-  @internal
+  @hide
   final worldCachedScaleX = Field.float64(double.nan);
-  @internal
+  @hide
   final worldCachedScaleY = Field.float64(double.nan);
-  @internal
+  @hide
   final worldCachedParent = Field.optEntity();
 
   @override

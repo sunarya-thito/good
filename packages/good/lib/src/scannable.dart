@@ -200,6 +200,65 @@ class Sub implements ScannableAnnotation {
 /// --verbose` names every one of them.
 const Sub sub = Sub._();
 
+/// The type of [hide]. Written `@hide`, never `@Hide()`.
+///
+/// Public for the same reason [Sub] is - the annotation is written in user
+/// code - and constructed only here, so there is one spelling of it.
+///
+/// # Why it does not implement [ScannableAnnotation]
+///
+/// That bound has one reader, and it does not mean what the name suggests.
+/// `scannableAnnotationNames` collects every implementer into the set
+/// `isCollectedDeclarationField` tests a **bare-constructor** field against,
+/// so implementing it is what makes `@sub final barrel = Barrel();` count as
+/// a declaration. `@hide` says nothing about whether a field declares
+/// anything, and with the bound `@hide final spare = Turret();` would quietly
+/// register a child prefab. It is also never written into generated output,
+/// which is the condition [ScannableAnnotation]'s own doc states.
+class Hide {
+  const Hide._();
+}
+
+/// Says the column it is written on gets no property on the accessor.
+///
+/// ```dart
+/// mixin WorldTransform2D on Component {
+///   final worldX = Field.float64();                    // entity<…>().worldX
+///   @hide final worldCachedOffsetX = Field.float64();  // no property at all
+/// }
+/// ```
+///
+/// The column is reserved in the row and read back by a collector exactly as
+/// any other; what goes away is the second name for it. So a change-detection
+/// cache stays reachable to the system that owns it and never becomes
+/// `entity<WorldTransform2D>().worldCachedOffsetX`.
+///
+/// # Why the word is `hide`
+///
+/// `good.dart` writes `export 'src/event.dart' hide EventBinder;` to keep a
+/// name out of the published API. This keeps a column out of the accessor
+/// API - the same act on a different surface, so the word already means the
+/// right thing to whoever reads it.
+///
+/// # Why not `@internal`
+///
+/// Because a mixin's columns land in the collector of whatever concrete class
+/// applies it, and that class is usually in somebody else's package. Marking
+/// the column `@internal` makes every one of those collectors a
+/// `invalid_use_of_internal_member` warning in a project that did nothing
+/// wrong. `@internal` on a *concrete* class's field is fine and stays - its
+/// collector is generated beside it.
+///
+/// # It is read at build time and never at run time
+///
+/// `good_tool` reads this off the source and emits no property. Nothing looks
+/// it up while a game runs, and it does not reach a generated table.
+///
+/// A field named `hide` shadows this const for its whole class body, the way
+/// one named `child` did before [sub] was renamed; `good_lint` carries that
+/// diagnostic.
+const Hide hide = Hide._();
+
 // ---------------------------------------------------------------------------
 // The collectors
 // ---------------------------------------------------------------------------

@@ -24,7 +24,6 @@
 
 import 'package:goo2d/goo2d.dart';
 import 'package:goo2d_physics_box2d/src/rigid_body.dart';
-import 'package:meta/meta.dart';
 
 /// RigidBody2D's columns, one property each - for code
 /// touching **one** entity.
@@ -109,42 +108,4 @@ extension Accessor$RigidBody2D on Accessor<RigidBody2D> {
   /// `component.bodyIsBullet` instead.
   bool get bodyIsBullet => component.bodyIsBullet[entity];
   set bodyIsBullet(bool newValue) => component.bodyIsBullet[entity] = newValue;
-
-  /// `bodySyncedX` on this entity, from the published snapshot.
-  ///
-  /// One entity. A system walking many indexes
-  /// `component.bodySyncedX` instead.
-  @internal
-  double get bodySyncedX => component.bodySyncedX[entity];
-  @internal
-  set bodySyncedX(double newValue) => component.bodySyncedX[entity] = newValue;
-
-  /// `bodySyncedY` on this entity, from the published snapshot.
-  ///
-  /// One entity. A system walking many indexes
-  /// `component.bodySyncedY` instead.
-  @internal
-  double get bodySyncedY => component.bodySyncedY[entity];
-  @internal
-  set bodySyncedY(double newValue) => component.bodySyncedY[entity] = newValue;
-
-  /// `bodySyncedAngle` on this entity, from the published snapshot.
-  ///
-  /// One entity. A system walking many indexes
-  /// `component.bodySyncedAngle` instead.
-  @internal
-  double get bodySyncedAngle => component.bodySyncedAngle[entity];
-  @internal
-  set bodySyncedAngle(double newValue) =>
-      component.bodySyncedAngle[entity] = newValue;
-
-  /// `bodySyncedType` on this entity, from the published snapshot.
-  ///
-  /// One entity. A system walking many indexes
-  /// `component.bodySyncedType` instead.
-  @internal
-  BodyType2D get bodySyncedType => component.bodySyncedType[entity];
-  @internal
-  set bodySyncedType(BodyType2D newValue) =>
-      component.bodySyncedType[entity] = newValue;
 }
