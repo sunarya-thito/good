@@ -94,21 +94,16 @@ class _Scene extends SceneStruct {
 
   _Scene();
 
-  late final _Player player;
-  late final _Wall wall;
-  late final _Polygon polygon;
-  late final _Capsule capsule;
-  late final _Concave concave;
-
-  @override
-  void describeScene(SceneDescriptor descriptor) {
-    super.describeScene(descriptor);
-    player = descriptor.has(_Player.new);
-    wall = descriptor.has(_Wall.new);
-    polygon = descriptor.has(_Polygon.new);
-    capsule = descriptor.has(_Capsule.new);
-    concave = descriptor.has(_Concave.new);
-  }
+  @sub
+  final player = _Player();
+  @sub
+  final wall = _Wall();
+  @sub
+  final polygon = _Polygon();
+  @sub
+  final capsule = _Capsule();
+  @sub
+  final concave = _Concave();
 }
 
 /// A prefab whose one collider is whatever [_declare] declares, so a case

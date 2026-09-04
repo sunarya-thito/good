@@ -84,9 +84,9 @@ List<ScannableField> _collect$Forward(Object object) {
 List<ScannableField> _collect$Reversed(Object object) {
   final owner = object as _Reversed;
   return <ScannableField>[
-    owner.ship,
-    owner.eye,
     owner.bare,
+    owner.eye,
+    owner.ship,
     owner.mountedEvent,
     owner.unmountedEvent,
   ];

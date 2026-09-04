@@ -32,18 +32,13 @@ class _Box extends EntityStruct with Transform2D, Collider2D, RigidBody2D {
 
 class _Scene extends SceneStruct {
   late Scene handle;
-  late final _Box box;
+  @sub
+  final box = _Box();
 
   @override
   void onSceneMounted(Scene scene) => handle = scene;
 
   Entity add() => handle.addEntity(box);
-
-  @override
-  void describeScene(SceneDescriptor descriptor) {
-    super.describeScene(descriptor);
-    box = descriptor.has(_Box.new);
-  }
 }
 
 /// Runs whatever the test set, every fixed step, before physics.

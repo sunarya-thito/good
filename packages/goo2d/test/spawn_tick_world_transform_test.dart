@@ -52,18 +52,13 @@ class _NodeRequest {
 
 class _Scene extends SceneStruct {
   late Scene handle;
-  late final _Leaf leaf;
-  late final _Node node;
+  @sub
+  final leaf = _Leaf();
+  @sub
+  final node = _Node();
 
   @override
   void onSceneMounted(Scene scene) => handle = scene;
-
-  @override
-  void describeScene(SceneDescriptor descriptor) {
-    super.describeScene(descriptor);
-    leaf = descriptor.has(_Leaf.new);
-    node = descriptor.has(_Node.new);
-  }
 }
 
 /// Spawns and destroys from inside a tick, as a real game does.

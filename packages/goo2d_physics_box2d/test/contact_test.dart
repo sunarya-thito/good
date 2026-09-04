@@ -100,23 +100,18 @@ class _Zone extends EntityStruct with Transform2D, Collider2D, RigidBody2D {
 
 class _Scene extends SceneStruct {
   late Scene handle;
-  late final _Crate crate;
-  late final _Floor floor;
-  late final _Zone zone;
+  @sub
+  final crate = _Crate();
+  @sub
+  final floor = _Floor();
+  @sub
+  final zone = _Zone();
 
   @override
   void onSceneMounted(Scene scene) => handle = scene;
 
   Entity addEntity<T extends EntityStruct>(T prefab) =>
       handle.addEntity(prefab);
-
-  @override
-  void describeScene(SceneDescriptor d) {
-    super.describeScene(d);
-    crate = d.has(_Crate.new);
-    floor = d.has(_Floor.new);
-    zone = d.has(_Zone.new);
-  }
 }
 
 class _GameState extends GameState<_Game> {

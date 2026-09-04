@@ -412,7 +412,6 @@ List<ScannableField> _collect$SpriteScene(Object object) {
   final owner = object as _SpriteScene;
   return <ScannableField>[
     owner.sprite,
-    owner.flat,
     owner.invisible,
     owner.group,
     owner.twoSprite,
@@ -424,6 +423,7 @@ List<ScannableField> _collect$SpriteScene(Object object) {
     owner.panel,
     owner.unsizedPanel,
     owner.borderedUntextured,
+    owner.flat,
     owner.pivotBody,
     owner.plainPanel,
     owner.horizontalBar,

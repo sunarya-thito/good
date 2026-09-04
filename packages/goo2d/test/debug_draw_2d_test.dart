@@ -64,15 +64,10 @@ class _Scene extends SceneStruct {
   Entity addEntity<T extends EntityStruct>(T prefab) =>
       handle.addEntity(prefab);
 
-  late final _Box box;
-  late final _Eye eye;
-
-  @override
-  void describeScene(SceneDescriptor descriptor) {
-    super.describeScene(descriptor);
-    box = descriptor.has(_Box.new);
-    eye = descriptor.has(_Eye.new);
-  }
+  @sub
+  final box = _Box();
+  @sub
+  final eye = _Eye();
 }
 
 /// Draws whatever [paint] is set to, once per fixed step, through the

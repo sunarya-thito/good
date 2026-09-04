@@ -23,17 +23,12 @@ class _Bare extends EntityStruct with Child {}
 class _Forward extends SceneStruct {
   _Forward();
 
-  late final _Ship ship;
-  late final _Eye eye;
-  late final _Bare bare;
-
-  @override
-  void describeScene(SceneDescriptor descriptor) {
-    super.describeScene(descriptor);
-    ship = descriptor.has(_Ship.new);
-    eye = descriptor.has(_Eye.new);
-    bare = descriptor.has(_Bare.new);
-  }
+  @sub
+  final ship = _Ship();
+  @sub
+  final eye = _Eye();
+  @sub
+  final bare = _Bare();
 }
 
 /// The same three prefabs, declared the other way round - a second project, or
@@ -41,17 +36,12 @@ class _Forward extends SceneStruct {
 class _Reversed extends SceneStruct {
   _Reversed();
 
-  late final _Ship ship;
-  late final _Eye eye;
-  late final _Bare bare;
-
-  @override
-  void describeScene(SceneDescriptor descriptor) {
-    super.describeScene(descriptor);
-    bare = descriptor.has(_Bare.new);
-    eye = descriptor.has(_Eye.new);
-    ship = descriptor.has(_Ship.new);
-  }
+  @sub
+  final bare = _Bare();
+  @sub
+  final eye = _Eye();
+  @sub
+  final ship = _Ship();
 }
 
 T _build<T extends SceneStruct>(T scene) {

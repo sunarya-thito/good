@@ -452,49 +452,44 @@ class _SpriteScene extends SceneStruct {
 
   _SpriteScene();
 
-  late final _Sprite sprite;
-  late final _Flat flat;
-  late final _Invisible invisible;
-  late final _Group group;
-  late final _TwoSprite twoSprite;
-  late final _HalfHidden halfHidden;
-  late final _Stack stack;
-  late final _TopLeft topLeft;
-  late final _Eye eye;
+  @sub
+  final sprite = _Sprite();
+  @sub
+  final invisible = _Invisible();
+  @sub
+  final group = _Group();
+  @sub
+  final twoSprite = _TwoSprite();
+  @sub
+  final halfHidden = _HalfHidden();
+  @sub
+  final stack = _Stack();
+  @sub
+  final topLeft = _TopLeft();
+  @sub
+  final eye = _Eye();
 
   /// Registered last on purpose: archetype registration order is the encounter
   /// order the z-sort ties break on, so a new prefab has to go on the end or
   /// it would reshuffle the ordering tests below.
-  late final _Textured texturedPair;
-  late final _Panel panel;
-  late final _UnsizedPanel unsizedPanel;
-  late final _BorderedUntextured borderedUntextured;
-  late final _PivotBody pivotBody;
-  late final _PlainPanel plainPanel;
-  late final _HorizontalBar horizontalBar;
-  late final _SingleCellPanel singleCellPanel;
-
-  @override
-  void describeScene(SceneDescriptor descriptor) {
-    super.describeScene(descriptor);
-    sprite = descriptor.has(_Sprite.new);
-    invisible = descriptor.has(_Invisible.new);
-    group = descriptor.has(_Group.new);
-    twoSprite = descriptor.has(_TwoSprite.new);
-    halfHidden = descriptor.has(_HalfHidden.new);
-    stack = descriptor.has(_Stack.new);
-    topLeft = descriptor.has(_TopLeft.new);
-    eye = descriptor.has(_Eye.new);
-    texturedPair = descriptor.has(_Textured.new);
-    panel = descriptor.has(_Panel.new);
-    unsizedPanel = descriptor.has(_UnsizedPanel.new);
-    borderedUntextured = descriptor.has(_BorderedUntextured.new);
-    flat = descriptor.has(_Flat.new);
-    pivotBody = descriptor.has(_PivotBody.new);
-    plainPanel = descriptor.has(_PlainPanel.new);
-    horizontalBar = descriptor.has(_HorizontalBar.new);
-    singleCellPanel = descriptor.has(_SingleCellPanel.new);
-  }
+  @sub
+  final texturedPair = _Textured();
+  @sub
+  final panel = _Panel();
+  @sub
+  final unsizedPanel = _UnsizedPanel();
+  @sub
+  final borderedUntextured = _BorderedUntextured();
+  @sub
+  final flat = _Flat();
+  @sub
+  final pivotBody = _PivotBody();
+  @sub
+  final plainPanel = _PlainPanel();
+  @sub
+  final horizontalBar = _HorizontalBar();
+  @sub
+  final singleCellPanel = _SingleCellPanel();
 }
 
 class _RenderState extends GameState2D<_RenderGame> {

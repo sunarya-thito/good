@@ -22,13 +22,8 @@ class _Scene extends SceneStruct {
 
   _Scene();
 
-  late final _CamEntity cam;
-
-  @override
-  void describeScene(SceneDescriptor descriptor) {
-    super.describeScene(descriptor);
-    cam = descriptor.has(_CamEntity.new);
-  }
+  @sub
+  final cam = _CamEntity();
 }
 
 /// The fixture's own view table - a headless scene has no `Game`, so it owns

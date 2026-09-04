@@ -108,29 +108,24 @@ class _Marker extends EntityStruct with Transform2D {}
 class _Scene extends SceneStruct {
   late Scene handle;
 
-  late final _Crate crate;
-  late final _Floor floor;
-  late final _Ball ball;
-  late final _Pinned pinned;
-  late final _Platform platform;
-  late final _Marker marker;
+  @sub
+  final crate = _Crate();
+  @sub
+  final floor = _Floor();
+  @sub
+  final ball = _Ball();
+  @sub
+  final pinned = _Pinned();
+  @sub
+  final platform = _Platform();
+  @sub
+  final marker = _Marker();
 
   @override
   void onSceneMounted(Scene scene) => handle = scene;
 
   Entity addEntity<T extends EntityStruct>(T prefab, {Entity? parent}) =>
       handle.addEntity(prefab, parent: parent);
-
-  @override
-  void describeScene(SceneDescriptor descriptor) {
-    super.describeScene(descriptor);
-    crate = descriptor.has(_Crate.new);
-    floor = descriptor.has(_Floor.new);
-    ball = descriptor.has(_Ball.new);
-    pinned = descriptor.has(_Pinned.new);
-    platform = descriptor.has(_Platform.new);
-    marker = descriptor.has(_Marker.new);
-  }
 }
 
 /// A pending teleport: (entity, x, y). Applied by [_GameplaySystem] on the

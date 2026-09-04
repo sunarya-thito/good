@@ -268,31 +268,27 @@ class _Scene extends SceneStruct {
 
   _Scene();
 
-  late final _Button button;
-  late final _Panel panel;
-  late final _Zone zone;
-  late final _Naked naked;
-  late final _Eye eye;
-  late final _Satellite satellite;
-  late final _Compound compound;
-  late final _Pad pad;
-  late final _Glass glass;
+  @sub
+  final button = _Button();
+  @sub
+  final panel = _Panel();
+  @sub
+  final zone = _Zone();
+  @sub
+  final naked = _Naked();
+  @sub
+  final eye = _Eye();
 
-  @override
-  void describeScene(SceneDescriptor descriptor) {
-    super.describeScene(descriptor);
-    button = descriptor.has(_Button.new);
-    panel = descriptor.has(_Panel.new);
-    zone = descriptor.has(_Zone.new);
-    naked = descriptor.has(_Naked.new);
-    eye = descriptor.has(_Eye.new);
-    // Declared last, so the archetype registration order the z tie-break
-    // cases above lean on is the order they were written for.
-    satellite = descriptor.has(_Satellite.new);
-    compound = descriptor.has(_Compound.new);
-    pad = descriptor.has(_Pad.new);
-    glass = descriptor.has(_Glass.new);
-  }
+  // Declared last, so the archetype registration order the z tie-break
+  // cases above lean on is the order they were written for.
+  @sub
+  final satellite = _Satellite();
+  @sub
+  final compound = _Compound();
+  @sub
+  final pad = _Pad();
+  @sub
+  final glass = _Glass();
 }
 
 class _GameState extends GameState<_Game> {

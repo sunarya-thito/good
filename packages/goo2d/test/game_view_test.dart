@@ -49,13 +49,8 @@ class _Scene extends SceneStruct {
 
   _Scene();
 
-  late final _Sprite sprite;
-
-  @override
-  void describeScene(SceneDescriptor descriptor) {
-    super.describeScene(descriptor);
-    sprite = descriptor.has(_Sprite.new);
-  }
+  @sub
+  final sprite = _Sprite();
 }
 
 class _ViewState extends GameState2D<_ViewGame> {

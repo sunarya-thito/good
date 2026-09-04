@@ -253,31 +253,26 @@ class _Stage extends SceneStruct {
 
   late Scene handle;
 
-  late final _World world;
-  late final _Eye eye;
-  late final _Pinned pinned;
-  late final _Corner corner;
-  late final _Backdrop backdrop;
-  late final _Banner banner;
-  late final _Panel panel;
-  late final _Spinner spinner;
-  late final _Label label;
-  late final _Rig rig;
-
-  @override
-  void describeScene(SceneDescriptor descriptor) {
-    super.describeScene(descriptor);
-    world = descriptor.has(_World.new);
-    rig = descriptor.has(_Rig.new);
-    eye = descriptor.has(_Eye.new);
-    pinned = descriptor.has(_Pinned.new);
-    corner = descriptor.has(_Corner.new);
-    backdrop = descriptor.has(_Backdrop.new);
-    banner = descriptor.has(_Banner.new);
-    panel = descriptor.has(_Panel.new);
-    spinner = descriptor.has(_Spinner.new);
-    label = descriptor.has(_Label.new);
-  }
+  @sub
+  final world = _World();
+  @sub
+  final rig = _Rig();
+  @sub
+  final eye = _Eye();
+  @sub
+  final pinned = _Pinned();
+  @sub
+  final corner = _Corner();
+  @sub
+  final backdrop = _Backdrop();
+  @sub
+  final banner = _Banner();
+  @sub
+  final panel = _Panel();
+  @sub
+  final spinner = _Spinner();
+  @sub
+  final label = _Label();
 }
 
 class _StageState extends GameState2D<_StageGame> {
@@ -899,21 +894,11 @@ class _LabelClash extends EntityStruct
     with Transform2D, ScreenTransform2D, Text2D {}
 
 class _ClashScene extends SceneStruct {
-  late final _Clash clash;
-
-  @override
-  void describeScene(SceneDescriptor descriptor) {
-    super.describeScene(descriptor);
-    clash = descriptor.has(_Clash.new);
-  }
+  @sub
+  final clash = _Clash();
 }
 
 class _LabelClashScene extends SceneStruct {
-  late final _LabelClash clash;
-
-  @override
-  void describeScene(SceneDescriptor descriptor) {
-    super.describeScene(descriptor);
-    clash = descriptor.has(_LabelClash.new);
-  }
+  @sub
+  final clash = _LabelClash();
 }

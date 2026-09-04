@@ -38,13 +38,8 @@ class _Slab extends EntityStruct with Transform2D, Collider2D, RigidBody2D {
 }
 
 class _Scene extends SceneStruct {
-  late final _Slab slab;
-
-  @override
-  void describeScene(SceneDescriptor d) {
-    super.describeScene(d);
-    slab = d.has(_Slab.new);
-  }
+  @sub
+  final slab = _Slab();
 }
 
 /// Scripts the slab from inside the tick window, the way a game would.

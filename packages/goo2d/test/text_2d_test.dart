@@ -165,23 +165,18 @@ class _Scene extends SceneStruct {
   Entity addEntity<T extends EntityStruct>(T prefab) =>
       handle.addEntity(prefab);
 
-  late final _Back back;
-  late final _Enemy enemy;
-  late final _Damage damage;
-  late final _Silent silent;
-  late final _Front front;
-  late final _Eye eye;
-
-  @override
-  void describeScene(SceneDescriptor descriptor) {
-    super.describeScene(descriptor);
-    back = descriptor.has(_Back.new);
-    enemy = descriptor.has(_Enemy.new);
-    damage = descriptor.has(_Damage.new);
-    silent = descriptor.has(_Silent.new);
-    front = descriptor.has(_Front.new);
-    eye = descriptor.has(_Eye.new);
-  }
+  @sub
+  final back = _Back();
+  @sub
+  final enemy = _Enemy();
+  @sub
+  final damage = _Damage();
+  @sub
+  final silent = _Silent();
+  @sub
+  final front = _Front();
+  @sub
+  final eye = _Eye();
 }
 
 class _State extends GameState2D<_TextGame> {

@@ -59,15 +59,10 @@ class _Ball extends EntityStruct with Transform2D, Collider2D, RigidBody2D {
 }
 
 class _PhysScene extends SceneStruct {
-  late final _Wall wall;
-  late final _Ball ball;
-
-  @override
-  void describeScene(SceneDescriptor d) {
-    super.describeScene(d);
-    wall = d.has(_Wall.new);
-    ball = d.has(_Ball.new);
-  }
+  @sub
+  final wall = _Wall();
+  @sub
+  final ball = _Ball();
 }
 
 class _GameState extends GameState<_Game> {

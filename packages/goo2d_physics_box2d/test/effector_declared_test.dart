@@ -95,9 +95,12 @@ class _Box extends EntityStruct with Transform2D, Collider2D, RigidBody2D {
 
 class _Scene extends SceneStruct {
   late Scene handle;
-  late final _Box box;
-  late final _Zone zone;
-  late final _Pool waterZone;
+  @sub
+  final box = _Box();
+  @sub
+  final zone = _Zone();
+  @sub
+  final waterZone = _Pool();
 
   late Entity zoneEntity;
 
@@ -118,14 +121,6 @@ class _Scene extends SceneStruct {
   /// travels with its entity" test makes, which measures the wind's reach at
   /// exactly 0 afterwards - so this leaks no force into the readings below.
   void moveWindAway() => zone.transformOffsetX[zoneEntity] = 10000;
-
-  @override
-  void describeScene(SceneDescriptor descriptor) {
-    super.describeScene(descriptor);
-    box = descriptor.has(_Box.new);
-    zone = descriptor.has(_Zone.new);
-    waterZone = descriptor.has(_Pool.new);
-  }
 }
 
 /// Only ever used to get a write into a tick window - component mutation has

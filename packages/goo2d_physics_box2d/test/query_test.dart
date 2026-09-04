@@ -48,20 +48,15 @@ class _Hidden extends EntityStruct with Transform2D, Collider2D, RigidBody2D {
 
 class _Scene extends SceneStruct {
   late Scene handle;
-  late final _Wall wall;
-  late final _Hidden hidden;
+  @sub
+  final wall = _Wall();
+  @sub
+  final hidden = _Hidden();
 
   @override
   void onSceneMounted(Scene scene) => handle = scene;
 
   Entity addEntity<T extends EntityStruct>(T p) => handle.addEntity(p);
-
-  @override
-  void describeScene(SceneDescriptor d) {
-    super.describeScene(d);
-    wall = d.has(_Wall.new);
-    hidden = d.has(_Hidden.new);
-  }
 }
 
 class _GameState extends GameState<_Game> {

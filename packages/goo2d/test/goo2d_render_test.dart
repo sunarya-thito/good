@@ -81,15 +81,10 @@ class _Scene extends SceneStruct {
 
   _Scene();
 
-  late final _Sprite sprite;
-  late final _Billboard billboard;
-
-  @override
-  void describeScene(SceneDescriptor descriptor) {
-    super.describeScene(descriptor);
-    sprite = descriptor.has(_Sprite.new);
-    billboard = descriptor.has(_Billboard.new);
-  }
+  @sub
+  final sprite = _Sprite();
+  @sub
+  final billboard = _Billboard();
 }
 
 class _GameState extends GameState2D<_Game> {

@@ -80,17 +80,12 @@ class _Level extends SceneStruct {
 
   late Scene handle;
 
-  late final _Sprite sprite;
-  late final _Eye eye;
-  late final _Target target;
-
-  @override
-  void describeScene(SceneDescriptor descriptor) {
-    super.describeScene(descriptor);
-    sprite = descriptor.has(_Sprite.new);
-    eye = descriptor.has(_Eye.new);
-    target = descriptor.has(_Target.new);
-  }
+  @sub
+  final sprite = _Sprite();
+  @sub
+  final eye = _Eye();
+  @sub
+  final target = _Target();
 }
 
 /// A second, structurally identical scene type. Two *types* rather than two
@@ -102,17 +97,12 @@ class _Overlay extends SceneStruct {
 
   late Scene handle;
 
-  late final _Sprite sprite;
-  late final _Eye eye;
-  late final _Target target;
-
-  @override
-  void describeScene(SceneDescriptor descriptor) {
-    super.describeScene(descriptor);
-    sprite = descriptor.has(_Sprite.new);
-    eye = descriptor.has(_Eye.new);
-    target = descriptor.has(_Target.new);
-  }
+  @sub
+  final sprite = _Sprite();
+  @sub
+  final eye = _Eye();
+  @sub
+  final target = _Target();
 }
 
 class _MultiState extends GameState2D<_MultiGame> {

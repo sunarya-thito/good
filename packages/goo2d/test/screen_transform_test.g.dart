@@ -218,6 +218,7 @@ List<ScannableField> _collect$Stage(Object object) {
   final owner = object as _Stage;
   return <ScannableField>[
     owner.world,
+    owner.rig,
     owner.eye,
     owner.pinned,
     owner.corner,
@@ -226,7 +227,6 @@ List<ScannableField> _collect$Stage(Object object) {
     owner.panel,
     owner.spinner,
     owner.label,
-    owner.rig,
     owner.mountedEvent,
     owner.unmountedEvent,
   ];

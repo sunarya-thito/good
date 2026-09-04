@@ -234,25 +234,21 @@ class _BudgetScene extends SceneStruct {
 
   Entity add<T extends EntityStruct>(T prefab) => _handle.addEntity(prefab);
 
-  late final _First first;
-  late final _Panel panel;
-  late final _Second second;
-  late final _Bar bar;
-  late final _Column column;
+  // Declaration order is archetype order is fill order. The whole file
+  // depends on it, so it is stated once, here.
+  @sub
+  final first = _First();
+  @sub
+  final panel = _Panel();
+  @sub
+  final second = _Second();
 
-  @override
-  void describeScene(SceneDescriptor descriptor) {
-    super.describeScene(descriptor);
-    // Declaration order is archetype order is fill order. The whole file
-    // depends on it, so it is stated once, here.
-    first = descriptor.has(_First.new);
-    panel = descriptor.has(_Panel.new);
-    second = descriptor.has(_Second.new);
-    // Appended, so the three above keep the encounter order the equal-`zIndex`
-    // tie-break puts them in.
-    bar = descriptor.has(_Bar.new);
-    column = descriptor.has(_Column.new);
-  }
+  // Appended, so the three above keep the encounter order the equal-`zIndex`
+  // tie-break puts them in.
+  @sub
+  final bar = _Bar();
+  @sub
+  final column = _Column();
 }
 
 class _BudgetState extends GameState2D<_BudgetGame> {

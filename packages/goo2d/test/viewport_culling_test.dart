@@ -125,19 +125,14 @@ class _Scene extends SceneStruct {
   Entity addEntity<T extends EntityStruct>(T prefab) =>
       handle.addEntity(prefab);
 
-  late final _Quad quad;
-  late final _Flat flat;
-  late final _Panel panel;
-  late final _Eye eye;
-
-  @override
-  void describeScene(SceneDescriptor descriptor) {
-    super.describeScene(descriptor);
-    quad = descriptor.has(_Quad.new);
-    flat = descriptor.has(_Flat.new);
-    panel = descriptor.has(_Panel.new);
-    eye = descriptor.has(_Eye.new);
-  }
+  @sub
+  final quad = _Quad();
+  @sub
+  final flat = _Flat();
+  @sub
+  final panel = _Panel();
+  @sub
+  final eye = _Eye();
 }
 
 class _State extends GameState2D<_CullGame> {

@@ -25,17 +25,12 @@ class MainScene extends SceneStruct {
 
   MainScene();
 
-  late final Player playerPrefab;
-  late final Enemy enemyPrefab;
-  late final Rock rockPrefab;
-
-  @override
-  void describeScene(SceneDescriptor descriptor) {
-    super.describeScene(descriptor);
-    playerPrefab = descriptor.has(Player.new);
-    enemyPrefab = descriptor.has(Enemy.new);
-    rockPrefab = descriptor.has(Rock.new);
-  }
+  @sub
+  final playerPrefab = Player();
+  @sub
+  final enemyPrefab = Enemy();
+  @sub
+  final rockPrefab = Rock();
 }
 
 MainScene _scene() {
