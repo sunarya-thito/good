@@ -124,6 +124,24 @@ class _Harness {
   void dispose() => pool.dispose();
 }
 
+/// Registers one throwaway archetype and hands back whatever its reservation
+/// pass threw, or null.
+///
+/// [_Harness] cannot serve a test about a refusal there. A column reserves its
+/// row space at `realize`, so the throw comes out of the harness constructor
+/// and the pool it had already made never reaches a teardown.
+Object? _reservationError(void Function(DataDescriptor data) build) {
+  final pool = MemoryPool(pageSize: 4096);
+  addTearDown(pool.dispose);
+  final prefab = _AdHoc(build);
+  try {
+    _AdHocScene(() => prefab).initializeScene(pool, assets: assets);
+  } catch (error) {
+    return error;
+  }
+  return null;
+}
+
 void main() {
   _installDeclarations();
 
@@ -1552,16 +1570,21 @@ void main() {
       expect(textures.get(h.spawn(), 0), isNull);
     });
 
-    test('more values than the array holds is rejected at declare time', () {
-      late Object? error;
-      final h = _Harness((data) {
-        try {
-          data.hasArrayOf(.float64, 2, const [1.0, 2.0, 3.0]);
-        } catch (e) {
-          error = e;
-        }
+    test('more values than the array holds is refused, at the reservation '
+        'pass and not at the declaration', () {
+      var declared = false;
+      final error = _reservationError((data) {
+        data.hasArrayOf(.float64, 2, const [1.0, 2.0, 3.0]);
+        declared = true;
       });
-      addTearDown(h.dispose);
+
+      expect(
+        declared,
+        isTrue,
+        reason:
+            'the declaration builds the column and refuses nothing; the '
+            'count is only final once every declaration is in',
+      );
 
       // Not `isA<ArgumentError>()` on its own: `RangeError` is an
       // `ArgumentError`, and with this guard removed the `setRange` behind it
@@ -1572,7 +1595,43 @@ void main() {
         (error! as ArgumentError).message.toString(),
         contains('more values than the array holds (2)'),
       );
-      expect((error! as ArgumentError).name, 'initialValues');
+      expect((error as ArgumentError).name, 'initialValues');
+    });
+
+    test('an array shortened under its values is refused against the length '
+        'the row got, not the one written beside them', () {
+      // The discriminating half, and the reason the check sits where it does:
+      // `DataArrayPointer.length` stays settable until the column is
+      // realized, so three values into four slots is correct where it is
+      // written and wrong by the time anything is reserved. A check made at
+      // the declaring call passes this and lays out a row a value short.
+      final error = _reservationError((data) {
+        data.hasArrayOf(.float64, 4, const [1.0, 2.0, 3.0]).length = 2;
+      });
+
+      expect(error, isA<ArgumentError>());
+      expect(
+        (error! as ArgumentError).message.toString(),
+        contains('more values than the array holds (2)'),
+        reason: 'the length the row got, not the 4 the declaration named',
+      );
+      expect((error as ArgumentError).name, 'initialValues');
+    });
+
+    test('an array shortened to exactly the values named keeps every one of '
+        'them', () {
+      // The positive twin: the same shortening, one slot wider, and the
+      // values are still the row's. A guard that read the declared length
+      // would refuse this, and one that never ran would reserve four.
+      late DataArrayPointer<double> ramp;
+      final h = _Harness((data) {
+        ramp = data.hasArrayOf(.float64, 4, const [1.0, 2.0, 3.0])..length = 3;
+      });
+      addTearDown(h.dispose);
+
+      final e = h.spawn();
+      expect(ramp.length, 3);
+      expect([ramp.get(e, 0), ramp.get(e, 1), ramp.get(e, 2)], [1.0, 2.0, 3.0]);
     });
 
     test(
