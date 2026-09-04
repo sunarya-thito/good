@@ -21,8 +21,10 @@
 part of 'main.dart';
 
 List<ScannableField> _collect$Breath(Object object) {
-  object as Breath;
-  return const <ScannableField>[];
+  final owner = object as Breath;
+  return <ScannableField>[
+    owner.scale,
+  ];
 }
 
 List<ScannableField> _collect$Player(Object object) {

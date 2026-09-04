@@ -54,14 +54,37 @@ typedef TimelineLerp<T> = T Function(T a, T b, double t);
 
 /// A curve of values over time, sampled by [operator[]].
 ///
-/// Declared in [TimelineStruct.describeTrack] and animated by one or more
-/// clips: the same `positionX` track can be driven by an `enter` animation and
-/// a `die` animation, and the [TimelineSample] says which one is being asked
-/// about. A track with no keys in the clip being sampled reports its declared
-/// default, so a clip only has to mention the tracks it actually moves.
-final class Track<T> {
+/// Declared by the field that holds it and animated by one or more clips: the
+/// same `positionX` track can be driven by an `enter` animation and a `die`
+/// animation, and the [TimelineSample] says which one is being asked about. A
+/// track with no keys in the clip being sampled reports its declared default,
+/// so a clip only has to mention the tracks it actually moves.
+///
+/// ```dart
+/// class Breath extends TimelineStruct {
+///   final scale = Track.of(1.0);
+/// }
+/// ```
+///
+/// A plain [ScannableField] and not a `CompositeDeclaration`: a track
+/// reserves no row space and resolves against nothing. It holds a default and
+/// a blend, both of them arguments, which is why it could be produced by a
+/// field initialiser the moment there was a spelling for one.
+final class Track<T> implements ScannableField {
   @internal
   Track(this.defaultValue, this._lerp);
+
+  /// Declares a track whose value is [defaultValue] wherever no clip keys it.
+  ///
+  /// [lerp] blends two keyframes. Leave it off for `double` and `int`, which
+  /// are resolved here, where the field is written, once per track - a
+  /// per-sample type test would be rule 11's mistake on the hottest path in
+  /// the system. Any other type without a [lerp] becomes a **discrete**
+  /// track: it holds each value until the next key, which is right for a
+  /// sprite index or an enum and is the honest answer for a type with no
+  /// arithmetic.
+  static Track<T> of<T>(T defaultValue, {TimelineLerp<T>? lerp}) =>
+      Track<T>(defaultValue, lerp ?? _defaultLerp<T>());
 
   /// What this track reads as outside any clip that animates it, and before
   /// its first keyframe.
@@ -122,7 +145,7 @@ final class Track<T> {
     final lerp = _lerp;
     // No lerp means a discrete track: hold the previous value until the next
     // key is reached. Correct for a sprite index or an enum, and the honest
-    // fallback for a type with no arithmetic - see `TimelineDescriptor.has`.
+    // fallback for a type with no arithmetic - see `Track.of`.
     if (lerp == null) return from.value;
     return lerp(from.value, to.value, t);
   }
@@ -172,6 +195,12 @@ final class TimelineAnimation {
 
   /// Position in the declaring timeline's clip list - what a [TimelineSample]
   /// carries, and what a [Track] indexes its keys by.
+  ///
+  /// This is why a clip is still declared from a hook where a [Track] is a
+  /// field: the id is a position in a list the timeline owns, and it has to
+  /// be settled before `..track(x).key(...)` runs, because keying writes
+  /// straight into `Track._clips[clipId]`. A field initialiser has no
+  /// timeline to take a position in.
   final int clipId;
 
   final TimelineStruct _owner;
@@ -334,19 +363,6 @@ final class TrackAnimator<T> {
   }
 }
 
-/// Declares a timeline's tracks - see [TimelineStruct.describeTrack].
-abstract class TimelineDescriptor {
-  /// Declares a track whose value is [defaultValue] wherever no clip keys it.
-  ///
-  /// [lerp] blends two keyframes. Leave it off for `double`, `int` and `bool`,
-  /// which are resolved here, at declare time, once per track - a per-sample
-  /// type test would be rule 11's mistake on the hottest path in the system.
-  /// Any other type without a [lerp] becomes a **discrete** track: it holds
-  /// each value until the next key, which is right for a sprite index or an
-  /// enum and is the honest answer for a type with no arithmetic.
-  Track<T> has<T>(T defaultValue, {TimelineLerp<T>? lerp});
-}
-
 /// Declares a timeline's clips - see [TimelineStruct.describeAnimation].
 abstract class TimelineAnimationDescriptor {
   TimelineAnimation has();
@@ -359,7 +375,6 @@ abstract class TimelineAnimationDescriptor {
 /// Per-entity progress is one `double` of start time in the entity's own row;
 /// see [TimelineAnimation.animate].
 abstract class TimelineStruct implements Scannable {
-  void describeTrack(TimelineDescriptor descriptor);
   void describeAnimation(TimelineAnimationDescriptor descriptor);
 
   SceneStruct? _scene;
@@ -392,26 +407,24 @@ abstract class TimelineStruct implements Scannable {
   @internal
   List<TimelineAnimation> get clips => _clips;
 
-  /// Runs both declaration passes. Called once, when the owning struct is
+  /// Runs the clip declaration pass. Called once, when the owning struct is
   /// registered.
+  ///
+  /// There is no track pass to run first: a track is built by the field
+  /// initialiser that holds it, so every one of them already exists by the
+  /// time this object does. Clips still need this, and cannot be fields for
+  /// the reason [TimelineAnimation.clipId] gives - a clip's id is its
+  /// position in this timeline's list, and a field initialiser has no
+  /// timeline to be positioned in.
   @internal
   void initializeTimeline(SceneStruct scene) {
     if (_scene != null) return;
     _scene = scene;
-    describeTrack(const _TrackDescriptor());
     describeAnimation(_AnimationDescriptor(this));
   }
 }
 
-final class _TrackDescriptor implements TimelineDescriptor {
-  const _TrackDescriptor();
-
-  @override
-  Track<T> has<T>(T defaultValue, {TimelineLerp<T>? lerp}) =>
-      Track<T>(defaultValue, lerp ?? _defaultLerp<T>());
-}
-
-/// Picks the blend for [T] **once, at declare time**.
+/// Picks the blend for [T] **once, where the track is written**.
 ///
 /// Dart cannot ask "does T support `+`, `-` and `*`" statically, and asking per
 /// sample would be a type test on the hot path. So the three arithmetic types

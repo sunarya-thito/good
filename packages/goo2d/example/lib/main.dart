@@ -27,14 +27,9 @@ const int _wingmanColor = 0xFFFFEE58;
 /// Sampling it is `animate()` plus a lookup, both allocation-free, which is why
 /// a system can do it per entity per tick without thinking about it.
 class Breath extends TimelineStruct {
-  late final Track<double> scale;
+  final scale = Track.of<double>(1.0);
 
   late final TimelineAnimation pulse;
-
-  @override
-  void describeTrack(TimelineDescriptor descriptor) {
-    scale = descriptor.has<double>(1.0);
-  }
 
   @override
   void describeAnimation(TimelineAnimationDescriptor descriptor) {
