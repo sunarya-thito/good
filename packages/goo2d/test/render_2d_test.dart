@@ -690,10 +690,13 @@ void main() {
       () async {
         await _game();
         final scene = run.state.singleScene<_SpriteScene>();
-        final matcher = ArchetypeQueryDescriptor()
-            .query()
-            .withAll(Renderable2D)
-            .build();
+        final descriptor = ArchetypeQueryDescriptor();
+        final matcher = descriptor.query().withAll(Renderable2D).build();
+        // A query takes its bits from a resolve pass rather than from the
+        // builder, so that it can name a component no scene has registered
+        // yet. `_bootGame` runs that pass for a system's queries; this one is
+        // built here and belongs to nothing, so the test runs it.
+        descriptor.resolve();
         // The regression this exists for: without describeType calling
         // component.has<Renderable2D>(), the bit is never OR'd into any
         // archetype's signature, so the mask `withAll(Renderable2D)` builds
