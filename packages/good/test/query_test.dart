@@ -84,6 +84,26 @@ _Level _level({int pageSize = 4096}) {
   return level;
 }
 
+/// Puts a query built by hand through the pass a boot would put it through.
+///
+/// A query holds the types it named and no bits until
+/// `ArchetypeQueryDescriptor.resolve` numbers them, and `Game._bootGame` runs
+/// that pass once every system has declared - over the queries a collector
+/// read off system fields (`declare`) and the ones a `describeQuery` body
+/// built through the descriptor's own builder. Nothing here boots a game, so
+/// a test that builds a query is the pass, and runs both halves itself.
+///
+/// It is not ceremony to skip: `Query.matches` asserts a query was resolved
+/// because an unresolved required mask is zero, and zero matches every
+/// archetype in this fixture instead of the ones that carry the component.
+/// That is the failure the whole split exists to make loud.
+T _collected<T extends Query>(T query) {
+  ArchetypeQueryDescriptor()
+    ..declare(<ScannableField>[query])
+    ..resolve();
+  return query;
+}
+
 void main() {
   _installDeclarations();
 
@@ -94,8 +114,14 @@ void main() {
   });
 
   group('withAll / withNone / withAny / withOptional matching', () {
-    Query build(QueryBuilder Function(QueryBuilder b) chain) =>
-        chain(ArchetypeQueryDescriptor().query()).build();
+    // The descriptor that hands out the builder is the pass that numbers what
+    // the builder produced, so it resolves before the query is handed back.
+    Query build(QueryBuilder Function(QueryBuilder b) chain) {
+      final descriptor = ArchetypeQueryDescriptor();
+      final query = chain(descriptor.query()).build();
+      descriptor.resolve();
+      return query;
+    }
 
     test('withAll matches only archetypes that declared every listed type', () {
       final level = _level();
@@ -255,6 +281,7 @@ void main() {
 
         final descriptor = ArchetypeQueryDescriptor();
         final query = descriptor.query().withAll(_Position).build();
+        descriptor.resolve();
         final results = query.run().toSet();
 
         expect(results, {...players, ...rocks});
@@ -274,8 +301,10 @@ void main() {
       level.pool.commitTick();
 
       final descriptor = ArchetypeQueryDescriptor();
+      final positioned = descriptor.query().withAll(_Position).build();
+      descriptor.resolve();
       final seen = <double>[];
-      for (final e in descriptor.query().withAll(_Position).build().run()) {
+      for (final e in positioned.run()) {
         seen.add(e<_Position>().component.x[e]);
       }
       expect(seen.toSet(), List.generate(10, (i) => i.toDouble()).toSet());
@@ -284,7 +313,9 @@ void main() {
     test('an empty scene / no matching archetype yields nothing', () {
       _level();
       final descriptor = ArchetypeQueryDescriptor();
-      expect(descriptor.query().withAll(_Position).build().run(), isEmpty);
+      final query = descriptor.query().withAll(_Position).build();
+      descriptor.resolve();
+      expect(query.run(), isEmpty);
     });
   });
 
@@ -302,6 +333,9 @@ void main() {
       final descriptor = ArchetypeQueryDescriptor();
       final single = descriptor.has<_Position>();
       final built = descriptor.query().withAll(_Position).build();
+      // One pass over both, which is the point of resolving at the end: the
+      // two arrived from different calls and are numbered against one registry.
+      descriptor.resolve();
 
       expect(single.run().toSet(), built.run().toSet());
       expect(single.run().toSet(), {p, r});
@@ -312,14 +346,24 @@ void main() {
     });
   });
 
+  // The field form. `Query.all`/`Query.has`/`Query.where` build a query with
+  // no descriptor in sight, and a boot reaches it the other way round: a
+  // collector reads the field, `ArchetypeQueryDescriptor.declare` takes what it
+  // read, and the same resolve numbers it alongside everything a `describeQuery`
+  // body built. These tests hold the field's place and run that pass by hand -
+  // see `_collected`.
   group('Query statics', () {
     test('Query.all matches what query().withAll(...).build() matches', () {
       final level = _level();
+      // One descriptor over both sources, which is what a boot has: the query
+      // a collector handed it and the one its own builder produced, numbered
+      // together against one registry.
       final declared = Query.all(_Position, _Health);
-      final built = ArchetypeQueryDescriptor()
-          .query()
-          .withAll(_Position, _Health)
-          .build();
+      final descriptor = ArchetypeQueryDescriptor();
+      final built = descriptor.query().withAll(_Position, _Health).build();
+      descriptor
+        ..declare(<ScannableField>[declared])
+        ..resolve();
 
       for (final signature in <int>[
         level.player.archetype.componentSignature,
@@ -346,17 +390,22 @@ void main() {
       level.addEntity(level.trigger);
       level.pool.commitTick();
 
-      final SingleQuery<_Position> declared = Query.has<_Position>();
-      expect(
-        declared.run().toSet(),
-        ArchetypeQueryDescriptor().has<_Position>().run().toSet(),
+      final SingleQuery<_Position> declared = _collected(
+        Query.has<_Position>(),
       );
+      final descriptor = ArchetypeQueryDescriptor();
+      final fromHook = descriptor.has<_Position>();
+      descriptor.resolve();
+
+      expect(declared.run().toSet(), fromHook.run().toSet());
       expect(declared.run().toSet(), {p, r});
     });
 
     test('Query.where opens the builder the descriptor hands out', () {
       final level = _level();
-      final roots = Query.where().withAll(_Position).withNone(Child).build();
+      final roots = _collected(
+        Query.where().withAll(_Position).withNone(Child).build(),
+      );
 
       expect(
         roots.matches(level.rock.archetype.componentSignature),
@@ -375,7 +424,10 @@ void main() {
     // whenever `ArchetypeRegistry.count` moves.
     test('a query built before any archetype exists still finds them', () {
       expect(ArchetypeRegistry.count, 0);
-      final motes = Query.all(_Position);
+      // Resolved here too, against a `ComponentTypeRegistry` no archetype has
+      // touched: a bit is assigned to a type nothing has named yet, which is
+      // what lets a query be numbered before the scene it will walk exists.
+      final motes = _collected(Query.all(_Position));
       expect(motes.groups(), isEmpty);
 
       final level = _level();
@@ -403,6 +455,7 @@ void main() {
 
       final descriptor = ArchetypeQueryDescriptor();
       final query = descriptor.query().withAll(_Position).build();
+      descriptor.resolve();
 
       final grouped = <Entity>{};
       for (final group in query.groups()) {
@@ -426,6 +479,7 @@ void main() {
 
       final descriptor = ArchetypeQueryDescriptor();
       final query = descriptor.query().withAll(_Position).build();
+      descriptor.resolve();
       final group = query.groups().first;
 
       final component = group<_Position>();
@@ -449,6 +503,7 @@ void main() {
 
       final descriptor = ArchetypeQueryDescriptor();
       final query = descriptor.query().withAll(_Position).build();
+      descriptor.resolve();
       final groups = query.groups().toList();
       expect(groups.length, 2, reason: 'the optional form has to be able to '
           'come back both ways, or this measures nothing');
@@ -486,6 +541,7 @@ void main() {
 
       final descriptor = ArchetypeQueryDescriptor();
       final query = descriptor.query().withAll(_Position).build();
+      descriptor.resolve();
       final before = query.groups().length;
 
       // The list is cached for the life of the query - a system holds one
@@ -512,6 +568,7 @@ void main() {
           .withAll(Child)
           .withNone(_Position)
           .build();
+      descriptor.resolve();
       expect(query.groups(), isEmpty);
     });
   });
@@ -523,8 +580,12 @@ void main() {
   // comments now describe: compiling a query is independent of what is
   // registered when it runs, in both directions.
   group('a compiled query resolves archetypes after the fact', () {
-    Query positioned() =>
-        ArchetypeQueryDescriptor().query().withAll(_Position).build();
+    Query positioned() {
+      final descriptor = ArchetypeQueryDescriptor();
+      final query = descriptor.query().withAll(_Position).build();
+      descriptor.resolve();
+      return query;
+    }
 
     test(
       'one compiled against an empty registry matches what a later one '
@@ -609,10 +670,12 @@ void main() {
         level.addEntity(level.trigger);
         level.pool.commitTick();
 
-        final cloaked = ArchetypeQueryDescriptor()
-            .query()
-            .withAll(_Cloaked)
-            .build();
+        final descriptor = ArchetypeQueryDescriptor();
+        final cloaked = descriptor.query().withAll(_Cloaked).build();
+        // _Cloaked takes its bit here and nowhere else, so this is the pass
+        // that separates a mask naming a component no archetype carries from
+        // the zero mask an unresolved query would still be holding.
+        descriptor.resolve();
 
         expect(cloaked.groups(), isEmpty);
         expect(cloaked.run(), isEmpty);
@@ -645,6 +708,7 @@ void main() {
 
       final descriptor = ArchetypeQueryDescriptor();
       final query = descriptor.query().withAll(_Position).build();
+      descriptor.resolve();
 
       // Unscoped query sees entities from both scenes.
       expect(
@@ -677,6 +741,7 @@ void main() {
 
       final descriptor = ArchetypeQueryDescriptor();
       final query = descriptor.query().withAll(_Position).build();
+      descriptor.resolve();
 
       final groupedA = <Entity>{};
       for (final group in query.groups(levelA.handle)) {
@@ -712,6 +777,7 @@ void main() {
 
       final descriptor = ArchetypeQueryDescriptor();
       final query = descriptor.query().withAll(_Position).build();
+      descriptor.resolve();
 
       // A tally by archetype, not a row count: both scenes hold rows of both
       // archetypes, so a walk that skipped the wrong pages - or none at all -
@@ -753,6 +819,7 @@ void main() {
 
       final descriptor = ArchetypeQueryDescriptor();
       final single = descriptor.has<_Position>();
+      descriptor.resolve();
       final scopedA = single.inScene(levelA.handle);
 
       expect(scopedA.run().toSet(), {pA});
@@ -771,6 +838,7 @@ void main() {
 
       final descriptor = ArchetypeQueryDescriptor();
       final query = descriptor.query().withAll(_Position).build();
+      descriptor.resolve();
       final scoped = query.inScene(levelA.handle);
 
       expect(scoped.run().toSet(), playersA.toSet());
@@ -792,6 +860,7 @@ void main() {
 
       final descriptor = ArchetypeQueryDescriptor();
       final query = descriptor.query().withAll(_Position, _Health).build();
+      descriptor.resolve();
       final group = query.groups().first;
 
       expect(group.toSet(), {pA, pB});
@@ -806,6 +875,7 @@ void main() {
 
       final descriptor = ArchetypeQueryDescriptor();
       final query = descriptor.query().withAll(_Position).build();
+      descriptor.resolve();
       final liveGroup = query.groups().first;
 
       SceneRegistry.unregister(handle);
@@ -842,6 +912,7 @@ void main() {
 
       final descriptor = ArchetypeQueryDescriptor();
       final query = descriptor.query().withAll(_Position).build();
+      descriptor.resolve();
 
       // All three are taken while the scene is loaded and walked after it is
       // gone. A page-level slot test cannot notice this on its own: the pages
@@ -867,6 +938,7 @@ void main() {
 
       final descriptor = ArchetypeQueryDescriptor();
       final query = descriptor.query().withAll(_Position).build();
+      descriptor.resolve();
 
       // Warm the per-slot group cache while the first load is live.
       expect(query.groups(first).expand((g) => g).toSet(), {before});

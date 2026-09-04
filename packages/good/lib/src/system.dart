@@ -855,7 +855,9 @@ class _ArchetypeQuery implements Query {
       'by ArchetypeQueryDescriptor.resolve, which Game._bootGame runs once '
       'every system has declared. Reaching one no pass resolved means nothing '
       'collected it - the field is `late` or `static`, or its owner is not a '
-      'declared system.',
+      'declared system. Away from a boot - a query built by hand, in a test - '
+      'run the two halves yourself: '
+      'ArchetypeQueryDescriptor()..declare([query])..resolve().',
     );
     if (signature & _required != _required) return false;
     if (signature & _forbidden != 0) return false;
@@ -1061,6 +1063,12 @@ final class ArchetypeQueryDescriptor implements QueryDescriptor {
   /// are declarations too, and what they resolve against is a row layout and
   /// an owner's composition. This pass resolves component bits, and says so
   /// by taking only what is numbered in them.
+  ///
+  /// This is also the door for a query nothing collected - one built by hand
+  /// outside a system, which `Query.all` and `Query.where` both allow. Hand it
+  /// here and call [resolve], and the query has been through the same pass a
+  /// boot puts a system's fields through; there is no other way to number one,
+  /// because the bits belong to the isolate running this pass.
   void declare(Iterable<ScannableField> declarations) {
     for (final declaration in declarations) {
       if (declaration is! _ArchetypeQuery) continue;
