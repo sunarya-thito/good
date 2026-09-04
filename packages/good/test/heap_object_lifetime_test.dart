@@ -55,15 +55,8 @@ List<int> _payload(int n) => <int>[n];
 final List<int> sharedDefault = <int>[-1];
 
 mixin _Holder on Component {
-  late final DataPointer<List<int>> owned;
-  late final DataPointer<List<int>?> maybe;
-
-  @override
-  void describeStruct(DataDescriptor data) {
-    super.describeStruct(data);
-    owned = data.hasHeapObject<List<int>>(() => sharedDefault);
-    maybe = data.optHeapObject<List<int>>();
-  }
+  final owned = Field.heapObject<List<int>>(() => sharedDefault);
+  final maybe = Field.optHeapObject<List<int>>();
 
   @override
   void describeType(ComponentDescriptor component) {

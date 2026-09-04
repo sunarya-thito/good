@@ -83,13 +83,7 @@ class _MainOnlySource extends AssetSource {
 const _theme = AssetKey<AudioClip>(_MainOnlySource('theme.ogg', 96));
 
 class _MusicScene extends SceneStruct {
-  late final Asset<AudioClip> theme;
-
-  @override
-  void describeAssets(AssetDescriptor descriptor) {
-    super.describeAssets(descriptor);
-    theme = descriptor.has(_theme);
-  }
+  final theme = Asset.of(_theme);
 }
 
 /// Records what it was handed instead of playing it.
@@ -167,13 +161,7 @@ class _IsolateAudioGame extends Game {
   late final _MusicScene music;
 
   /// Written on the game isolate, read here. The only way a number gets back.
-  late final StateChannel<int> uploaded;
-
-  @override
-  void describeState(StateDescriptor descriptor) {
-    super.describeState(descriptor);
-    uploaded = descriptor.hasInt32(-1);
-  }
+  final uploaded = Channel.int32(-1);
 
   @override
   GameState createState() => _IsolateAudioState();

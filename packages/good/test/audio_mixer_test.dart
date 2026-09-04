@@ -127,35 +127,17 @@ final _hit = AssetKey<AudioClip>(MemorySource(_bytes(16), name: 'hit.ogg'));
 /// A scene that declares [_theme] and nothing else - the music case, where the
 /// clip outlives the scene that named it.
 class _MusicScene extends SceneStruct {
-  late final Asset<AudioClip> theme;
-
-  @override
-  void describeAssets(AssetDescriptor descriptor) {
-    super.describeAssets(descriptor);
-    theme = descriptor.has(_theme);
-  }
+  final theme = Asset.of(_theme);
 }
 
 /// A second scene declaring the same clip, so that a shared claim can be
 /// distinguished from a voice's.
 class _AlsoMusicScene extends SceneStruct {
-  late final Asset<AudioClip> theme;
-
-  @override
-  void describeAssets(AssetDescriptor descriptor) {
-    super.describeAssets(descriptor);
-    theme = descriptor.has(_theme);
-  }
+  final theme = Asset.of(_theme);
 }
 
 class _EffectScene extends SceneStruct {
-  late final Asset<AudioClip> hit;
-
-  @override
-  void describeAssets(AssetDescriptor descriptor) {
-    super.describeAssets(descriptor);
-    hit = descriptor.has(_hit);
-  }
+  final hit = Asset.of(_hit);
 }
 
 class _AudioState extends GameState<_AudioGame> {

@@ -9,9 +9,9 @@ part 'game_reuse_test.g.dart';
 /// where it is asserted rather than left to be discovered.
 ///
 /// Two facts hold it up and they agree. A declaration is one-shot, because
-/// every one of them lands in a `late final` (the typed-handle rule) and a
-/// `late final` is assignable exactly once. And a declaration *is* its storage:
-/// the `StateChannel` returned by `descriptor.hasInt32()` holds the run's
+/// every one of them is a `final` field with its value on it and a field
+/// initialiser runs once per instance. And a declaration *is* its storage:
+/// the `StateChannel` returned by `Channel.int32()` holds the run's
 /// `TripleBuffer` directly, a `BufferHandle` its `RingBuffer`, a `GameCommand`
 /// the sender that routes it - which is what keeps reading any of them a plain
 /// field access on the tick path, with no per-access indirection to work out
@@ -42,21 +42,13 @@ class _ReuseState extends GameState<_Reuse> {
 }
 
 class _Reuse extends Game {
-  /// A `late final` filled by a declaration pass - which is exactly what makes
-  /// the pass one-shot, and what this file is about.
-  late final StateChannel<int> score;
+  final score = Channel.int32();
 
   @override
   int get pageSize => 4096;
 
   @override
   Duration get fixedTimeStep => const Duration(milliseconds: 10);
-
-  @override
-  void describeState(StateDescriptor descriptor) {
-    super.describeState(descriptor);
-    score = descriptor.hasInt32();
-  }
 
   @override
   GameState createState() => _ReuseState();

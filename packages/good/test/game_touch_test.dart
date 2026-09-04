@@ -44,19 +44,15 @@ final List<String> seen = <String>[];
 final List<String> edges = <String>[];
 
 class _TouchSystem extends GameSystem with FixedTickable {
-  late final Input<PointerContacts> contacts;
-  late final Input<CursorPosition> cursor;
+  final contacts = Input.of<PointerContacts>(const ContactBinding());
+  final cursor = Input.of<CursorPosition>(const MouseBinding());
 
   /// The list object handed out on the last step, and the contact object at
   /// index 0 - both are meant to be the same instances every tick.
   PointerContacts? lastList;
   PointerContact? lastFirst;
 
-  @override
-  void describeInputs(InputDescriptor input) {
-    super.describeInputs(input);
-    contacts = input.has<PointerContacts>(const ContactBinding());
-    cursor = input.has<CursorPosition>(const MouseBinding());
+  _TouchSystem() {
     contacts.pressed += (event) => edges.add('pressed');
     contacts.released += (event) => edges.add('released');
   }

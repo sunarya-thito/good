@@ -143,15 +143,6 @@ List<ScannableField> _collect$CtorSubOldSpelling(Object object) {
   ];
 }
 
-List<ScannableField> _collect$LateFieldCtorSystem(Object object) {
-  final owner = object as _LateFieldCtorSystem;
-  return <ScannableField>[
-    owner.fire,
-    owner.mountEvent,
-    owner.unmountEvent,
-  ];
-}
-
 List<ScannableField> _collect$CtorSubState(Object object) {
   final owner = object as _CtorSubState;
   return <ScannableField>[
@@ -325,7 +316,6 @@ const GeneratedDeclarations _gameInputTestDeclarations =
         DeclarationCollector(_ShorthandGame, _collect$ShorthandGame),
         DeclarationCollector(_CtorSubSystem, _collect$CtorSubSystem),
         DeclarationCollector(_CtorSubOldSpelling, _collect$CtorSubOldSpelling),
-        DeclarationCollector(_LateFieldCtorSystem, _collect$LateFieldCtorSystem),
         DeclarationCollector(_CtorSubState, _collect$CtorSubState),
         DeclarationCollector(_CtorSubGame, _collect$CtorSubGame),
         DeclarationCollector(_NoSuperGame, _collect$NoSuperGame),

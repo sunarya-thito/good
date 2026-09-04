@@ -53,10 +53,12 @@ final List<String> events = <String>[];
 /// back.
 class _PlayerSystem extends GameSystem
     with FixedTickable, GameSystemLifecycleListener {
-  late final Input<Vector2> movement;
-  late final Input<bool> triggerSkill;
-  late final Input<bool> ping;
-  late final Input<Vector2> aim;
+  final movement = Input.of<Vector2>(
+    const Vec2Binding(up: .w, down: .s, left: .a, right: .d),
+  );
+  final triggerSkill = Input.of<bool>(const TriggerBinding(.spacebar));
+  final ping = Input.of<bool>();
+  final aim = Input.of<Vector2>();
 
   /// What [movement] read the last time this system actually ticked, and how
   /// many ticks it has seen - together these are how the tests check that
@@ -69,17 +71,6 @@ class _PlayerSystem extends GameSystem
   /// subscription that a test asserting "the listener fired" cannot tell
   /// apart from the listener itself being broken.
   bool mountedRan = false;
-
-  @override
-  void describeInputs(InputDescriptor input) {
-    super.describeInputs(input);
-    movement = input.has<Vector2>(
-      const Vec2Binding(up: .w, down: .s, left: .a, right: .d),
-    );
-    triggerSkill = input.has<bool>(const TriggerBinding(.spacebar));
-    ping = input.has<bool>();
-    aim = input.has<Vector2>();
-  }
 
   @override
   void onMounted() {
@@ -155,14 +146,8 @@ class _InputGame extends Game {
 /// list instead of being swallowed by a shared collector.
 class _ListenerSystemA extends GameSystem with GameSystemLifecycleListener {
   final List<String> heard = <String>[];
-  late final Input<bool> fire;
+  final fire = Input.of<bool>(const TriggerBinding(.spacebar));
   bool mountedRan = false;
-
-  @override
-  void describeInputs(InputDescriptor input) {
-    super.describeInputs(input);
-    fire = input.has<bool>(const TriggerBinding(.spacebar));
-  }
 
   @override
   void onMounted() {
@@ -178,13 +163,7 @@ class _ListenerSystemA extends GameSystem with GameSystemLifecycleListener {
 
 class _ListenerSystemB extends GameSystem with GameSystemLifecycleListener {
   final List<String> heard = <String>[];
-  late final Input<bool> fire;
-
-  @override
-  void describeInputs(InputDescriptor input) {
-    super.describeInputs(input);
-    fire = input.has<bool>(const TriggerBinding(.enter));
-  }
+  final fire = Input.of<bool>(const TriggerBinding(.enter));
 
   @override
   void onMounted() {
@@ -303,38 +282,12 @@ class _CtorSubOldSpelling extends GameSystem {
   void onJump(InputEvent<bool> event) => heard.add('jump');
 }
 
-/// The counter-case, and the reason the recommendation is conditional: an
-/// action declared in `describeInputs` is a `late final` field that has not
-/// been assigned when the constructor body runs.
-class _LateFieldCtorSystem extends GameSystem {
-  late final Input<bool> fire;
-
-  Object? constructionError;
-
-  _LateFieldCtorSystem() {
-    try {
-      fire.pressed += onFire;
-    } catch (error) {
-      constructionError = error;
-    }
-  }
-
-  @override
-  void describeInputs(InputDescriptor input) {
-    super.describeInputs(input);
-    fire = input.has<bool>(const TriggerBinding(.spacebar));
-  }
-
-  void onFire(InputEvent<bool> event) {}
-}
-
 class _CtorSubState extends GameState<_CtorSubGame> {
   @override
   void describeSystems(SystemDescriptor descriptor) {
     super.describeSystems(descriptor);
     descriptor.has(_CtorSubSystem.new);
     descriptor.has(_CtorSubOldSpelling.new);
-    descriptor.has(_LateFieldCtorSystem.new);
   }
 }
 
@@ -358,8 +311,8 @@ class _NoSuperGame extends Game {
   @override
   int get pageSize => 4096;
 
-  late final Input<bool> orphan;
-  late final Input<bool> ownDefault;
+  final orphan = Input.of<bool>();
+  final ownDefault = Input.of<bool>(null, true);
 
   @override
   GameState createState() => _NoSuperState();
@@ -370,8 +323,6 @@ class _NoSuperGame extends Game {
     // Deliberately no super.describeInputs(input) - that is the whole point
     // of this fixture. The analyzer flags it, which is why the ignore above
     // has to be written out by hand.
-    orphan = input.has<bool>();
-    ownDefault = input.has<bool>(null, true);
   }
 }
 
@@ -410,18 +361,12 @@ class _SharedDescriptorGame extends Game {
   @override
   int get pageSize => 4096;
 
-  late final Input<double> throttle;
+  // Declared *before* _LateDefaultSystem registers the double default -
+  // defaults are matched to actions at seal(), not at has().
+  final throttle = Input.of<double>();
 
   @override
   GameState createState() => _SharedDescriptorState();
-
-  @override
-  void describeInputs(InputDescriptor input) {
-    super.describeInputs(input);
-    // Declared *before* _LateDefaultSystem registers the double default -
-    // defaults are matched to actions at seal(), not at has().
-    throttle = input.has<double>();
-  }
 }
 
 class _SharedDescriptorState extends GameState<_SharedDescriptorGame> {
@@ -438,15 +383,10 @@ class _SharedDescriptorState extends GameState<_SharedDescriptorGame> {
 /// of "the mouse", which are deliberately different kinds of thing: the
 /// button is one bit like any key, the position is not.
 class _CursorSystem extends GameSystem {
-  late final Input<CursorPosition> cursor;
-  late final Input<bool> click;
+  final cursor = Input.of<CursorPosition>(const MouseBinding());
+  final click = Input.of<bool>(const TriggerBinding(.leftMouseButton));
 
-  @override
-  void describeInputs(InputDescriptor input) {
-    super.describeInputs(input);
-    cursor = input.has<CursorPosition>(const MouseBinding());
-    click = input.has<bool>(const TriggerBinding(.leftMouseButton));
-
+  _CursorSystem() {
     cursor.pressed += (event) => events.add('cursor pressed');
     cursor.released += (event) => events.add('cursor released');
     click.pressed += (event) => events.add('click pressed');
@@ -977,32 +917,6 @@ void main() {
       );
       _pressAndStep(game, [InputKey.spacebar]);
       expect(system.heard, isNotEmpty);
-    });
-
-    test('a describeInputs action cannot be reached from there', () async {
-      await _boot(_CtorSubGame.new);
-      final system = run.state.getSystem<_LateFieldCtorSystem>();
-
-      expect(
-        system.constructionError,
-        isA<Error>(),
-        reason:
-            'an action declared in describeInputs is a late final field, and '
-            'the hook runs long after the constructor body - so the two '
-            'spellings are not interchangeable, which is why the guide '
-            'recommends the constructor body only for the field form',
-      );
-      expect(
-        system.constructionError.toString(),
-        contains('fire'),
-        reason:
-            'the diagnostic has to name the field: asserting only that some '
-            'Error was thrown would pass on any unrelated failure in the '
-            'constructor body',
-      );
-      // And the action itself is fine - only the early subscription failed.
-      expect(system.fire.pressed.hasListeners, isFalse);
-      expect(system.fire.value, isFalse);
     });
   });
 
@@ -2151,18 +2065,11 @@ class _PrecedenceGame extends Game {
   @override
   int get pageSize => 4096;
 
-  late final Input<bool> loud;
-  late final Input<bool> quiet;
+  final loud = Input.of<bool>(null, true);
+  final quiet = Input.of<bool>();
 
   @override
   GameState createState() => _PrecedenceState();
-
-  @override
-  void describeInputs(InputDescriptor input) {
-    super.describeInputs(input);
-    loud = input.has<bool>(null, true);
-    quiet = input.has<bool>();
-  }
 }
 
 class _PrecedenceState extends GameState<_PrecedenceGame> {}

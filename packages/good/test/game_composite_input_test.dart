@@ -35,53 +35,46 @@ final List<String> events = <String>[];
 /// keyboard, a key beside a mouse button, and two axes.
 class _CompositeSystem extends GameSystem {
   /// WASD or the arrow keys - the case #215 was raised with.
-  late final Input<Vector2> keyboards;
+  final keyboards = Input.of<Vector2>(
+    CompositeBinding(
+      const Vec2Binding(up: .w, down: .s, left: .a, right: .d),
+      const Vec2Binding(
+        up: .arrowUp,
+        down: .arrowDown,
+        left: .arrowLeft,
+        right: .arrowRight,
+      ),
+    ),
+  );
 
   /// The left stick or WASD, which is the analog-or-digital case: the two
   /// sources are a `StickBinding` and a `Vec2Binding`, and both are
   /// `InputBinding<Vector2>`.
-  late final Input<Vector2> mixed;
+  final mixed = Input.of<Vector2>(
+    CompositeBinding(
+      const StickBinding(x: .virtualLeftStickX, y: .virtualLeftStickY),
+      const Vec2Binding(up: .w, down: .s, left: .a, right: .d),
+    ),
+  );
 
   /// Space or left click, one action with one pair of edges.
-  late final Input<bool> attack;
+  final attack = Input.of<bool>(
+    CompositeBinding(
+      const TriggerBinding(.spacebar),
+      const TriggerBinding(.leftMouseButton),
+    ),
+  );
 
   /// Two axes, so the `double` rule has something to disagree about.
-  late final Input<double> throttle;
+  final throttle = Input.of<double>(
+    CompositeBinding(
+      const AxisBinding(.virtualLeftStickX),
+      const AxisBinding(.virtualRightStickX),
+    ),
+    0.0,
+  );
 
-  @override
-  void describeInputs(InputDescriptor input) {
-    super.describeInputs(input);
-    keyboards = input.has<Vector2>(
-      CompositeBinding(
-        const Vec2Binding(up: .w, down: .s, left: .a, right: .d),
-        const Vec2Binding(
-          up: .arrowUp,
-          down: .arrowDown,
-          left: .arrowLeft,
-          right: .arrowRight,
-        ),
-      ),
-    );
-    mixed = input.has<Vector2>(
-      CompositeBinding(
-        const StickBinding(x: .virtualLeftStickX, y: .virtualLeftStickY),
-        const Vec2Binding(up: .w, down: .s, left: .a, right: .d),
-      ),
-    );
-    attack = input.has<bool>(
-      CompositeBinding(
-        const TriggerBinding(.spacebar),
-        const TriggerBinding(.leftMouseButton),
-      ),
-    );
-    throttle = input.has<double>(
-      CompositeBinding(
-        const AxisBinding(.virtualLeftStickX),
-        const AxisBinding(.virtualRightStickX),
-      ),
-      0.0,
-    );
-
+  _CompositeSystem() {
     attack.pressed += (event) => events.add('attack pressed');
     attack.released += (event) => events.add('attack released');
     keyboards.pressed += (event) => events.add('move pressed');
@@ -111,13 +104,7 @@ class _CompositeGame extends Game {
 /// An action declared unbound, so a composite restored from JSON has somewhere
 /// to be assigned - the rebinding-screen path.
 class _RestoreSystem extends GameSystem {
-  late final Input<bool> attack;
-
-  @override
-  void describeInputs(InputDescriptor input) {
-    super.describeInputs(input);
-    attack = input.has<bool>();
-  }
+  final attack = Input.of<bool>();
 }
 
 class _RestoreGameState extends GameState<_RestoreGame> {

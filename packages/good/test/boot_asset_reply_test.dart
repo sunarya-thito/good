@@ -127,23 +127,11 @@ const AssetKey<_Blob> _yieldingBlob = AssetKey<_Blob>(
 );
 
 class _SynchronousScene extends SceneStruct {
-  late final Asset<_Blob> blob;
-
-  @override
-  void describeAssets(AssetDescriptor descriptor) {
-    super.describeAssets(descriptor);
-    blob = descriptor.has(_synchronousBlob);
-  }
+  final blob = Asset.of(_synchronousBlob);
 }
 
 class _YieldingScene extends SceneStruct {
-  late final Asset<_Blob> blob;
-
-  @override
-  void describeAssets(AssetDescriptor descriptor) {
-    super.describeAssets(descriptor);
-    blob = descriptor.has(_yieldingBlob);
-  }
+  final blob = Asset.of(_yieldingBlob);
 }
 
 /// Carries [_sceneLoadedHere] back across the boundary, once a tick.
@@ -181,13 +169,7 @@ abstract class _BootLoadGame extends Game {
   late final SceneStruct scene;
 
   /// Written on the game isolate, read here.
-  late final StateChannel<int> loaded;
-
-  @override
-  void describeState(StateDescriptor descriptor) {
-    super.describeState(descriptor);
-    loaded = descriptor.hasInt32(0);
-  }
+  final loaded = Channel.int32();
 
   @override
   void describeAssetLoaders(AssetLoaderRegistrar loaders) {

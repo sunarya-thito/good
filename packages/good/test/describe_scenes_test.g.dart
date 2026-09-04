@@ -65,8 +65,8 @@ List<ScannableField> _collect$Mixed(Object object) {
   ];
 }
 
-List<ScannableField> _collect$HookCensusSystem(Object object) {
-  final owner = object as _HookCensusSystem;
+List<ScannableField> _collect$SecondCensusSystem(Object object) {
+  final owner = object as _SecondCensusSystem;
   return <ScannableField>[
     owner.marked,
     owner.mountEvent,
@@ -74,8 +74,8 @@ List<ScannableField> _collect$HookCensusSystem(Object object) {
   ];
 }
 
-List<ScannableField> _collect$HookState(Object object) {
-  final owner = object as _HookState;
+List<ScannableField> _collect$SecondCensusState(Object object) {
+  final owner = object as _SecondCensusState;
   return <ScannableField>[
     owner.fixedTickEvent,
     owner.tickEvent,
@@ -90,8 +90,8 @@ List<ScannableField> _collect$HookState(Object object) {
   ];
 }
 
-List<ScannableField> _collect$HookGame(Object object) {
-  object as _HookGame;
+List<ScannableField> _collect$SecondCensusGame(Object object) {
+  object as _SecondCensusGame;
   return const <ScannableField>[];
 }
 
@@ -152,9 +152,9 @@ const GeneratedDeclarations _describeScenesTestDeclarations =
         DeclarationCollector(_Level, _collect$Level),
         DeclarationCollector(_Menu, _collect$Menu),
         DeclarationCollector(_Mixed, _collect$Mixed),
-        DeclarationCollector(_HookCensusSystem, _collect$HookCensusSystem),
-        DeclarationCollector(_HookState, _collect$HookState),
-        DeclarationCollector(_HookGame, _collect$HookGame),
+        DeclarationCollector(_SecondCensusSystem, _collect$SecondCensusSystem),
+        DeclarationCollector(_SecondCensusState, _collect$SecondCensusState),
+        DeclarationCollector(_SecondCensusGame, _collect$SecondCensusGame),
         DeclarationCollector(_Bare, _collect$Bare),
         DeclarationCollector(_CensusSystem, _collect$CensusSystem),
         DeclarationCollector(_DeclaringState, _collect$DeclaringState),

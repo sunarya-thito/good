@@ -24,13 +24,7 @@ late Game run;
 final List<String> seen = <String>[];
 
 class _ContactSystem extends GameSystem with FixedTickable {
-  late final Input<PointerContacts> contacts;
-
-  @override
-  void describeInputs(InputDescriptor input) {
-    super.describeInputs(input);
-    contacts = input.has<PointerContacts>(const ContactBinding());
-  }
+  final contacts = Input.of<PointerContacts>(const ContactBinding());
 
   @override
   void onFixedUpdate() {

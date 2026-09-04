@@ -59,19 +59,12 @@ Future<void> _recordingRebuilds(Future<void> Function() body) async {
 }
 
 class _StickSystem extends GameSystem with FixedTickable {
-  late final Input<Vector2> move;
-  late final Input<Vector2> aim;
-
-  @override
-  void describeInputs(InputDescriptor input) {
-    super.describeInputs(input);
-    move = input.has<Vector2>(
-      const StickBinding(x: .virtualLeftStickX, y: .virtualLeftStickY),
-    );
-    aim = input.has<Vector2>(
-      const StickBinding(x: .virtualRightStickX, y: .virtualRightStickY),
-    );
-  }
+  final move = Input.of<Vector2>(
+    const StickBinding(x: .virtualLeftStickX, y: .virtualLeftStickY),
+  );
+  final aim = Input.of<Vector2>(
+    const StickBinding(x: .virtualRightStickX, y: .virtualRightStickY),
+  );
 
   @override
   void onFixedUpdate() {}

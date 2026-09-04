@@ -66,18 +66,13 @@ class _Mixed extends SceneStruct {
   final prop = _Prop();
 }
 
-/// The same census through the `describeQuery` hook. `_bootGame` runs that
-/// hook once, and `_HookGame` declares no scene, so it runs against an empty
-/// `ArchetypeRegistry`.
-class _HookCensusSystem extends GameSystem with FixedTickable {
-  late final Query marked;
+/// The same census, built through the [Query.where] builder rather than
+/// [Query.all], on a game that declares no scene - so the query is built
+/// against an empty `ArchetypeRegistry` and has to pick archetypes up
+/// afterwards.
+class _SecondCensusSystem extends GameSystem with FixedTickable {
+  final marked = Query.where().withAll(_Marked).build();
   int seen = 0;
-
-  @override
-  void describeQuery(QueryDescriptor descriptor) {
-    super.describeQuery(descriptor);
-    marked = descriptor.query().withAll(_Marked).build();
-  }
 
   @override
   void onFixedUpdate() {
@@ -89,15 +84,15 @@ class _HookCensusSystem extends GameSystem with FixedTickable {
   }
 }
 
-class _HookState extends GameState<_HookGame> {
+class _SecondCensusState extends GameState<_SecondCensusGame> {
   @override
   void describeSystems(SystemDescriptor descriptor) {
     super.describeSystems(descriptor);
-    descriptor.has(_HookCensusSystem.new);
+    descriptor.has(_SecondCensusSystem.new);
   }
 }
 
-class _HookGame extends Game {
+class _SecondCensusGame extends Game {
   @override
   int get pageSize => 4096;
 
@@ -105,7 +100,7 @@ class _HookGame extends Game {
   Duration get fixedTimeStep => const Duration(milliseconds: 10);
 
   @override
-  GameState createState() => _HookState();
+  GameState createState() => _SecondCensusState();
 }
 
 /// A prefab with no `Field.*` initialisers, so it can be constructed
@@ -334,19 +329,20 @@ void main() {
   });
 
   // What orders the boot passes is `collectListeners` reaching for a system,
-  // not the query pass reaching for an archetype (#225). `describeQuery` reads
-  // `ComponentTypeRegistry` for a bit per named type and resolves archetypes
-  // lazily, so it carries no requirement that `describeScenes` precede it.
+  // not the query pass reaching for an archetype (#225). A query holds the
+  // types it names and takes its bits in the resolve pass, which resolves
+  // archetypes lazily on top of that - so it carries no requirement that
+  // `describeScenes` precede it.
   test(
-    'a hook-built query matches archetypes registered after the query pass',
+    'a query matches archetypes registered after the resolve pass',
     () async {
-      await _boot(_HookGame.new);
-      final system = run.state.getSystem<_HookCensusSystem>();
+      await _boot(_SecondCensusGame.new);
+      final system = run.state.getSystem<_SecondCensusSystem>();
       expect(
         ArchetypeRegistry.count,
         0,
         reason:
-            'this game declares no scene, so describeQuery ran against an '
+            'this game declares no scene, so the query resolved against an '
             'empty registry',
       );
 

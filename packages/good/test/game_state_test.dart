@@ -118,18 +118,18 @@ class _StateGame extends Game {
   @override
   Duration get fixedTimeStep => const Duration(milliseconds: 10);
 
-  late final StateChannel<int> gameCount;
+  final gameCount = Channel.int32(7);
 
   /// A second channel on the same source, at a different width, written by the
   /// system on the game isolate.
-  late final StateChannel<int> stateCount;
+  final stateCount = Channel.int64(-5);
 
   /// Declared here on behalf of `_StateSystem`, which writes them. One source
   /// declares; the game isolate writes.
-  late final StateChannel<int> health;
-  late final StateChannel<int> probeCount;
-  late final StateChannel<double> mana;
-  late final StateChannel<bool> alive;
+  final health = Channel.int32(100);
+  final probeCount = Channel.uint16(300);
+  final mana = Channel.float32(0.5);
+  final alive = Channel.boolean(true);
 
   /// The live descriptor, captured mid-boot so a test can try to declare
   /// against it *after* boot - see 'declaring after boot is refused'.
@@ -142,12 +142,6 @@ class _StateGame extends Game {
   void describeState(StateDescriptor descriptor) {
     super.describeState(descriptor);
     capturedDescriptor = descriptor;
-    gameCount = descriptor.hasInt32(7);
-    stateCount = descriptor.hasInt64(-5);
-    health = descriptor.hasInt32(100);
-    probeCount = descriptor.hasUint16(300);
-    mana = descriptor.hasFloat32(0.5);
-    alive = descriptor.hasBool(true);
   }
 }
 
@@ -489,34 +483,18 @@ class _WidthGame extends Game {
   @override
   int get pageSize => 4096;
 
-  late final StateChannel<int> u8;
-  late final StateChannel<int> i8;
-  late final StateChannel<int> u16;
-  late final StateChannel<int> i16;
-  late final StateChannel<int> u32;
-  late final StateChannel<int> i32;
-  late final StateChannel<int> u64;
-  late final StateChannel<int> i64;
-  late final StateChannel<double> f32;
-  late final StateChannel<double> f64;
-  late final StateChannel<bool> flag;
+  final u8 = Channel.uint8();
+  final i8 = Channel.int8();
+  final u16 = Channel.uint16();
+  final i16 = Channel.int16();
+  final u32 = Channel.uint32();
+  final i32 = Channel.int32();
+  final u64 = Channel.uint64();
+  final i64 = Channel.int64();
+  final f32 = Channel.float32();
+  final f64 = Channel.float64();
+  final flag = Channel.boolean(true);
 
   @override
   GameState createState() => _WidthState();
-
-  @override
-  void describeState(StateDescriptor descriptor) {
-    super.describeState(descriptor);
-    u8 = descriptor.hasUint8();
-    i8 = descriptor.hasInt8();
-    u16 = descriptor.hasUint16();
-    i16 = descriptor.hasInt16();
-    u32 = descriptor.hasUint32();
-    i32 = descriptor.hasInt32();
-    u64 = descriptor.hasUint64();
-    i64 = descriptor.hasInt64();
-    f32 = descriptor.hasFloat32();
-    f64 = descriptor.hasFloat64();
-    flag = descriptor.hasBool(true);
-  }
 }
