@@ -141,32 +141,39 @@ class _FakeAsset extends AssetKey<_FakePayload> {
 /// typed-handle rule asks for, and what every "did describeAssets run"
 /// assertion below inspects.
 ///
-/// # Why this one is still a `late final`, and what would move it
+/// # Why this one declares in the hooks, and holds nullable handles
 ///
-/// `good_tool --declarations` refuses both fields below, and neither can be
-/// given an initialiser as things stand.
+/// It is the only fixture that declares an asset from `describeAssets`, and
+/// the group below measures the hook itself - that it runs once per prefab,
+/// that a scene's own assets are addressed before any prefab's, and that
+/// `describeStruct` can name what it returned. Giving these two fields
+/// initialisers would leave the pass with nothing exercising it, so this is a
+/// fixture whose point is the comparison: [_Ambient] and its neighbours are
+/// the field form, and this is what they are compared against.
 ///
-/// [texture] names a key the test picks, and a field initialiser cannot read
-/// `this` - which is why the ambient fixtures further down name file-level
-/// keys instead. That much is a fixture shape, and a family of one class per
-/// key would fix it.
+/// Nullable rather than `late final`, the shape `_PropScene.music` two
+/// classes down already takes. A `late final` filled in by a describe pass is
+/// the double declaration this engine's rules forbid and `good_tool
+/// --declarations` refuses; a nullable handle says at the field that
+/// something else fills it, and the `!` at every read says so again.
 ///
-/// [spriteField] is the one that cannot be written as a field at all.
-/// `DataDescriptor.hasPacked` packs its default eagerly - `initialValue
-/// .pack()` in `data_layout.dart` - and an `Asset` has no address until the
-/// scene registers the object holding it, which happens after the collect
-/// pass. So `Field.packed(assets.of<T>(), Asset.of(key))` in an initialiser
-/// throws "no scene ever declared it" from the constructor. Measured, not
-/// reasoned. A packed column defaulting to an asset needs `hasPacked` to
-/// defer the pack to the reservation pass before this fixture can convert.
+/// **A key taken as a constructor argument has no field form**, which is what
+/// keeps this one in the hooks whatever `data_layout.dart` does. A field
+/// initialiser cannot read `this`, and the initializer-list spelling
+/// `_Prop(this.key) : texture = Asset.of(key)` - which reads the *parameter*
+/// and is legal Dart - is refused as well, for a reason of its own: the field
+/// carries no initialiser, so nothing at the declaration says what assigns
+/// it. Measured, not reasoned. What the tests need is a key per instance, so
+/// the alternative is a class per key, and the assertions here are about
+/// arbitrary and shared keys rather than about any particular one.
 class _Prop extends EntityStruct {
   _Prop(this.key);
 
   final _FakeAsset key;
 
   int describeAssetsCalls = 0;
-  late final Asset<_FakePayload> texture;
-  late final DataPointer<Asset<_FakePayload>> spriteField;
+  Asset<_FakePayload>? texture;
+  DataPointer<Asset<_FakePayload>>? spriteField;
 
   @override
   void describeAssets(AssetDescriptor descriptor) {
@@ -178,9 +185,10 @@ class _Prop extends EntityStruct {
   @override
   void describeStruct(DataDescriptor data) {
     super.describeStruct(data);
-    // The payoff of running describeAssets before describeStruct: the handle
-    // is already addressed, so it can be this archetype's default row value.
-    spriteField = data.hasPacked(assets.of<_FakePayload>(), texture);
+    // What running describeAssets first buys: the handle exists, so this line
+    // can name it. Its address is not needed here any more - `hasPacked`
+    // packs its default at the reservation pass, which is after both hooks.
+    spriteField = data.hasPacked(assets.of<_FakePayload>(), texture!);
   }
 }
 
@@ -293,7 +301,7 @@ void main() {
       );
 
       expect(
-        scene.music!.pack() < scene.prefabs.first.texture.pack(),
+        scene.music!.pack() < scene.prefabs.first.texture!.pack(),
         isTrue,
         reason:
             'addresses are handed out in declaration order, and the order '
@@ -320,7 +328,7 @@ void main() {
     test('the returned handle is addressable, and the key is not', () {
       final key = _FakeAsset('typed');
       final scene = _bringUp(_PropScene([_Prop(key)]));
-      final handle = scene.prefabs.first.texture;
+      final handle = scene.prefabs.first.texture!;
 
       expect(
         handle,
@@ -346,8 +354,8 @@ void main() {
       final entity = scene.handle.addEntity(prop);
 
       expect(
-        prop.spriteField[entity],
-        same(prop.texture),
+        prop.spriteField![entity],
+        same(prop.texture!),
         reason:
             'the row stores the declared address and unpacks it through the '
             'Assets table - no heap reference in the row, and no asset '
@@ -364,17 +372,17 @@ void main() {
       final scene = _bringUp(_PropScene([a, b]));
 
       expect(
-        identical(a.texture, b.texture),
+        identical(a.texture!, b.texture!),
         isTrue,
         reason:
             'two prefabs using one texture must be one decode and one '
             'address, not two - which only holds if has() is idempotent per '
             'key',
       );
-      expect(a.texture.pack(), b.texture.pack());
+      expect(a.texture!.pack(), b.texture!.pack());
       expect(
-        assets.tryGetAt(a.texture.pack()),
-        same(a.texture),
+        assets.tryGetAt(a.texture!.pack()),
+        same(a.texture!),
         reason:
             'and the second declaration must not have built a second handle '
             'over the address, or the first would silently be the orphan',
@@ -393,7 +401,7 @@ void main() {
       final prop = _Prop(shared);
       final scene = _bringUp(_PropScene([prop], sceneKey: shared));
 
-      expect(identical(scene.music, prop.texture), isTrue);
+      expect(identical(scene.music!, prop.texture!), isTrue);
       expect(
         scene.declaredAssets.length,
         1,
@@ -416,13 +424,13 @@ void main() {
       // site (`AssetKey<T>(BundleSource('x'))`), where two call sites naming
       // one file is the normal case rather than a mistake.
       expect(
-        identical(a.texture, b.texture),
+        identical(a.texture!, b.texture!),
         isTrue,
         reason:
             'identity is (payload type, source), so two keys naming one file '
             'are one asset - one address and one decode',
       );
-      expect(a.texture.pack(), b.texture.pack());
+      expect(a.texture!.pack(), b.texture!.pack());
       expect(
         scene.declaredAssets.length,
         1,
@@ -456,7 +464,7 @@ void main() {
         scene.initializeScene(_pool(), assets: assets);
         final addresses = <int>[
           scene.music!.pack(),
-          for (final prefab in scene.prefabs) prefab.texture.pack(),
+          for (final prefab in scene.prefabs) prefab.texture!.pack(),
         ];
         scene.pool.dispose();
         return addresses;
@@ -1119,6 +1127,49 @@ void main() {
       );
     });
 
+    test('a packed column names an asset the scene then loads', () {
+      final scene = _AmbientScene(<EntityStruct Function()>[
+        _AmbientPacked.new,
+      ]);
+      _bringUpAmbient(scene);
+
+      expect(
+        scene.declaredAssets.map((Asset<Object?> a) => a.key).toSet(),
+        <AssetKey<Object?>>{_packedKey, _optionalPackedKey},
+        reason:
+            'nothing else names either key, so a column whose default was '
+            'not offered to the asset pass would leave the scene loading '
+            'neither - an address stamped into every row for a texture the '
+            'scene never decodes',
+      );
+    });
+
+    test('a packed column stamps the address its default was bound to', () {
+      final scene = _AmbientScene(<EntityStruct Function()>[
+        _AmbientPacked.new,
+      ]);
+      final handle = _bringUpAmbient(scene);
+      final prefab = scene.registered.single as _AmbientPacked;
+      final entity = handle.addEntity(prefab);
+
+      expect(
+        prefab.sprite[entity],
+        same(assets.tryGet(_packedKey)),
+        reason:
+            'the default is packed at the reservation pass, which runs after '
+            'the asset pass bound the handle. Packed where the column is '
+            'declared it threw out of the constructor, because a handle a '
+            'field initialiser built has no address at that point',
+      );
+      expect(
+        prefab.optionalSprite[entity],
+        same(assets.tryGet(_optionalPackedKey)),
+        reason:
+            'and the nullable spelling defers through its presence-flag '
+            'wrapper, which is the column a field actually holds',
+      );
+    });
+
     test('a SceneStruct declares in its own field, like a prefab', () {
       // It could not before: a scene is constructed by the caller and only
       // gets its `Assets` at initializeScene, so an initialiser reaching an
@@ -1167,11 +1218,13 @@ void main() {
 }
 
 /// Brings an [_AmbientScene] up with no `Game`, the way `_bringUp` does for
-/// the `describeAssets` fixtures.
-void _bringUpAmbient(_AmbientScene scene) {
+/// the `describeAssets` fixtures, and hands back the handle entities are
+/// spawned from.
+Scene _bringUpAmbient(_AmbientScene scene) {
   scene.initializeScene(_pool(), assets: assets);
-  SceneRegistry.register(scene);
+  final handle = SceneRegistry.register(scene);
   addTearDown(scene.pool.dispose);
+  return handle;
 }
 
 /// The #194 shape: the texture is named in the field that holds it, with no
@@ -1185,6 +1238,29 @@ class _Ambient extends EntityStruct {
 /// only earns its keep next to [_Ambient], never alone.
 class _AmbientTwin extends EntityStruct {
   final texture = Asset.of(_sharedKey);
+}
+
+/// A packed column whose row default is an asset, declared on the field that
+/// holds the column.
+///
+/// Two halves make the line legal, and it threw out of the constructor
+/// without either. `hasPacked` packs its default at the reservation pass
+/// rather than where the column is written, so the handle does not have to
+/// have an address yet; and a column carrying an asset offers it to the asset
+/// pass the way a field holding one does, so it gets an address and a place
+/// in the scene's footprint. Nothing else names these two keys, which is what
+/// makes the footprint assertion below say something.
+class _AmbientPacked extends EntityStruct {
+  final sprite = Field.packed(assets.of<_FakePayload>(), Asset.of(_packedKey));
+
+  /// The nullable spelling, which reaches the same default through
+  /// `_OptionalField` - the wrapper a field actually holds for an
+  /// `optPacked`, and the one real code writes (`_data.optPacked(_assets,
+  /// texture)` in goo2d's sprite descriptor).
+  final optionalSprite = Field.optPacked(
+    assets.of<_FakePayload>(),
+    Asset.of(_optionalPackedKey),
+  );
 }
 
 /// A nested declaration with the declarer's own asset written **after** it,
@@ -1244,6 +1320,8 @@ class _SceneFieldAmbient extends SceneStruct {
 /// `_FakeAsset` instance across tests is the same asset by construction, which
 /// is what the shared-handle assertions are about.
 final _FakeAsset _sharedKey = _FakeAsset('ambient-shared');
+final _FakeAsset _packedKey = _FakeAsset('ambient-packed');
+final _FakeAsset _optionalPackedKey = _FakeAsset('ambient-packed-optional');
 final _FakeAsset _parentKey = _FakeAsset('ambient-parent');
 final _FakeAsset _childKey = _FakeAsset('ambient-child');
 

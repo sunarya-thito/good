@@ -23,8 +23,6 @@ part of 'asset_test.dart';
 List<ScannableField> _collect$Prop(Object object) {
   final owner = object as _Prop;
   return <ScannableField>[
-    owner.texture,
-    owner.spriteField,
     owner.mountedEvent,
     owner.unmountedEvent,
   ];
@@ -59,6 +57,16 @@ List<ScannableField> _collect$AmbientTwin(Object object) {
   final owner = object as _AmbientTwin;
   return <ScannableField>[
     owner.texture,
+    owner.mountedEvent,
+    owner.unmountedEvent,
+  ];
+}
+
+List<ScannableField> _collect$AmbientPacked(Object object) {
+  final owner = object as _AmbientPacked;
+  return <ScannableField>[
+    owner.sprite,
+    owner.optionalSprite,
     owner.mountedEvent,
     owner.unmountedEvent,
   ];
@@ -156,6 +164,7 @@ const GeneratedDeclarations _assetTestDeclarations =
         DeclarationCollector(_PropScene, _collect$PropScene),
         DeclarationCollector(_Ambient, _collect$Ambient),
         DeclarationCollector(_AmbientTwin, _collect$AmbientTwin),
+        DeclarationCollector(_AmbientPacked, _collect$AmbientPacked),
         DeclarationCollector(_AmbientParent, _collect$AmbientParent),
         DeclarationCollector(_AmbientChild, _collect$AmbientChild),
         DeclarationCollector(_AmbientScene, _collect$AmbientScene),
