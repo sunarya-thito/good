@@ -10,10 +10,13 @@
 // These cases pin the hook's semantics on one isolate. The property that
 // cannot be tested here - that the *game* isolate registers nothing - needs a
 // real spawn and lives in `game_isolate_test.dart`.
+import 'dart:typed_data';
+
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:good/src/archetype.dart';
 import 'package:good/src/asset.dart';
+import 'package:good/src/asset_kinds.dart';
 import 'package:good/src/audio/audio_clip.dart';
 import 'package:good/src/game.dart';
 import 'package:good/src/game_state.dart';
@@ -79,14 +82,27 @@ class _EngineGame extends _BareGame {
   }
 }
 
-/// A game on top of it, adding its own and replacing the engine's.
+/// A game on top of it, adding its own and replacing both the engine's and
+/// the kernel's.
 class _UserGame extends _EngineGame {
   @override
   void describeAssetLoaders(AssetLoaderRegistrar loaders) {
     super.describeAssetLoaders(loaders);
     loaders.register<_Other>(const _OtherLoader());
     loaders.register<_Payload>(const _MarkLoader('game'));
+    // `String` is a type the kernel now claims, so this line is a project
+    // taking a payload type off the engine rather than adding one. Nothing
+    // refuses it and nothing says it happened - see the case below.
+    loaders.register<String>(const _ShoutingTextLoader());
   }
+}
+
+/// A project's own decoder for a type the kernel already registered.
+class _ShoutingTextLoader extends AssetLoader<String> {
+  const _ShoutingTextLoader();
+
+  @override
+  Future<String> load(AssetKey<String> key) async => 'shouted';
 }
 
 Future<G> _boot<G extends Game>(G Function() create) async {
@@ -150,14 +166,36 @@ void main() {
     );
   });
 
-  test('the kernel registers its own payload type unasked', () async {
-    // `AudioClip` is the one payload the kernel ships - bytes and a container
-    // name, no canvas and no dimension - so the kernel registers its decoder
-    // and every game gets audio loading without declaring anything. That is
-    // what lets a 3D project load a sound (#93); goo3d declares no loaders at
-    // all.
+  test('the kernel registers its own payload types unasked', () async {
+    // What the kernel ships is every payload that needs no device to decode -
+    // bytes and a container name for audio, `dart:convert` for JSON and text,
+    // nothing at all for a blob. No canvas and no dimension in any of them, so
+    // the kernel registers their decoders and every game gets them without
+    // declaring anything. That is what lets a 3D project load a sound (#93)
+    // and what gives a level layout or a save file somewhere to go (#357);
+    // goo3d declares no loaders at all.
     await _boot(_BareGame.new);
     expect(AssetLoaders.isRegistered<AudioClip>(), isTrue);
+    expect(AssetLoaders.isRegistered<JsonValue>(), isTrue);
+    expect(AssetLoaders.isRegistered<String>(), isTrue);
+    expect(AssetLoaders.isRegistered<Uint8List>(), isTrue);
+  });
+
+  test('a game can take a kernel payload type over, silently', () async {
+    // AssetLoaders.register is a keyed overwrite with no refusal, and the
+    // kernel claims `String` and `Uint8List` - two of the most general types
+    // in Dart. A project registering its own decoder for one of them wins for
+    // the whole isolate, including every TextAsset another package declared.
+    // That is the documented rule (later wins) arriving at its widest, and it
+    // is written on TextLoader because nothing else would tell anyone.
+    await _boot(_UserGame.new);
+
+    expect(AssetLoaders.of<String>(), isA<_ShoutingTextLoader>());
+    expect(
+      AssetLoaders.of<Uint8List>(),
+      isA<BytesLoader>(),
+      reason: "and the types it did not claim are still the kernel's",
+    );
   });
 
   test(

@@ -17,6 +17,7 @@ import 'package:vector_math/vector_math_64.dart' show Vector2;
 
 import 'package:good/src/archetype.dart';
 import 'package:good/src/asset.dart';
+import 'package:good/src/asset_kinds.dart';
 import 'package:good/src/audio/audio_backend.dart';
 import 'package:good/src/audio/audio_clip.dart';
 import 'package:good/src/camera_view.dart';
@@ -834,12 +835,22 @@ abstract class Game implements RandomOwner, Scannable {
   /// no canvas to hang on at all.
   @mustCallSuper
   void describeAssetLoaders(AssetLoaderRegistrar loaders) {
-    // The kernel ships one payload type, so the kernel registers its decoder.
-    // `AudioClip` is bytes and a container name - no canvas, no device, no
-    // dimension - which is why it sits here rather than in a renderer package
-    // and why a 3D game gets sound loading without goo3d declaring anything
-    // (#93). Reading the bytes is all this buys: nothing here plays them.
+    // The kernel ships the payload types that need no device to decode, so
+    // the kernel registers their decoders. `AudioClip` is bytes and a
+    // container name - no canvas, no device, no dimension - which is why it
+    // sits here rather than in a renderer package and why a 3D game gets
+    // sound loading without goo3d declaring anything (#93). Reading the bytes
+    // is all this buys: nothing here plays them.
     loaders.register<AudioClip>(const AudioLoader());
+    // The same argument, and the reason a level layout, a dialogue file or a
+    // save blob has a payload type to be declared under at all: `jsonDecode`
+    // and `utf8.decode` are `dart:convert`, and handing back a buffer is
+    // nothing. So a project that ships one of those gets a typed handle
+    // without registering a decoder, exactly as it gets one for a sound
+    // (#357).
+    loaders.register<JsonValue>(const JsonLoader());
+    loaders.register<String>(const TextLoader());
+    loaders.register<Uint8List>(const BytesLoader());
   }
 
   /// This game's declared camera views. Empty until [describeCameras] has

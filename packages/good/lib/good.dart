@@ -15,6 +15,7 @@ export 'src/animation/animatable.dart';
 export 'src/animation/struct.dart';
 export 'src/archetype.dart';
 export 'src/asset.dart';
+export 'src/asset_kinds.dart';
 export 'src/asset_pack.dart';
 // The playback half of audio. `AudioBackend` is the seam a native engine
 // plugs into and `good` ships no implementation of it - see

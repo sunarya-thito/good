@@ -385,6 +385,12 @@ final class AssetLoaders {
   /// family does: a subclass calls `super` first and then registers, so its own
   /// decoder for a type the engine already covers takes over. Overriding an
   /// engine decoder is a supported thing to do, and this is how.
+  ///
+  /// **What the kernel already holds**: `AudioClip`, `JsonValue`, `String` and
+  /// `Uint8List`. The last two are general enough that a project registering
+  /// one is taking a payload type off the engine for the whole isolate rather
+  /// than adding one - silently, and for every package in the process. See
+  /// `TextLoader`, which says what that costs.
   static void register<T>(AssetLoader<T> loader) => _loaders[T] = loader;
 
   /// Whether a decoder for [T] is registered on this isolate.
