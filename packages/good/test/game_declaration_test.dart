@@ -26,8 +26,9 @@ part 'game_declaration_test.g.dart';
 //
 // What this file pins is the field form on a `Game`: the values it declares,
 // that each channel is storage of its own, that the numbering survives the
-// isolate boundary, and that a `Game` built inside another constructor
-// declares onto its own fields.
+// isolate boundary, that a `Game` built inside another constructor declares
+// onto its own fields, and that a game naming no collector table says which
+// isolate it is on rather than which class it could not read.
 
 abstract class _BareGame extends Game {
   @override
@@ -125,6 +126,26 @@ class _SystemHostState extends GameState<_SystemHostGame> {
     super.describeSystems(descriptor);
     descriptor.has(_GameBuildingSystem.new);
   }
+}
+
+/// The shape the boot check is for: this library's `main` installs a table and
+/// this game never names one. Main's half of the boot finds what `main`
+/// installed; the spawned copy runs no `main` and finds nothing. Deliberately
+/// not a `_BareGame` - that base is what names the table.
+class _NoTableGame extends Game {
+  @override
+  int get pageSize => 4096;
+
+  @override
+  Duration get fixedTimeStep => const Duration(milliseconds: 5);
+
+  @override
+  GameState createState() => _NoTableState();
+}
+
+class _NoTableState extends GameState<_NoTableGame> {
+  @override
+  void onMounted() {}
 }
 
 // --- the isolate-crossing fixture -----------------------------------------
@@ -372,5 +393,48 @@ void main() {
         reason: 'and the running game kept everything it declared',
       );
     });
+  });
+
+  group('a Game that names no table', () {
+    test(
+      'says which isolate it is on rather than which class it could not read',
+      () async {
+        final errors = <Object>[];
+
+        await runZonedGuarded(() async {
+              // Never completes. The failure is on the game isolate, before
+              // it reports ready, so `start` has nothing to return and the
+              // error arrives through Dart's error port instead.
+              unawaited(Game.start(_NoTableGame.new));
+              final deadline = DateTime.now().add(const Duration(seconds: 20));
+              while (errors.isEmpty && DateTime.now().isBefore(deadline)) {
+                await Future<void>.delayed(const Duration(milliseconds: 10));
+              }
+            }, (Object error, StackTrace stack) => errors.add(error)) ??
+            Future<void>.value();
+
+        expect(
+          errors,
+          isNotEmpty,
+          reason:
+              'the boot has to fail - nothing over there installed anything, '
+              'and _bindEvents collects the GameState on every boot',
+        );
+        expect(
+          errors.first.toString(),
+          allOf(
+            contains('names no tables in `declarations`'),
+            contains('nothing here ran your `main`'),
+          ),
+          reason:
+              'without the check this is `No generated collector for '
+              '_NoTableState`, whose message offers a second branch about the '
+              'generator never reading the file - and an installing main, a '
+              'working main-isolate boot and a green --check all point the '
+              'reader at that one',
+        );
+      },
+      timeout: const Timeout(Duration(seconds: 60)),
+    );
   });
 }

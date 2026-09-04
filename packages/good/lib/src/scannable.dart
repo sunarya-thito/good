@@ -472,6 +472,15 @@ abstract final class DeclarationRegistry {
   /// The packages installed so far.
   static final Set<String> _packages = <String>{};
 
+  /// Whether nothing has been installed at all.
+  ///
+  /// Read from `Game._bootGame`, which is the one place that can tell "no
+  /// table was ever named" apart from "a table was named and holds no entry
+  /// for this class" before either has a class to name. Asks [_packages] and
+  /// not the collectors, because a table holding none is still one somebody
+  /// named.
+  static bool get isEmpty => _packages.isEmpty;
+
   /// Installs [tables] and, transitively, everything they depend on.
   ///
   /// Idempotent and order-independent - see [GeneratedDeclarations] for why

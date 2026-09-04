@@ -1773,6 +1773,30 @@ abstract class Game implements RandomOwner, Scannable {
   void _bootGame(GameRuntime runtime) {
     final state = runtime.state!;
 
+    // Nothing to install and nothing installed, which is a run that cannot
+    // register anything: `_bindEvents` below collects the `GameState`
+    // unconditionally, so every boot reaches `collectDeclarations` and that
+    // throws naming a class. Its message has to offer two branches - the
+    // table was never named, or the generator never read the file - and on
+    // the game isolate a developer's evidence points at the wrong one, since
+    // their `main` did install and main's own boot did work. Nothing over
+    // here ran it. Said before the install rather than after because the
+    // install is a no-op when `declarations` is empty.
+    if (declarations.isEmpty && DeclarationRegistry.isEmpty) {
+      throw StateError(
+        runtime.inline
+            ? '$runtimeType names no tables in `declarations` and none are '
+                  'installed. Override `Game.declarations`, or call the '
+                  'generated `_installDeclarations()` at the top of `main`.'
+            : '$runtimeType names no tables in `declarations`, and this is '
+                  'the game isolate: nothing here ran your `main`, so '
+                  'whatever it installed is on the copy that did. '
+                  '`Isolate.spawn` deep-copies the game and runs no '
+                  'constructor, which is why `declarations` is a getter - it '
+                  'is re-evaluated here. Override it.',
+      );
+    }
+
     // The collectors, first on this copy too: this is where scenes register
     // and every registration reads declarations off a constructed object.
     DeclarationRegistry.installGenerated(declarations);

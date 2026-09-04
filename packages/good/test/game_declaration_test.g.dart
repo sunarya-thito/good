@@ -111,6 +111,27 @@ List<ScannableField> _collect$SystemHostState(Object object) {
   ];
 }
 
+List<ScannableField> _collect$NoTableGame(Object object) {
+  object as _NoTableGame;
+  return const <ScannableField>[];
+}
+
+List<ScannableField> _collect$NoTableState(Object object) {
+  final owner = object as _NoTableState;
+  return <ScannableField>[
+    owner.fixedTickEvent,
+    owner.tickEvent,
+    owner.gameMountedEvent,
+    owner.gameUnmountedEvent,
+    owner.appHiddenEvent,
+    owner.appShownEvent,
+    owner.entitySpawnedEvent,
+    owner.entityDespawnedEvent,
+    owner.sceneLoadedEvent,
+    owner.sceneUnloadedEvent,
+  ];
+}
+
 List<ScannableField> _collect$CrossingGame(Object object) {
   final owner = object as _CrossingGame;
   return <ScannableField>[
@@ -162,6 +183,8 @@ const GeneratedDeclarations _gameDeclarationTestDeclarations =
         DeclarationCollector(_GameBuildingSystem, _collect$GameBuildingSystem),
         DeclarationCollector(_SystemHostGame, _collect$SystemHostGame),
         DeclarationCollector(_SystemHostState, _collect$SystemHostState),
+        DeclarationCollector(_NoTableGame, _collect$NoTableGame),
+        DeclarationCollector(_NoTableState, _collect$NoTableState),
         DeclarationCollector(_CrossingGame, _collect$CrossingGame),
         DeclarationCollector(_CrossingState, _collect$CrossingState),
         DeclarationCollector(_CrossingSystem, _collect$CrossingSystem),
