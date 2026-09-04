@@ -113,9 +113,15 @@ final class SurfaceEffector({
 }) extends Effector {
 }
 
-/// Declares one entity's effectors, mirroring `ColliderDescriptor`: the named
-/// parameters double as that archetype's default row state, so the common case
-/// needs no `onEntityMounted` write.
+/// Declares one entity's effectors. The named parameters double as that
+/// archetype's default row state, so the common case needs no
+/// `onEntityMounted` write.
+///
+/// Still a hook, where a collider is now a field, and the reason is
+/// [Effector.region]: an effector acts *through* a body the same prefab
+/// declares, and a field initialiser cannot read another instance field. So
+/// the body is `final region = ColliderBody.box(...)` and the effector naming it
+/// waits for a pass where `this` is in scope.
 class EffectorDescriptor(
   final DataDescriptor _data,
   final List<Effector> _effectors,
@@ -209,18 +215,8 @@ class EffectorDescriptor(
 /// ```dart
 /// class Updraught extends EntityStruct
 ///     with Transform2D, Collider2D, Effector2D {
-///   late final BoxBody region;
+///   final region = ColliderBody.box(halfWidth: 20, halfHeight: 10, isTrigger: true);
 ///   late final AreaEffector wind;
-///
-///   @override
-///   void describeCollider(ColliderDescriptor descriptor) {
-///     super.describeCollider(descriptor);
-///     region = descriptor.hasBoxCollider(
-///       halfWidth: 20,
-///       halfHeight: 10,
-///       isTrigger: true,
-///     );
-///   }
 ///
 ///   @override
 ///   void describeEffector(EffectorDescriptor descriptor) {

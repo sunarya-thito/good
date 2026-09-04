@@ -6,13 +6,7 @@
 /// ```dart
 /// class Crate extends EntityStruct
 ///     with Transform2D, WorldTransform2D, Collider2D, RigidBody2D {
-///   late final BoxBody box;
-///
-///   @override
-///   void describeCollider(ColliderDescriptor d) {
-///     super.describeCollider(d);
-///     box = d.hasBoxCollider(halfWidth: 0.5, halfHeight: 0.5, friction: 0.4);
-///   }
+///   final box = ColliderBody.box(halfWidth: 0.5, halfHeight: 0.5, friction: 0.4);
 /// }
 /// ```
 ///

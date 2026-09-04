@@ -75,6 +75,7 @@ List<ScannableField> _collect$Target(Object object) {
   final owner = object as _Target;
   return <ScannableField>[
     owner.quad,
+    owner.hitArea,
     owner.worldX,
     owner.worldY,
     owner.worldScaleX,

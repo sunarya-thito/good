@@ -53,12 +53,10 @@ abstract interface class Component implements Scannable {
 /// multi-instance mixin doesn't declare its fields directly the way a
 /// single-instance one does - each instance is its own value held by its own
 /// field, and one more field is one more instance's worth of columns.
-/// `goo2d`'s `Sprite` is that shape: `Sprite.of(...)` is a
-/// [CompositeDeclaration], so a field initialiser produces the whole group
-/// and the scene lays it out where the field sits.
-/// `Collider2D.describeCollider` is the older arrangement - a dedicated hook
-/// called from `describeStruct` - and is what a [CompositeDeclaration]
-/// replaces. Both markers are pure - no members of their own beyond what
+/// `goo2d`'s `Sprite` and `ColliderBody` are that shape: `Sprite.of(...)` and
+/// `ColliderBody.box(...)` are each a [CompositeDeclaration], so a field
+/// initialiser produces the whole group and the scene lays it out where the
+/// field sits. Both markers are pure - no members of their own beyond what
 /// [Component] already declares.
 abstract interface class MultiComponent implements Component {}
 

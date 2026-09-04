@@ -23,6 +23,7 @@ part of 'effector_declared_test.dart';
 List<ScannableField> _collect$Zone(Object object) {
   final owner = object as _Zone;
   return <ScannableField>[
+    owner.region,
     owner.transformOffsetX,
     owner.transformOffsetY,
     owner.transformScaleX,
@@ -36,6 +37,7 @@ List<ScannableField> _collect$Zone(Object object) {
 List<ScannableField> _collect$Pool(Object object) {
   final owner = object as _Pool;
   return <ScannableField>[
+    owner.region,
     owner.transformOffsetX,
     owner.transformOffsetY,
     owner.transformScaleX,
@@ -49,6 +51,7 @@ List<ScannableField> _collect$Pool(Object object) {
 List<ScannableField> _collect$Box(Object object) {
   final owner = object as _Box;
   return <ScannableField>[
+    owner.box,
     owner.bodyHandle,
     owner.bodyType,
     owner.bodyLinearVelocityX,
