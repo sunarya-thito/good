@@ -45,33 +45,8 @@ List<ScannableField> _collect$FieldGame(Object object) {
   ];
 }
 
-List<ScannableField> _collect$HookGame(Object object) {
-  final owner = object as _HookGame;
-  return <ScannableField>[
-    owner.score,
-    owner.health,
-    owner.alive,
-  ];
-}
-
-List<ScannableField> _collect$MixedGame(Object object) {
-  final owner = object as _MixedGame;
-  return <ScannableField>[
-    owner.fromField,
-    owner.fromHook,
-  ];
-}
-
 List<ScannableField> _collect$FieldInputGame(Object object) {
   final owner = object as _FieldInputGame;
-  return <ScannableField>[
-    owner.fire,
-    owner.unbound,
-  ];
-}
-
-List<ScannableField> _collect$HookInputGame(Object object) {
-  final owner = object as _HookInputGame;
   return <ScannableField>[
     owner.fire,
     owner.unbound,
@@ -82,17 +57,6 @@ List<ScannableField> _collect$MixedInputGame(Object object) {
   final owner = object as _MixedInputGame;
   return <ScannableField>[
     owner.throttleField,
-    owner.throttleHook,
-  ];
-}
-
-List<ScannableField> _collect$LateGame(Object object) {
-  final owner = object as _LateGame;
-  return <ScannableField>[
-    owner.lazyChannel,
-    owner.lazyInput,
-    owner.eagerChannel,
-    owner.eagerInput,
   ];
 }
 
@@ -150,8 +114,8 @@ List<ScannableField> _collect$SystemHostState(Object object) {
 List<ScannableField> _collect$CrossingGame(Object object) {
   final owner = object as _CrossingGame;
   return <ScannableField>[
-    owner.fromField,
-    owner.fromHook,
+    owner.first,
+    owner.second,
   ];
 }
 
@@ -190,12 +154,8 @@ const GeneratedDeclarations _gameDeclarationTestDeclarations =
       collectors: <DeclarationCollector>[
         DeclarationCollector(_BareState, _collect$BareState),
         DeclarationCollector(_FieldGame, _collect$FieldGame),
-        DeclarationCollector(_HookGame, _collect$HookGame),
-        DeclarationCollector(_MixedGame, _collect$MixedGame),
         DeclarationCollector(_FieldInputGame, _collect$FieldInputGame),
-        DeclarationCollector(_HookInputGame, _collect$HookInputGame),
         DeclarationCollector(_MixedInputGame, _collect$MixedInputGame),
-        DeclarationCollector(_LateGame, _collect$LateGame),
         DeclarationCollector(_Nested, _collect$Nested),
         DeclarationCollector(_NestingGame, _collect$NestingGame),
         DeclarationCollector(_InputOnly, _collect$InputOnly),

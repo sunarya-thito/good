@@ -51,26 +51,6 @@ List<ScannableField> _collect$FieldSystem(Object object) {
   ];
 }
 
-List<ScannableField> _collect$HookSystem(Object object) {
-  final owner = object as _HookSystem;
-  return <ScannableField>[
-    owner.alpha,
-    owner.beta,
-    owner.mountEvent,
-    owner.unmountEvent,
-  ];
-}
-
-List<ScannableField> _collect$MixedSystem(Object object) {
-  final owner = object as _MixedSystem;
-  return <ScannableField>[
-    owner.alpha,
-    owner.beta,
-    owner.mountEvent,
-    owner.unmountEvent,
-  ];
-}
-
 List<ScannableField> _collect$EventState(Object object) {
   final owner = object as _EventState;
   return <ScannableField>[
@@ -92,29 +72,8 @@ List<ScannableField> _collect$FieldEventGame(Object object) {
   return const <ScannableField>[];
 }
 
-List<ScannableField> _collect$HookEventGame(Object object) {
-  object as _HookEventGame;
-  return const <ScannableField>[];
-}
-
-List<ScannableField> _collect$MixedEventGame(Object object) {
-  object as _MixedEventGame;
-  return const <ScannableField>[];
-}
-
 List<ScannableField> _collect$FieldInputSystem(Object object) {
   final owner = object as _FieldInputSystem;
-  return <ScannableField>[
-    owner.fire,
-    owner.alt,
-    owner.unbound,
-    owner.mountEvent,
-    owner.unmountEvent,
-  ];
-}
-
-List<ScannableField> _collect$HookInputSystem(Object object) {
-  final owner = object as _HookInputSystem;
   return <ScannableField>[
     owner.fire,
     owner.alt,
@@ -155,46 +114,8 @@ List<ScannableField> _collect$FieldInputGame(Object object) {
   return const <ScannableField>[];
 }
 
-List<ScannableField> _collect$HookInputGame(Object object) {
-  object as _HookInputGame;
-  return const <ScannableField>[];
-}
-
 List<ScannableField> _collect$MixedInputGame(Object object) {
   object as _MixedInputGame;
-  return const <ScannableField>[];
-}
-
-List<ScannableField> _collect$LateSystem(Object object) {
-  final owner = object as _LateSystem;
-  return <ScannableField>[
-    owner.lazyEvent,
-    owner.lazyInput,
-    owner.eagerEvent,
-    owner.eagerInput,
-    owner.mountEvent,
-    owner.unmountEvent,
-  ];
-}
-
-List<ScannableField> _collect$LateState(Object object) {
-  final owner = object as _LateState;
-  return <ScannableField>[
-    owner.fixedTickEvent,
-    owner.tickEvent,
-    owner.gameMountedEvent,
-    owner.gameUnmountedEvent,
-    owner.appHiddenEvent,
-    owner.appShownEvent,
-    owner.entitySpawnedEvent,
-    owner.entityDespawnedEvent,
-    owner.sceneLoadedEvent,
-    owner.sceneUnloadedEvent,
-  ];
-}
-
-List<ScannableField> _collect$LateGame(Object object) {
-  object as _LateGame;
   return const <ScannableField>[];
 }
 
@@ -216,18 +137,13 @@ const GeneratedDeclarations _systemDeclarationTestDeclarations =
         DeclarationCollector(_EarA, _collect$EarA),
         DeclarationCollector(_EarB, _collect$EarB),
         DeclarationCollector(_FieldSystem, _collect$FieldSystem),
-        DeclarationCollector(_HookSystem, _collect$HookSystem),
-        DeclarationCollector(_MixedSystem, _collect$MixedSystem),
         DeclarationCollector.generic(
           _EventState,
           _collect$EventState,
           _is$EventState,
         ),
         DeclarationCollector(_FieldEventGame, _collect$FieldEventGame),
-        DeclarationCollector(_HookEventGame, _collect$HookEventGame),
-        DeclarationCollector(_MixedEventGame, _collect$MixedEventGame),
         DeclarationCollector(_FieldInputSystem, _collect$FieldInputSystem),
-        DeclarationCollector(_HookInputSystem, _collect$HookInputSystem),
         DeclarationCollector(_MixedInputSystem, _collect$MixedInputSystem),
         DeclarationCollector.generic(
           _InputState,
@@ -235,11 +151,7 @@ const GeneratedDeclarations _systemDeclarationTestDeclarations =
           _is$InputState,
         ),
         DeclarationCollector(_FieldInputGame, _collect$FieldInputGame),
-        DeclarationCollector(_HookInputGame, _collect$HookInputGame),
         DeclarationCollector(_MixedInputGame, _collect$MixedInputGame),
-        DeclarationCollector(_LateSystem, _collect$LateSystem),
-        DeclarationCollector(_LateState, _collect$LateState),
-        DeclarationCollector(_LateGame, _collect$LateGame),
       ],
       dependencies: <GeneratedDeclarations>[
         goodDeclarations,

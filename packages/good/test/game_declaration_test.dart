@@ -18,13 +18,16 @@ import 'package:good/src/scannable.dart';
 part 'game_declaration_test.g.dart';
 
 // `Game.start` and `Game.startInline` take a constructor, so the framework
-// builds the game and two declaration windows are open while its fields
-// initialise: the state descriptor `Channel.*` reads and the input registry
-// `Input.of` reads. What this file pins is that a declaration made through a
-// field and the same declaration made through the matching `describeX` hook
-// are one declaration - same set, same order, same values - that the `late`
-// spelling of either cannot quietly get in, and that a `Game` built while
-// somebody else's window is open is refused rather than declaring into it.
+// builds the game and reads its declarations off the constructed object. That
+// read runs before `describeState` and before `describeInputs`, so a channel
+// or an action a hook assigns is unassigned when the collector reaches it -
+// which is what leaves the field as the only form for anything a game keeps.
+// A hook can still register what nothing holds, and `hasDefaultValue` is that.
+//
+// What this file pins is the field form on a `Game`: the values it declares,
+// that each channel is storage of its own, that the numbering survives the
+// isolate boundary, and that a `Game` built while another is constructing is
+// refused rather than declaring into it.
 
 abstract class _BareGame extends Game {
   @override
@@ -50,34 +53,6 @@ class _FieldGame extends _BareGame {
   final alive = Channel.boolean(true);
 }
 
-class _HookGame extends _BareGame {
-  late final StateChannel<int> score;
-  late final StateChannel<double> health;
-  late final StateChannel<bool> alive;
-
-  @override
-  void describeState(StateDescriptor descriptor) {
-    super.describeState(descriptor);
-    score = descriptor.hasInt32(3);
-    health = descriptor.hasFloat64(1.5);
-    alive = descriptor.hasBool(true);
-  }
-}
-
-/// Both ways at once, with distinct initial values so the two are told apart
-/// by what they hold rather than by which object they came off.
-class _MixedGame extends _BareGame {
-  final fromField = Channel.int32(11);
-
-  late final StateChannel<int> fromHook;
-
-  @override
-  void describeState(StateDescriptor descriptor) {
-    super.describeState(descriptor);
-    fromHook = descriptor.hasInt32(22);
-  }
-}
-
 // --- an input declared each way -------------------------------------------
 
 class _FieldInputGame extends _BareGame {
@@ -85,50 +60,18 @@ class _FieldInputGame extends _BareGame {
   final unbound = Input.of<bool>();
 }
 
-class _HookInputGame extends _BareGame {
-  late final Input<bool> fire;
-  late final Input<bool> unbound;
-
-  @override
-  void describeInputs(InputDescriptor input) {
-    super.describeInputs(input);
-    fire = input.has<bool>(const TriggerBinding(InputKey.spacebar));
-    unbound = input.has<bool>();
-  }
-}
-
 /// The one shape with no field form at all: `hasDefaultValue` hands nothing
-/// back, so there is nothing to hold. It keeps `describeInputs` alive on a
-/// `Game` however much else moves onto fields.
+/// back, so there is nothing to hold and nothing for a collector to read. It
+/// keeps `describeInputs` alive on a `Game` however much else moves onto
+/// fields.
 class _MixedInputGame extends _BareGame {
   final throttleField = Input.of<double>();
-
-  late final Input<double> throttleHook;
 
   @override
   void describeInputs(InputDescriptor input) {
     super.describeInputs(input);
     input.hasDefaultValue<double>(0.75);
-    throttleHook = input.has<double>();
   }
-}
-
-// --- the eager guard ------------------------------------------------------
-
-/// A game whose `late` declarations are written **ahead** of the eager ones.
-///
-/// That ordering is the point. If a `late` initialiser ran where it is
-/// written rather than on first read, `lazyChannel` and `lazyInput` would be
-/// the first things in their lists, and the assertions below would see them
-/// there.
-class _LateGame extends _BareGame {
-  late final lazyChannel = Channel.int32(99);
-
-  late final lazyInput = Input.of(const TriggerBinding(InputKey.escape));
-
-  final eagerChannel = Channel.int32(5);
-
-  final eagerInput = Input.of(const TriggerBinding(InputKey.spacebar));
 }
 
 // --- the wrong-collection hazards -----------------------------------------
@@ -177,9 +120,9 @@ class _SystemHostState extends GameState<_SystemHostGame> {
 
 // --- the isolate-crossing fixture -----------------------------------------
 
-/// One channel from a field and one from the hook, both written on the game
-/// isolate. Index is a channel's identity across the boundary, so reading a
-/// consistent pair on main is what shows the two sources share one numbering.
+/// Two channels, both written on the game isolate. Index is a channel's
+/// identity across the boundary, so reading a consistent pair on main is what
+/// shows the two copies agree about which index is which.
 class _CrossingGame extends Game {
   @override
   int get pageSize => 4096;
@@ -187,15 +130,8 @@ class _CrossingGame extends Game {
   @override
   Duration get fixedTimeStep => const Duration(milliseconds: 5);
 
-  final fromField = Channel.int32();
-
-  late final StateChannel<int> fromHook;
-
-  @override
-  void describeState(StateDescriptor descriptor) {
-    super.describeState(descriptor);
-    fromHook = descriptor.hasInt32();
-  }
+  final first = Channel.int32();
+  final second = Channel.int32();
 
   @override
   GameState createState() => _CrossingState();
@@ -218,8 +154,8 @@ class _CrossingSystem extends GameSystem with FixedTickable {
     final game = getGame<_CrossingGame>();
     // Two different steps, so a channel reading the other one's storage shows
     // up as a mismatch rather than as a coincidence.
-    game.fromField.value = game.fromField.value + 1;
-    game.fromHook.value = game.fromHook.value + 100;
+    game.first.value = game.first.value + 1;
+    game.second.value = game.second.value + 100;
   }
 }
 
@@ -243,32 +179,21 @@ void main() {
   tearDown(_reset);
 
   group('a channel on a Game field', () {
-    test('declares the same set the describeState hook does', () async {
-      final fields = await _boot(_FieldGame.new);
-      final fieldValues = <Object>[
-        fields.score.value,
-        fields.health.value,
-        fields.alive.value,
-      ];
+    test('declares one channel per field, at its declared value', () async {
+      final game = await _boot(_FieldGame.new);
+
       expect(
-        fields.stateChannelCount,
+        game.stateChannelCount,
         3,
         reason:
-            'the fields actually declared - three channels, or the two lists '
-            'below could be equal for the wrong reason',
+            'three fields, three channels - a count of two would mean one '
+            'field never reached the list at all',
       );
-      await fields.stop();
-      _reset();
-
-      final hook = await _boot(_HookGame.new);
       expect(
-        <Object>[hook.score.value, hook.health.value, hook.alive.value],
-        fieldValues,
-        reason:
-            'the same three channels carrying the same three declared '
-            'initial values, whichever way they were declared',
+        <Object>[game.score.value, game.health.value, game.alive.value],
+        <Object>[3, 1.5, true],
+        reason: 'and each is carrying the value its own initialiser named',
       );
-      expect(hook.stateChannelCount, 3);
     });
 
     test('is storage of its own, not a view onto a neighbour', () async {
@@ -284,25 +209,8 @@ void main() {
       );
     });
 
-    test('composes with the hook', () async {
-      final game = await _boot(_MixedGame.new);
-
-      expect(game.stateChannelCount, 2);
-      expect(
-        <int>[game.fromField.value, game.fromHook.value],
-        <int>[11, 22],
-        reason:
-            'both landed, and each kept its own declared initial value - a '
-            'shared index would have one of them reading the other',
-      );
-
-      game.fromField.value = 1;
-      game.fromHook.value = 2;
-      expect(<int>[game.fromField.value, game.fromHook.value], <int>[1, 2]);
-    });
-
     test(
-      'the two sources share one numbering across the isolate boundary',
+      'the two copies share one numbering across the isolate boundary',
       () async {
         final game = await Game.start(_CrossingGame.new);
         addTearDown(() async {
@@ -311,22 +219,22 @@ void main() {
 
         // Seeded before `ready`, so both read their declared initial value
         // the instant start() returns.
-        expect(<int>[game.fromField.value, game.fromHook.value], <int>[0, 0]);
+        expect(<int>[game.first.value, game.second.value], <int>[0, 0]);
 
         final settled = Completer<void>();
         void listener() {
-          if (!settled.isCompleted && game.fromHook.value >= 300) {
+          if (!settled.isCompleted && game.second.value >= 300) {
             settled.complete();
           }
         }
 
-        game.fromHook.addListener(listener);
-        addTearDown(() => game.fromHook.removeListener(listener));
+        game.second.addListener(listener);
+        addTearDown(() => game.second.removeListener(listener));
         await settled.future.timeout(const Duration(seconds: 20));
 
-        final steps = game.fromHook.value ~/ 100;
+        final steps = game.second.value ~/ 100;
         expect(
-          game.fromField.value,
+          game.first.value,
           steps,
           reason:
               'the game isolate added 1 to one channel and 100 to the other; '
@@ -339,32 +247,25 @@ void main() {
   });
 
   group('an input on a Game field', () {
-    test('declares the same set the describeInputs hook does', () async {
-      final fields = await _boot(_FieldInputGame.new);
+    test('declares one action per field, bound or not', () async {
+      final game = await _boot(_FieldInputGame.new);
+
       expect(
-        fields.inputActionCount,
+        game.inputActionCount,
         2,
         reason:
-            'the fields actually declared, so the comparison below means '
-            'something',
+            'an unbound action is a declared state and takes a slot, so the '
+            'count is two rather than one',
       );
-      expect(fields.fire.binding, isNotNull);
-      expect(fields.unbound.binding, isNull);
-      expect(fields.fire.value, isFalse, reason: 'the shipped bool default');
-      await fields.stop();
-      _reset();
-
-      final hook = await _boot(_HookInputGame.new);
-      expect(hook.inputActionCount, 2);
-      expect(hook.fire.binding, isNotNull);
-      expect(hook.unbound.binding, isNull);
-      expect(hook.fire.value, isFalse);
+      expect(game.fire.binding, isNotNull);
+      expect(game.unbound.binding, isNull);
+      expect(game.fire.value, isFalse, reason: 'the shipped bool default');
     });
 
     test('takes a type default the hook registers after it', () async {
       final game = await _boot(_MixedInputGame.new);
 
-      expect(game.inputActionCount, 2);
+      expect(game.inputActionCount, 1);
       expect(
         game.throttleField.value,
         0.75,
@@ -374,69 +275,6 @@ void main() {
             'which is what keeps hasDefaultValue usable from the hook while '
             'the actions themselves move onto fields',
       );
-      expect(game.throttleHook.value, 0.75);
-    });
-  });
-
-  group('the initialisers are eager', () {
-    test('a late channel is missing from the declared list', () async {
-      final game = await _boot(_LateGame.new);
-
-      expect(
-        game.stateChannelCount,
-        1,
-        reason:
-            'the eager one declared, so the window was open and working and '
-            'the throw below is the closed-window guard rather than an '
-            'earlier failure that took the whole object down',
-      );
-      expect(game.eagerChannel.value, 5);
-
-      expect(
-        () => game.lazyChannel,
-        throwsA(
-          isA<StateError>().having(
-            (e) => e.message,
-            'message',
-            contains('no game being constructed'),
-          ),
-        ),
-        reason:
-            'written first and still not in the list: a late initialiser '
-            'runs on first read, long after the descriptor closed',
-      );
-
-      expect(
-        game.stateChannelCount,
-        1,
-        reason:
-            'and it added nothing on the way out - the throw is the guard, '
-            'not a half-declaration that landed anyway',
-      );
-    });
-
-    test('a late input is missing from the declared actions', () async {
-      final game = await _boot(_LateGame.new);
-      final declared = game.inputActionCount;
-
-      expect(
-        game.eagerInput.binding,
-        isNotNull,
-        reason: 'the eager one declared, so the registry was open',
-      );
-
-      expect(
-        () => game.lazyInput,
-        throwsA(
-          isA<StateError>().having(
-            (e) => e.message,
-            'message',
-            contains('no game or system being constructed'),
-          ),
-        ),
-      );
-
-      expect(game.inputActionCount, declared);
     });
   });
 

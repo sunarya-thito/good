@@ -18,11 +18,16 @@ import 'package:good/src/scannable.dart';
 part 'system_declaration_test.g.dart';
 
 // `SystemDescriptor.has` takes a constructor, so the framework builds the
-// system and two declaration windows are open while its fields initialise:
-// the event binder and the input registry. What this file pins is that a
-// declaration made through a field and the same declaration made through the
-// matching `describeX` hook are one declaration - same set, same order, same
-// delivery - and that the `late` spelling of either cannot quietly get in.
+// system and reads its declarations off the constructed object. That read is
+// what rules the hook forms out for anything a system has to keep: it runs
+// before `describeEvents` and before `describeInputs`, so a field the hook
+// assigns is unassigned when the collector reaches it. What is left for a
+// hook is a declaration nothing holds - `hasDefaultValue`, which hands
+// nothing back and has no field form at all.
+//
+// What this file pins is the field form on a system: its events reach the
+// system's own composition and not the state's, its actions declare in the
+// order they are written, and the one surviving hook composes with them.
 
 /// The listener half of the event tests. Writes into a shared log so *order*
 /// is observable and not just membership.
@@ -64,43 +69,6 @@ class _FieldSystem extends GameSystem with _Noted {
   );
 }
 
-/// The same two dispatchers, both in the hook.
-class _HookSystem extends GameSystem with _Noted {
-  @override
-  String get noted => 'source';
-
-  late final EventDispatcher<_Noted, String> alpha;
-  late final EventDispatcher<_Noted, String> beta;
-
-  @override
-  void describeEvents(EventDescriptor descriptor) {
-    super.describeEvents(descriptor);
-    alpha = descriptor.has((listener, event) => listener.onNoted(event));
-    beta = descriptor.has(
-      (listener, event) => listener.onNoted(event),
-      reverse: true,
-    );
-  }
-}
-
-/// One of each on one system: `alpha` on a field, `beta` in the hook.
-class _MixedSystem extends GameSystem with _Noted {
-  @override
-  String get noted => 'source';
-
-  final alpha = Event.of<_Noted, String>(
-    (listener, event) => listener.onNoted(event),
-  );
-
-  late final EventDispatcher<_Noted, String> beta;
-
-  @override
-  void describeEvents(EventDescriptor descriptor) {
-    super.describeEvents(descriptor);
-    beta = descriptor.has((listener, event) => listener.onNoted(event));
-  }
-}
-
 class _EventState<G extends Game> extends GameState<G> {
   _EventState(this._source);
 
@@ -125,16 +93,6 @@ class _FieldEventGame extends _BareGame {
   GameState createState() => _EventState<_FieldEventGame>(_FieldSystem.new);
 }
 
-class _HookEventGame extends _BareGame {
-  @override
-  GameState createState() => _EventState<_HookEventGame>(_HookSystem.new);
-}
-
-class _MixedEventGame extends _BareGame {
-  @override
-  GameState createState() => _EventState<_MixedEventGame>(_MixedSystem.new);
-}
-
 // --- input ----------------------------------------------------------------
 
 /// Two actions on fields, and nothing in the hook at all.
@@ -144,34 +102,18 @@ class _FieldInputSystem extends GameSystem {
   final unbound = Input.of<bool>();
 }
 
-/// The same three in the hook.
-class _HookInputSystem extends GameSystem {
-  late final Input<bool> fire;
-  late final Input<bool> alt;
-  late final Input<bool> unbound;
-
-  @override
-  void describeInputs(InputDescriptor descriptor) {
-    super.describeInputs(descriptor);
-    fire = descriptor.has<bool>(const TriggerBinding(InputKey.spacebar));
-    alt = descriptor.has<bool>(const TriggerBinding(InputKey.enter));
-    unbound = descriptor.has<bool>();
-  }
-}
-
-/// A field declaration and a hook declaration on one system. The hook also
-/// registers a type-level default, which is the thing that has no field form
-/// and so is the reason this hook survives at all.
+/// A field declaration beside the one hook call that has no field form:
+/// `hasDefaultValue` hands nothing back, so there is nothing to hold and
+/// nothing for a collector to read - which is why this hook survives.
 class _MixedInputSystem extends GameSystem {
   final fire = Input.of(const TriggerBinding(InputKey.spacebar));
 
-  late final Input<double> throttle;
+  final throttle = Input.of<double>();
 
   @override
   void describeInputs(InputDescriptor descriptor) {
     super.describeInputs(descriptor);
     descriptor.hasDefaultValue<double>(0.25);
-    throttle = descriptor.has<double>();
   }
 }
 
@@ -198,58 +140,10 @@ class _FieldInputGame extends _BareGame {
       _InputState<_FieldInputGame>(_FieldInputSystem.new);
 }
 
-class _HookInputGame extends _BareGame {
-  @override
-  GameState createState() => _InputState<_HookInputGame>(_HookInputSystem.new);
-}
-
 class _MixedInputGame extends _BareGame {
   @override
   GameState createState() =>
       _InputState<_MixedInputGame>(_MixedInputSystem.new);
-}
-
-// --- the eager guard ------------------------------------------------------
-
-/// A system whose `late` declarations are written **ahead** of the eager ones.
-///
-/// That ordering is the point. If a `late` initialiser ran where it is written
-/// rather than on first read, `lazyEvent` and `lazyInput` would be the first
-/// things in their respective lists, and the assertions below would see them
-/// there.
-class _LateSystem extends GameSystem with _Noted {
-  @override
-  String get noted => 'late';
-
-  late final lazyEvent = Event.signal<_Noted>(
-    (listener) => listener.onNoted('lazy'),
-  );
-
-  late final lazyInput = Input.of(const TriggerBinding(InputKey.escape));
-
-  final eagerEvent = Event.signal<_Noted>(
-    (listener) => listener.onNoted('eager'),
-  );
-
-  final eagerInput = Input.of(const TriggerBinding(InputKey.spacebar));
-}
-
-class _LateState extends GameState<_LateGame> {
-  late final _LateSystem source;
-
-  @override
-  void onMounted() {}
-
-  @override
-  void describeSystems(SystemDescriptor descriptor) {
-    super.describeSystems(descriptor);
-    source = descriptor.has(_LateSystem.new);
-  }
-}
-
-class _LateGame extends _BareGame {
-  @override
-  GameState createState() => _LateState();
 }
 
 abstract class _BareGame extends Game {
@@ -295,100 +189,46 @@ void main() {
       expect(source.beta.listenerCount, source.alpha.listenerCount);
     });
 
-    test('delivery is identical to the hook form, both directions', () async {
-      final fieldRun = await _boot(_FieldEventGame.new);
-      final fieldSource =
-          (fieldRun.state as _EventState<_FieldEventGame>).source
-              as _FieldSystem;
-      fieldSource.alpha('alpha');
-      fieldSource.beta('beta');
-      final fromFields = List<String>.of(_Noted.log);
+    test('both directions deliver, and to the same one listener', () async {
+      final run = await _boot(_FieldEventGame.new);
+      final source =
+          (run.state as _EventState<_FieldEventGame>).source as _FieldSystem;
 
-      await fieldRun.stop();
-      _reset();
-      _Noted.log.clear();
-
-      final hookRun = await _boot(_HookEventGame.new);
-      final hookSource =
-          (hookRun.state as _EventState<_HookEventGame>).source as _HookSystem;
-      hookSource.alpha('alpha');
-      hookSource.beta('beta');
+      source.alpha('alpha');
+      source.beta('beta');
 
       expect(
-        fromFields,
         _Noted.log,
-        reason:
-            'same listeners, same order, both directions. Where a dispatcher '
-            'was declared does not reach delivery',
-      );
-      expect(
-        fromFields,
         <String>['alpha:source', 'beta:source'],
         reason:
-            'and the log is what it should be, so the two cannot be equal '
-            'for the wrong reason',
+            '`reverse: true` turns the order of a list around and does not '
+            'change what is in it - and a one-entry list is the same either '
+            'way, which is what the count above is for',
       );
-    });
-
-    test('one system can use both forms at once', () async {
-      final run = await _boot(_MixedEventGame.new);
-      final source =
-          (run.state as _EventState<_MixedEventGame>).source as _MixedSystem;
-
-      expect(
-        source.beta.listenerCount,
-        source.alpha.listenerCount,
-        reason:
-            'the hook appended to the binder the field declaration already '
-            'filled rather than getting one of its own',
-      );
-      expect(source.alpha.listenerCount, 1);
     });
   });
 
   group('an input on a system field', () {
-    test('declares the same actions the hook declares', () async {
-      final fieldRun = await _boot(_FieldInputGame.new);
-      final fieldCount = fieldRun.inputActionCount;
-      final fieldSource =
-          (fieldRun.state as _InputState<_FieldInputGame>).source
+    test('declares its actions in the order they are written', () async {
+      final run = await _boot(_FieldInputGame.new);
+      final source =
+          (run.state as _InputState<_FieldInputGame>).source
               as _FieldInputSystem;
-      final fieldBindings = <InputBinding<bool>?>[
-        fieldSource.fire.binding,
-        fieldSource.alt.binding,
-        fieldSource.unbound.binding,
-      ];
-
-      await fieldRun.stop();
-      _reset();
-
-      final hookRun = await _boot(_HookInputGame.new);
-      final hookSource =
-          (hookRun.state as _InputState<_HookInputGame>).source
-              as _HookInputSystem;
 
       expect(
-        fieldCount,
-        hookRun.inputActionCount,
+        source.fire.binding,
+        const TriggerBinding(InputKey.spacebar),
         reason:
-            'three actions either way, on top of whatever the Game declares '
-            'for itself',
+            'field order is declaration order, so the first field holds the '
+            'first binding rather than whichever action something read first',
       );
+      expect(source.alt.binding, const TriggerBinding(InputKey.enter));
       expect(
-        fieldBindings,
-        <InputBinding<bool>?>[
-          hookSource.fire.binding,
-          hookSource.alt.binding,
-          hookSource.unbound.binding,
-        ],
-        reason: 'same bindings in the same order, including the unbound one',
-      );
-      expect(
-        fieldBindings.first,
-        isNotNull,
+        source.unbound.binding,
+        isNull,
         reason:
-            'and the list is not three nulls, which would make the two equal '
-            'for the wrong reason',
+            'an unbound action is a declared state, so it takes a slot and '
+            'holds no binding',
       );
     });
 
@@ -408,7 +248,7 @@ void main() {
       );
     });
 
-    test('a field and a hook compose on one system', () async {
+    test('a field action reads a default the hook registered', () async {
       final run = await _boot(_MixedInputGame.new);
       final source =
           (run.state as _InputState<_MixedInputGame>).source
@@ -420,71 +260,9 @@ void main() {
         0.25,
         reason:
             'hasDefaultValue has no field form, so the hook is what declares '
-            'it - and the seal applied it to an action declared in the same '
-            'hook, on a system whose other action came off a field',
-      );
-    });
-  });
-
-  group('the initialisers are eager', () {
-    test('a late event is missing from the collected list', () async {
-      final run = await _boot(_LateGame.new);
-      final source = (run.state as _LateState).source;
-
-      expect(
-        source.eagerEvent.listenerCount,
-        1,
-        reason:
-            'the window was open and working, so the throw below is the '
-            'closed-window guard and not an earlier failure that took the '
-            'whole object down',
-      );
-
-      expect(
-        () => source.lazyEvent,
-        throwsA(
-          isA<StateError>().having(
-            (e) => e.message,
-            'message',
-            contains('no event owner being constructed'),
-          ),
-        ),
-        reason:
-            'declared first and still not in the binder: a late initialiser '
-            'runs on first read, long after the binder closed',
-      );
-    });
-
-    test('a late input is missing from the declared actions', () async {
-      final run = await _boot(_LateGame.new);
-      final source = (run.state as _LateState).source;
-      final declared = run.inputActionCount;
-
-      expect(
-        source.eagerInput.binding,
-        isNotNull,
-        reason:
-            'the eager one declared, so the registry was open during the '
-            'constructor',
-      );
-
-      expect(
-        () => source.lazyInput,
-        throwsA(
-          isA<StateError>().having(
-            (e) => e.message,
-            'message',
-            contains('no game or system being constructed'),
-          ),
-        ),
-      );
-
-      expect(
-        run.inputActionCount,
-        declared,
-        reason:
-            'and it added nothing on the way out - the throw is the guard, '
-            'not a half-declaration that landed anyway',
+            'it - and the seal applied it to an action the field initialiser '
+            'had already declared, which is the composition that matters now '
+            'the other hook forms are gone',
       );
     });
   });

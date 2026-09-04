@@ -73,54 +73,8 @@ List<ScannableField> _collect$FieldState(Object object) {
   ];
 }
 
-List<ScannableField> _collect$HookState(Object object) {
-  final owner = object as _HookState;
-  return <ScannableField>[
-    owner.alpha,
-    owner.beta,
-    owner.fixedTickEvent,
-    owner.tickEvent,
-    owner.gameMountedEvent,
-    owner.gameUnmountedEvent,
-    owner.appHiddenEvent,
-    owner.appShownEvent,
-    owner.entitySpawnedEvent,
-    owner.entityDespawnedEvent,
-    owner.sceneLoadedEvent,
-    owner.sceneUnloadedEvent,
-  ];
-}
-
-List<ScannableField> _collect$MixedState(Object object) {
-  final owner = object as _MixedState;
-  return <ScannableField>[
-    owner.alpha,
-    owner.beta,
-    owner.fixedTickEvent,
-    owner.tickEvent,
-    owner.gameMountedEvent,
-    owner.gameUnmountedEvent,
-    owner.appHiddenEvent,
-    owner.appShownEvent,
-    owner.entitySpawnedEvent,
-    owner.entityDespawnedEvent,
-    owner.sceneLoadedEvent,
-    owner.sceneUnloadedEvent,
-  ];
-}
-
 List<ScannableField> _collect$FieldGame(Object object) {
   object as _FieldGame;
-  return const <ScannableField>[];
-}
-
-List<ScannableField> _collect$HookGame(Object object) {
-  object as _HookGame;
-  return const <ScannableField>[];
-}
-
-List<ScannableField> _collect$MixedGame(Object object) {
-  object as _MixedGame;
   return const <ScannableField>[];
 }
 
@@ -138,11 +92,7 @@ const GeneratedDeclarations _eventDeclarationTestDeclarations =
         DeclarationCollector(_UnitB, _collect$UnitB),
         DeclarationCollector(_NotedScene, _collect$NotedScene),
         DeclarationCollector(_FieldState, _collect$FieldState),
-        DeclarationCollector(_HookState, _collect$HookState),
-        DeclarationCollector(_MixedState, _collect$MixedState),
         DeclarationCollector(_FieldGame, _collect$FieldGame),
-        DeclarationCollector(_HookGame, _collect$HookGame),
-        DeclarationCollector(_MixedGame, _collect$MixedGame),
       ],
       dependencies: <GeneratedDeclarations>[
         goodDeclarations,

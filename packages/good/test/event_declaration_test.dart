@@ -16,18 +16,14 @@ import 'package:good/src/scannable.dart';
 
 part 'event_declaration_test.g.dart';
 
-// Declaring an event on the field that holds it, beside declaring it in
-// `describeEvents`.
+// Declaring an event on the field that holds it.
 //
-// The two forms have to be the same declaration. A dispatcher built from a
-// field initialiser runs during the constructor, one built from the hook runs
-// after it, and between those two moments sit a scene registration and an
-// `Isolate.spawn` - so the binder that catches the first has to be the one the
-// second appends to, or an owner mixing the forms would end up with two
-// listener lists that disagree.
-//
-// What this file pins is that it does not: same owners, same composition,
-// same delivery, whichever way each dispatcher was declared.
+// `EventBinder.bind` collects the fields first and runs `describeEvents`
+// after, so a dispatcher a hook hands back cannot be kept on a field at all:
+// the collect pass reads that field before the hook has assigned it. What is
+// left for a hook is a dispatcher nothing holds, which cannot be fired. So
+// the field is the form, and what this file pins is its composition and its
+// delivery order - forward and reverse - on every owner that has events.
 
 /// The listener half. Writes into a shared log so *order* is observable and
 /// not just membership.
@@ -89,55 +85,6 @@ class _FieldState extends GameState<_FieldGame> with _Noted {
   }
 }
 
-/// The same two dispatchers, both in the hook.
-class _HookState extends GameState<_HookGame> with _Noted {
-  @override
-  String get noted => 'state';
-
-  late final EventDispatcher<_Noted, String> alpha;
-  late final EventDispatcher<_Noted, String> beta;
-
-  @override
-  void describeEvents(EventDescriptor descriptor) {
-    super.describeEvents(descriptor);
-    alpha = descriptor.has((listener, event) => listener.onNoted(event));
-    beta = descriptor.has(
-      (listener, event) => listener.onNoted(event),
-      reverse: true,
-    );
-  }
-
-  @override
-  void describeSystems(SystemDescriptor descriptor) {
-    super.describeSystems(descriptor);
-    descriptor.has(_NotedSystem.new);
-  }
-}
-
-/// One of each, on one owner: `alpha` on a field, `beta` in the hook.
-class _MixedState extends GameState<_MixedGame> with _Noted {
-  @override
-  String get noted => 'state';
-
-  final alpha = Event.of<_Noted, String>(
-    (listener, event) => listener.onNoted(event),
-  );
-
-  late final EventDispatcher<_Noted, String> beta;
-
-  @override
-  void describeEvents(EventDescriptor descriptor) {
-    super.describeEvents(descriptor);
-    beta = descriptor.has((listener, event) => listener.onNoted(event));
-  }
-
-  @override
-  void describeSystems(SystemDescriptor descriptor) {
-    super.describeSystems(descriptor);
-    descriptor.has(_NotedSystem.new);
-  }
-}
-
 abstract class _NotedGame extends Game {
   @override
   int get pageSize => 4096;
@@ -154,16 +101,6 @@ abstract class _NotedGame extends Game {
 class _FieldGame extends _NotedGame {
   @override
   GameState createState() => _FieldState();
-}
-
-class _HookGame extends _NotedGame {
-  @override
-  GameState createState() => _HookState();
-}
-
-class _MixedGame extends _NotedGame {
-  @override
-  GameState createState() => _MixedState();
 }
 
 /// An owner outside the engine's four hosts, so the binder can be driven by
@@ -194,8 +131,8 @@ void main() {
     ComponentTypeRegistry.reset();
   });
 
-  group('a field and a hook declare the same thing', () {
-    test('the collected lists are the same size', () async {
+  group('a dispatcher declared on a field', () {
+    test('reaches the owner composition and nothing wider', () async {
       final run = await _boot(_FieldGame.new);
       final state = run.state as _FieldState;
 
@@ -204,67 +141,35 @@ void main() {
         5,
         reason:
             'the state, the one system, the scene and its two prefabs - the '
-            'same composition walk a hook-declared dispatcher gets, reached '
-            'through a binder that was open during the constructor',
+            'composition walk `collectListeners` offered, reached through a '
+            'binder filled from the constructed object',
       );
       expect(state.beta.listenerCount, state.alpha.listenerCount);
     });
 
-    test('delivery order is identical, forward and reverse', () async {
-      final fieldRun = await _boot(_FieldGame.new);
-      (fieldRun.state as _FieldState).alpha('alpha');
-      (fieldRun.state as _FieldState).beta('beta');
-      final fromFields = List<String>.of(_Noted.log);
-
-      await fieldRun.stop();
-      SceneRegistry.reset();
-      ArchetypeRegistry.reset();
-      ComponentTypeRegistry.reset();
-      _Noted.log.clear();
-
-      final hookRun = await _boot(_HookGame.new);
-      (hookRun.state as _HookState).alpha('alpha');
-      (hookRun.state as _HookState).beta('beta');
-
-      expect(
-        fromFields,
-        _Noted.log,
-        reason:
-            'same listeners, same order, both directions. Order is the order '
-            'collectListeners offered candidates in, and where a dispatcher '
-            'was declared does not enter into that',
-      );
-      expect(
-        fromFields.first,
-        'alpha:state',
-        reason:
-            'and the log is not empty, which would make the two equal for '
-            'the wrong reason',
-      );
-      expect(fromFields.length, 10);
-    });
-
-    test('one owner can use both forms at once', () async {
-      final run = await _boot(_MixedGame.new);
-      final state = run.state as _MixedState;
-
-      expect(
-        state.beta.listenerCount,
-        state.alpha.listenerCount,
-        reason:
-            'the hook appended to the binder the field declarations already '
-            'filled rather than getting one of its own',
-      );
+    test('reverse delivery is the forward order backwards', () async {
+      final run = await _boot(_FieldGame.new);
+      final state = run.state as _FieldState;
 
       state.alpha('alpha');
-      final fromField = List<String>.of(_Noted.log);
+      final forward = List<String>.of(_Noted.log);
       _Noted.log.clear();
       state.beta('beta');
 
       expect(
+        forward.first,
+        'alpha:state',
+        reason:
+            'and the log is not empty, which would make the comparison below '
+            'hold for the wrong reason',
+      );
+      expect(forward.length, 5);
+      expect(
         _Noted.log,
-        fromField.map((entry) => entry.replaceFirst('alpha:', 'beta:')),
-        reason: 'and the two lists hold the same listeners in the same order',
+        forward.reversed.map((entry) => entry.replaceFirst('alpha:', 'beta:')),
+        reason:
+            'same listeners either way; `reverse: true` is what turns the '
+            'order around, and it turns around the whole of it',
       );
     });
 
