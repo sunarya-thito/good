@@ -317,6 +317,18 @@ const Hide hide = Hide._();
 /// this class was never scanned - and "declares nothing" and "never generated
 /// for" are two different answers rather than one.
 ///
+/// The parameter is [Scannable] and not `Object`, which moves one half of
+/// that to the call site. Handing this a class no root marks is a compile
+/// error where the call is written now, rather than a `StateError` from
+/// whichever boot reached it first: `EventBinder.bind` passed an `EventBus`
+/// nothing had marked, and this throw was the only thing that said so.
+///
+/// The other half it cannot move. The marker is inherited, so a class
+/// extending a scanned root carries it whether or not any generator ever
+/// read the file that class is written in. That is still a miss, and still
+/// only found by running or by `good_tool --check`. The type says the class
+/// is the kind of thing a scan reads; only the tool says a scan read it.
+///
 /// An earlier version of this paragraph argued the other way, that no scanned
 /// class declares nothing because every `EntityStruct` inherits two
 /// dispatchers and every `SceneStruct` two more. That is true of structs and
@@ -324,7 +336,7 @@ const Hide hide = Hide._();
 /// `final class StepOnceCommand extends SignalCommand {}` declares nothing at
 /// all. It reached a table with no line for it, and `_bootMain` threw on a
 /// class that had been scanned and had nothing to say.
-List<ScannableField> collectDeclarations(Object object) {
+List<ScannableField> collectDeclarations(Scannable object) {
   final collect = DeclarationRegistry.collectorForInstance(object);
   if (collect == null) {
     throw StateError(
@@ -531,8 +543,14 @@ abstract final class DeclarationRegistry {
   /// unreachable from any instance of it. What answers instead is a type test
   /// the generator wrote, which needs the value rather than its type. See
   /// [DeclarationCollector.generic].
+  ///
+  /// A [Scannable] is a value like any other, so the type test has what it
+  /// needs and the parameter narrows the same way [collectDeclarations]
+  /// does. What comes back does not narrow with it: a generated collector
+  /// takes `Object` and casts, because that line is written by the
+  /// generator and read back off a table already committed.
   static List<ScannableField> Function(Object)? collectorForInstance(
-    Object object,
+    Scannable object,
   ) {
     final type = object.runtimeType;
     final exact = _collectors[type];
