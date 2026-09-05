@@ -252,6 +252,9 @@ String _packedGitkeep() => '''
 ///
 /// Avoids `demo_game_game.dart` when the project is already called
 /// `demo_game` - a doubled suffix reads like a mistake because it is one.
+String _gameFile(String projectName) =>
+    projectName.endsWith('_game') ? projectName : '${projectName}_game';
+
 /// The `Game.declarations` override, which is what makes a game boot at all.
 ///
 /// # Why every project needs this and no project can be given it by the engine
@@ -286,9 +289,6 @@ String _declarationsOverride(String projectName) =>
   List<GeneratedDeclarations> get declarations =>
       const <GeneratedDeclarations>[${declarationsTableName(projectName)}];
 ''';
-
-String _gameFile(String projectName) =>
-    projectName.endsWith('_game') ? projectName : '${projectName}_game';
 
 String _pascal(String snake) {
   final words = snake.split('_').where((w) => w.isNotEmpty);
