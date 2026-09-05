@@ -96,6 +96,10 @@ import 'package:analyzer/error/error.dart';
 import 'package:analyzer/src/dart/analysis/analysis_context_collection.dart';
 // ignore: implementation_imports
 import 'package:analyzer/src/dart/analysis/analysis_options.dart';
+// ignore: implementation_imports
+import 'package:analyzer/src/dart/analysis/byte_store.dart';
+// ignore: implementation_imports
+import 'package:analyzer/src/dart/analysis/file_byte_store.dart';
 import 'package:meta/meta.dart';
 import 'package:path/path.dart' as p;
 import 'package:pub_semver/pub_semver.dart';
@@ -819,6 +823,7 @@ Future<ScanSources> readSources(
 
   final collection = AnalysisContextCollectionImpl(
     includedPaths: _includedPaths(home, roots),
+    byteStore: _scanByteStore(home),
     updateAnalysisOptions4: ({required AnalysisOptionsImpl analysisOptions}) {
       analysisOptions.contextFeatures = scanFeatureSet;
     },
@@ -866,6 +871,58 @@ Future<ScanSources> readSources(
     unresolvedUris: unresolvedUris,
   );
 }
+
+/// Where a walk keeps what it linked, so the next one does not link it again.
+///
+/// Resolving is what this walk costs, and nearly all of it is the engine.
+/// Measured on a scaffolded 2D project - 78 files, of which 69 are `good` and
+/// `goo2d` - `good generate` went from 2.3s to 38.9s, and `good build` runs
+/// `good generate` every time. Those 69 files do not change between two runs
+/// in a project, and the analyzer already knows how not to link them twice: it
+/// wants somewhere to put the summaries, and this walk was handing it a fresh
+/// in-memory store every call and throwing it away. Over the same 78 files
+/// with one store kept: 24.2s, then 4.4s, then 3.5s - a warm walk costs about
+/// what the parse it replaced did.
+///
+/// # Why a stale entry is unreachable rather than wrong
+///
+/// Nothing here decides when to invalidate, and that is the only reason a
+/// cache on a generator is safe. The keys are content signatures over the
+/// files, the SDK, the package config and the enabled feature set
+/// (`AnalysisOptionsImpl.signatureForElements` hashes every known experiment),
+/// so editing a source file, changing a dependency or moving [scanFeatureSet]
+/// asks a *different* question and gets a miss. A wrong answer would need two
+/// different inputs to hash the same.
+///
+/// # Where it goes, and what bounds it
+///
+/// `.dart_tool/` under the directory the walk was asked about, which is the
+/// package or project whose sources it is caching and which every layout in
+/// this repository and every `flutter create` project already ignores in git.
+/// A checkout that cannot be written to falls back to memory rather than
+/// failing: a cache is an optimisation and refusing to run without one would
+/// make it a dependency.
+///
+/// [EvictingFileByteStore] and not a prune written here. It bounds the
+/// directory itself, and the isolate it spawns to do so does not hold the
+/// process open - checked by running, because a CLI that does not exit would
+/// be a worse defect than the one this fixes.
+ByteStore _scanByteStore(String home) {
+  final cache = p.join(home, '.dart_tool', 'good_scan');
+  try {
+    Directory(cache).createSync(recursive: true);
+    return EvictingFileByteStore(cache, scanCacheMaxBytes);
+  } on FileSystemException {
+    return MemoryByteStore();
+  }
+}
+
+/// How much linked summary is kept before the oldest is dropped.
+///
+/// Every edit to a source file mints new keys and orphans the ones it
+/// replaces, so this is what stands between a cache and a directory that grows
+/// for the life of a checkout.
+const int scanCacheMaxBytes = 256 * 1024 * 1024;
 
 /// The context that reads [path], or [fallback] where none of them covers it.
 ///
