@@ -879,6 +879,14 @@ void main() {
     }, timeout: const Timeout(Duration(minutes: 3)));
   });
 
+  // Every test in here reads the real packages, and reading them resolves
+  // them - twenty-five seconds of analyzer against the four seconds a parse
+  // took. `dart test`'s default timeout is thirty, so this group started
+  // failing on the clock rather than on anything it asserts, and which test
+  // fell over moved with what else the machine was doing.
+  //
+  // Stated on the group rather than on the one that happened to be slowest:
+  // they all read the same trees, so any of them can be the one over the line.
   group('this repository', () {
     // The one test that fails if somebody edits a column and forgets to
     // regenerate, run against the real packages rather than a fixture. CI runs
@@ -1723,7 +1731,7 @@ mixin Cached on Component {
         reason: 'a game needs bits of its own after these',
       );
     });
-  });
+  }, timeout: const Timeout(Duration(minutes: 3)));
 }
 
 /// A standalone package with the engine resolved beside it, not under it.
