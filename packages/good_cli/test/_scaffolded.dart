@@ -108,11 +108,11 @@ class _NullOutput implements VerboseOutput {
 /// package and the project's own declaration collectors. It is a parameter and
 /// not a default only because one case exists to say what generation is
 /// responsible for - see `scaffold_analyze_test`.
-Directory scaffoldProject({
+Future<Directory> scaffoldProject({
   required String name,
   required GoodEngine engine,
   bool generate = true,
-}) {
+}) async {
   final root = repoRoot();
   final dir = testTempDir('good_scaffold');
 
@@ -166,7 +166,7 @@ good:
   });
 
   if (generate) {
-    runGenerate(
+    await runGenerate(
       projectDir: dir,
       command: 'good generate',
       out: quietOutput,

@@ -120,7 +120,7 @@ void main() {
       );
     });
 
-    test('flattenedDeclarations arrives at the same order', () {
+    test('flattenedDeclarations arrives at the same order', () async {
       final dir = testTempDir('declaration_order');
       final source = File(
         p.join(Directory.current.path, 'test', 'declaration_order_test.dart'),
@@ -137,7 +137,7 @@ void main() {
         ..parent.createSync(recursive: true)
         ..writeAsStringSync(source.readAsStringSync());
 
-      final read = readSources(dir, rootOverride: <String>[dir.path]);
+      final read = await readSources(dir, rootOverride: <String>[dir.path]);
       expect(read.unparsed, isEmpty);
       final typesByName = read.typesByName;
       final leaf = typesByName['Leaf'];
@@ -157,7 +157,7 @@ void main() {
       );
     });
 
-    test('a mixin contributes its own fields and none of its on type\'s', () {
+    test('a mixin contributes its own fields and none of its on type\'s', () async {
       final dir = testTempDir('declaration_order_mixin');
       File(p.join(dir.path, 'fixture.dart'))
         ..parent.createSync(recursive: true)
@@ -170,7 +170,7 @@ void main() {
             ),
           ).readAsStringSync(),
         );
-      final read = readSources(dir, rootOverride: <String>[dir.path]);
+      final read = await readSources(dir, rootOverride: <String>[dir.path]);
       final typesByName = read.typesByName;
 
       // `mixin First on Root` names Root, and Root's two declarations belong

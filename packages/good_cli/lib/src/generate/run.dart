@@ -95,7 +95,7 @@ class GenerateResult {
 /// passes it: it has just written the pubspec line declaring the engine, and
 /// the project has not been resolved since, so the dependency is in no package
 /// config for [enginePackageOf] to find.
-GenerateResult runGenerate({
+Future<GenerateResult> runGenerate({
   required Directory projectDir,
   required String command,
   required VerboseOutput out,
@@ -104,7 +104,7 @@ GenerateResult runGenerate({
   bool rotateKeys = false,
   bool dryRun = false,
   bool pubGet = true,
-}) {
+}) async {
   final project = projectDir;
   final scan = scanAssets(project);
 
@@ -126,7 +126,7 @@ GenerateResult runGenerate({
   // gets refused (#107), and it is the command a build runs whether or not
   // there is an asset to chunk, which is why this is here and not in the scene
   // scan that only asset packing calls.
-  final shadow = scanStructRules(project);
+  final shadow = await scanStructRules(project);
   for (final entry in shadow.unresolved.entries) {
     verbose.println('Not compared: ${entry.key} - ${entry.value}');
   }
@@ -311,7 +311,7 @@ GenerateResult runGenerate({
   _recordBundle(project, bundle, out);
   _resolve(project, bundle, out, verbose, pubGet: pubGet);
 
-  final declarations = _declarations(
+  final declarations = await _declarations(
     project,
     out,
     verbose,
@@ -371,16 +371,16 @@ GenerateResult runGenerate({
 /// [projectDeclarations] with the engine named: a project that resolves
 /// nothing and writes a table anyway is the silent failure this exists to
 /// remove.
-int _declarations(
+Future<int> _declarations(
   Directory project,
   VerboseOutput out,
   VerboseOutput verbose, {
   required String command,
   required bool pubGet,
-}) {
+}) async {
   final ProjectDeclarations declarations;
   try {
-    declarations = projectDeclarations(project, command: command);
+    declarations = await projectDeclarations(project, command: command);
   } on UnresolvedEngine {
     // Only this one. A pubspec with no name is refused here as everywhere
     // else; what `--no-pub-get` buys is permission to leave the resolve to

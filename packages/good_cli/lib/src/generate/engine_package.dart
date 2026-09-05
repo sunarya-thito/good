@@ -188,7 +188,8 @@ class GeneratedFile {
 ///
 /// `Directory.current` is passed only so [readSources] has somewhere to look
 /// for a package config it will not use - the roots are named outright.
-ScanSources readPackageSources(List<EnginePackage> packages) => readSources(
+Future<ScanSources> readPackageSources(List<EnginePackage> packages) =>
+    readSources(
   Directory.current,
   rootOverride: <String>[for (final package in packages) package.libDir],
   exclude: <String>{

@@ -133,7 +133,7 @@ abstract class BuildSubCommand extends Command with Verbose, Resolving {
     if (!await _compact(project, config)) throw const CommandFailure();
 
     info.println('[2/4] generating bindings');
-    runGenerate(
+    await runGenerate(
       projectDir: project,
       command: '${session.path.first} generate',
       out: info,
@@ -247,7 +247,7 @@ abstract class BuildSubCommand extends Command with Verbose, Resolving {
       '${project.path}/${config.packOutput}',
     ).createSync(recursive: true);
 
-    final usage = scanScenes(project, scan);
+    final usage = await scanScenes(project, scan);
     final plan = planPack(
       paths,
       assetRoot: config.assetOutput,

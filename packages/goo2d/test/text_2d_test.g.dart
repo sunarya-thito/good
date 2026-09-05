@@ -73,6 +73,7 @@ List<ScannableField> _collect$Enemy(Object object) {
 List<ScannableField> _collect$Damage(Object object) {
   final owner = object as _Damage;
   return <ScannableField>[
+    owner.atlas,
     owner.textCodeUnits,
     owner.textLength,
     owner.textColor,

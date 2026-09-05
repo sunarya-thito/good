@@ -77,7 +77,7 @@ void main() {
       // `ensureGameReady`, and the declaration table the game overrides
       // `Game.declarations` with. Analyzing the templates alone was a check
       // over a project nobody is ever handed.
-      final dir = scaffoldProject(
+      final dir = await scaffoldProject(
         name: '${engine.package}_analyze_probe',
         engine: engine,
       );
@@ -254,7 +254,7 @@ good:
       'goo2d': <String>['good'],
       'good': <String>[],
     });
-    runGenerate(
+    await runGenerate(
       projectDir: dir,
       command: 'good generate',
       out: quietOutput,

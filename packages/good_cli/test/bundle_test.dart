@@ -62,8 +62,10 @@ Directory _project([String pubspec = _pubspec]) {
   return dir;
 }
 
-GenerateResult _generate(Directory project, {bool rotateKeys = false}) =>
-    runGenerate(
+Future<GenerateResult> _generate(
+  Directory project, {
+  bool rotateKeys = false,
+}) => runGenerate(
       projectDir: project,
       command: 'good generate',
       out: _quiet,
@@ -166,9 +168,9 @@ Matcher _refusesWith(Object? matcher) => throwsA(
 
 void main() {
   group('which package is the bundle', () {
-    test('derives it from the project name once, then records it', () {
+    test('derives it from the project name once, then records it', () async {
       final project = _project();
-      final result = _generate(project);
+      final result = await _generate(project);
 
       expect(result.bundle.name, 'demo_bundle');
       expect(
@@ -180,9 +182,9 @@ void main() {
       );
     });
 
-    test('a renamed project keeps the bundle it already has', () {
+    test('a renamed project keeps the bundle it already has', () async {
       final project = _project();
-      _generate(project);
+      await _generate(project);
 
       // Exactly the rename #113 is about: the project is called something
       // else now, and the recorded name is untouched.
@@ -191,7 +193,7 @@ void main() {
         pubspec.readAsStringSync().replaceFirst('name: demo', 'name: cool'),
       );
 
-      expect(_generate(project).bundle.name, 'demo_bundle');
+      expect((await _generate(project)).bundle.name, 'demo_bundle');
       expect(
         Directory('${project.path}/cool_bundle').existsSync(),
         isFalse,
@@ -202,7 +204,7 @@ void main() {
       );
     });
 
-    test('refuses a package sitting at the bundle path without the marker', () {
+    test('refuses a package sitting at the bundle path without the marker', () async {
       final project = _project();
       File('${project.path}/demo_bundle/pubspec.yaml')
         ..parent.createSync(recursive: true)
@@ -211,7 +213,7 @@ void main() {
         ..parent.createSync(recursive: true)
         ..writeAsStringSync('// mine');
 
-      expect(
+      await expectLater(
         () => _generate(project),
         _refusesWith(
           allOf(contains('demo_bundle'), contains(bundleMarkerName)),
@@ -224,16 +226,16 @@ void main() {
       );
     });
 
-    test('refuses when two directories carry the marker', () {
+    test('refuses when two directories carry the marker', () async {
       final project = _project();
-      _generate(project);
+      await _generate(project);
       // A copied project, an interrupted rename - however it happened, both
       // would resolve.
       File('${project.path}/old_bundle/$bundleMarkerName')
         ..parent.createSync(recursive: true)
         ..writeAsStringSync('bundle: old_bundle\n');
 
-      expect(
+      await expectLater(
         () => _generate(project),
         _refusesWith(
           allOf(contains('demo_bundle'), contains('old_bundle')),
@@ -241,14 +243,14 @@ void main() {
       );
     });
 
-    test('refuses a marked directory that is not the recorded name', () {
+    test('refuses a marked directory that is not the recorded name', () async {
       final project = _project();
-      _generate(project);
+      await _generate(project);
       Directory(
         '${project.path}/demo_bundle',
       ).renameSync('${project.path}/renamed_bundle');
 
-      expect(
+      await expectLater(
         () => _generate(project),
         _refusesWith(
           allOf(contains('renamed_bundle'), contains('demo_bundle')),
@@ -264,7 +266,7 @@ void main() {
       );
     });
 
-    test('a sibling package named like a bundle is not one', () {
+    test('a sibling package named like a bundle is not one', () async {
       // The marker is the whole claim, so a directory called `<x>_bundle` that
       // carries none is somebody's package. Nothing here refuses it and
       // nothing here writes into it - it is not the recorded name, and the
@@ -277,7 +279,7 @@ void main() {
         ..parent.createSync(recursive: true)
         ..writeAsStringSync('// mine');
 
-      expect(_generate(project).bundle.name, 'demo_bundle');
+      expect((await _generate(project)).bundle.name, 'demo_bundle');
       expect(
         File('${project.path}/other_bundle/lib/mine.dart').readAsStringSync(),
         '// mine',
@@ -288,34 +290,34 @@ void main() {
       );
     });
 
-    test('refuses a dependency of that name pointing somewhere else', () {
+    test('refuses a dependency of that name pointing somewhere else', () async {
       final project = _project(
         _pubspec.replaceFirst(
           'dependencies:\n',
           'dependencies:\n  demo_bundle: ^1.0.0\n',
         ),
       );
-      expect(
+      await expectLater(
         () => _generate(project),
         _refusesWith(contains('demo_bundle')),
       );
     });
 
-    test('refuses a recorded name that is not a package name', () {
+    test('refuses a recorded name that is not a package name', () async {
       // Into the one `good:` section the fixture already has: a second
       // top-level key of the same name is a pubspec nothing can read, which
       // is a different refusal from the one this test is about.
       final project = _project(
         _pubspec.replaceFirst('good:\n', 'good:\n  bundle: Demo Bundle\n'),
       );
-      expect(() => _generate(project), _refusesWith(contains('package name')));
+      await expectLater(() => _generate(project), _refusesWith(contains('package name')));
     });
   });
 
   group('what it writes', () {
-    test('the four generated files, the marker and a generated pubspec', () {
+    test('the four generated files, the marker and a generated pubspec', () async {
       final project = _project();
-      final bundle = _generate(project).bundle;
+      final bundle = (await _generate(project)).bundle;
 
       for (final name in generatedFileNames) {
         expect(
@@ -336,12 +338,12 @@ void main() {
       );
     });
 
-    test('the engine dependency is indented into the dependencies map', () {
+    test('the engine dependency is indented into the dependencies map', () async {
       // A dependency emitted at column 0 is still valid YAML and still parses
       // - as a *top-level* key, so the bundle depends on nothing and every
       // generated file fails to resolve. The emitter got this wrong once.
       final project = _project();
-      final bundle = _generate(project).bundle;
+      final bundle = (await _generate(project)).bundle;
       expect(
         bundleProblems(
           projectDir: project,
@@ -354,14 +356,14 @@ void main() {
       );
     });
 
-    test('an import the bundle does not depend on is reported', () {
+    test('an import the bundle does not depend on is reported', () async {
       // The other half of the test above, which only says a dependency that
       // is there is not reported missing. Every generated file imports one of
       // these packages, so a bundle that declares the entry package alone is
       // one the analyzer reports `depend_on_referenced_packages` on in every
       // project that runs `flutter_lints` (#316).
       final project = _project();
-      final bundle = _generate(project).bundle;
+      final bundle = (await _generate(project)).bundle;
       bundle.pubspec.writeAsStringSync(
         bundle.pubspec
             .readAsLinesSync()
@@ -384,12 +386,12 @@ void main() {
       );
     });
 
-    test('the bundle depends on the engine the project depends on', () {
+    test('the bundle depends on the engine the project depends on', () async {
       final project = _project(
         _pubspec.replaceFirst('goo2d: ^0.3.0-dev', 'goo2d: 0.2.0'),
       );
       expect(
-        _generate(project).bundle.pubspec.readAsStringSync(),
+        (await _generate(project)).bundle.pubspec.readAsStringSync(),
         contains('goo2d: 0.2.0'),
         reason:
             'a bundle asking for a different version than the project resolves '
@@ -397,7 +399,7 @@ void main() {
       );
     });
 
-    test('a relative path dependency is re-based by one directory', () {
+    test('a relative path dependency is re-based by one directory', () async {
       final project = _project(
         _pubspec.replaceFirst(
           '  goo2d: ^0.3.0-dev\n',
@@ -405,15 +407,15 @@ void main() {
         ),
       );
       expect(
-        _generate(project).bundle.pubspec.readAsStringSync(),
+        (await _generate(project)).bundle.pubspec.readAsStringSync(),
         contains('path: "../../goo2d"'),
         reason: 'the bundle sits one directory further in than the project',
       );
     });
 
-    test('the generated code imports through the bundle package', () {
+    test('the generated code imports through the bundle package', () async {
       final project = _project();
-      final bundle = _generate(project).bundle;
+      final bundle = (await _generate(project)).bundle;
       expect(
         File('${bundle.libDir.path}/good.dart').readAsStringSync(),
         allOf(
@@ -428,13 +430,13 @@ void main() {
   });
 
   group('regeneration rewrites in place', () {
-    test('a second run leaves the directory and its extra files alone', () {
+    test('a second run leaves the directory and its extra files alone', () async {
       final project = _project();
-      final bundle = _generate(project).bundle;
+      final bundle = (await _generate(project)).bundle;
       final stray = File('${bundle.directory.path}/notes.txt')
         ..writeAsStringSync('still here');
 
-      _generate(project);
+      await _generate(project);
 
       expect(
         stray.existsSync(),
@@ -446,12 +448,12 @@ void main() {
       );
     });
 
-    test('the keys survive a regeneration', () {
+    test('the keys survive a regeneration', () async {
       final project = _project();
-      final bundle = _generate(project).bundle;
+      final bundle = (await _generate(project)).bundle;
       final keys = bundle.assetKeyFile.readAsStringSync();
 
-      _generate(project);
+      await _generate(project);
 
       expect(
         bundle.assetKeyFile.readAsStringSync(),
@@ -460,23 +462,23 @@ void main() {
       );
     });
 
-    test('--rotate-keys is what replaces them', () {
+    test('--rotate-keys is what replaces them', () async {
       final project = _project();
-      final bundle = _generate(project).bundle;
+      final bundle = (await _generate(project)).bundle;
       final keys = bundle.assetKeyFile.readAsStringSync();
 
-      _generate(project, rotateKeys: true);
+      await _generate(project, rotateKeys: true);
 
       expect(bundle.assetKeyFile.readAsStringSync(), isNot(keys));
     });
   });
 
   group('migrating off lib/good.generated/', () {
-    test('the generated files move and the directory goes away', () {
+    test('the generated files move and the directory goes away', () async {
       final project = _project();
       _legacyGenerated(project);
 
-      final bundle = _generate(project).bundle;
+      final bundle = (await _generate(project)).bundle;
 
       expect(
         Directory('${project.path}/lib/good.generated').existsSync(),
@@ -487,11 +489,11 @@ void main() {
       }
     });
 
-    test('the keys are carried over byte for byte, not minted again', () {
+    test('the keys are carried over byte for byte, not minted again', () async {
       final project = _project();
       _legacyGenerated(project);
 
-      final bundle = _generate(project).bundle;
+      final bundle = (await _generate(project)).bundle;
 
       expect(
         bundle.assetKeyFile.readAsStringSync(),
@@ -503,7 +505,7 @@ void main() {
       );
     });
 
-    test('imports of the old directory are repointed, in every spelling', () {
+    test('imports of the old directory are repointed, in every spelling', () async {
       final project = _project();
       _legacyGenerated(project);
       File('${project.path}/lib/game/prefabs/player.dart')
@@ -522,7 +524,7 @@ void main() {
           "export 'package:demo/good.generated/audios.dart';\n",
         );
 
-      _generate(project);
+      await _generate(project);
 
       expect(
         File('${project.path}/lib/game/prefabs/player.dart').readAsStringSync(),
@@ -538,7 +540,7 @@ void main() {
       );
     });
 
-    test('an import that only mentions the name in a string is left alone', () {
+    test('an import that only mentions the name in a string is left alone', () async {
       final project = _project();
       _legacyGenerated(project);
       final file = File('${project.path}/lib/note.dart')
@@ -546,7 +548,7 @@ void main() {
           "const String where = 'lib/good.generated/textures.dart';\n",
         );
 
-      _generate(project);
+      await _generate(project);
 
       expect(
         file.readAsStringSync(),
@@ -557,7 +559,7 @@ void main() {
       );
     });
 
-    test('a file good did not write is left where it is', () {
+    test('a file good did not write is left where it is', () async {
       final project = _project();
       _legacyGenerated(project);
       final mine = File('${project.path}/lib/good.generated/mine.dart')
@@ -565,7 +567,7 @@ void main() {
       final edited = File('${project.path}/lib/good.generated/good.dart')
         ..writeAsStringSync('// I took the header off\n');
 
-      _generate(project);
+      await _generate(project);
 
       expect(mine.readAsStringSync(), '// mine');
       expect(
@@ -646,9 +648,9 @@ void main() {
   });
 
   group('what the generator asserts about its own output', () {
-    test('an emptied bundle is reported rather than passed over', () {
+    test('an emptied bundle is reported rather than passed over', () async {
       final project = _project();
-      final bundle = _generate(project).bundle;
+      final bundle = (await _generate(project)).bundle;
       final textures = File('${bundle.libDir.path}/textures.dart')
         ..deleteSync();
 
@@ -664,9 +666,9 @@ void main() {
       );
     });
 
-    test('a dependency that was never added is reported', () {
+    test('a dependency that was never added is reported', () async {
       final project = _project();
-      final bundle = _generate(project).bundle;
+      final bundle = (await _generate(project)).bundle;
       // What an unpatchable pubspec leaves behind: the package is written and
       // nothing depends on it, so its code is unreachable and no build says so.
       File('${project.path}/pubspec.yaml').writeAsStringSync(_pubspec);
@@ -686,9 +688,9 @@ void main() {
       );
     });
 
-    test('an unresolved bundle is reported, and that is the silent one', () {
+    test('an unresolved bundle is reported, and that is the silent one', () async {
       final project = _project();
-      final bundle = _generate(project).bundle;
+      final bundle = (await _generate(project)).bundle;
       expect(
         bundleIsResolved(project, bundle),
         isFalse,
@@ -706,9 +708,9 @@ void main() {
       );
     });
 
-    test('a package config naming the bundle is what resolved means', () {
+    test('a package config naming the bundle is what resolved means', () async {
       final project = _project();
-      final bundle = _generate(project).bundle;
+      final bundle = (await _generate(project)).bundle;
       File('${project.path}/.dart_tool/package_config.json')
         ..parent.createSync(recursive: true)
         ..writeAsStringSync(
@@ -726,9 +728,9 @@ void main() {
       expect(bundleIsResolved(project, bundle), isTrue);
     });
 
-    test('a package config pointing somewhere else does not count', () {
+    test('a package config pointing somewhere else does not count', () async {
       final project = _project();
-      final bundle = _generate(project).bundle;
+      final bundle = (await _generate(project)).bundle;
       File('${project.path}/.dart_tool/package_config.json')
         ..parent.createSync(recursive: true)
         ..writeAsStringSync(
@@ -754,11 +756,11 @@ void main() {
   });
 
   group('the ownership check comes before the first write', () {
-    test('the marker is in the directory before any file beside it', () {
+    test('the marker is in the directory before any file beside it', () async {
       final project = _project();
       final watching = _Watching(Directory('${project.path}/demo_bundle'));
 
-      runGenerate(
+      await runGenerate(
         projectDir: project,
         command: 'good generate',
         out: watching,
@@ -791,11 +793,11 @@ void main() {
       }
     });
 
-    test('an interrupted run leaves a directory the next run finishes', () {
+    test('an interrupted run leaves a directory the next run finishes', () async {
       final project = _project();
       final directory = Directory('${project.path}/demo_bundle');
 
-      expect(
+      await expectLater(
         () => runGenerate(
           projectDir: project,
           command: 'good generate',
@@ -814,7 +816,7 @@ void main() {
             'still provably good\'s',
       );
 
-      final bundle = _generate(project).bundle;
+      final bundle = (await _generate(project)).bundle;
       for (final name in generatedFileNames) {
         expect(
           File('${bundle.libDir.path}/$name').existsSync(),

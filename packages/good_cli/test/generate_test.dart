@@ -629,13 +629,13 @@ good:
       expect(enginePackageOf(testTempDir('good_cli_test')), 'good');
     });
 
-    test('the caller can name the package instead', () {
+    test('the caller can name the package instead', () async {
       final dir = _project(
         'name: demo\ndependencies:\n  goo2d: ^0.1.0\n\n'
         'good:\n  assets:\n    - assets/\n',
         <String>['assets/player.png'],
       );
-      runGenerate(
+      await runGenerate(
         projectDir: dir,
         command: 'good generate',
         out: _quiet,
@@ -803,7 +803,7 @@ good:
     test(
       'two runs with a resolve between them leave a bundle that does not '
       'depend on itself',
-      () {
+      () async {
         final dir = _project(
           'name: demo\ndependencies:\n  goo2d: ^0.3.0\n\n'
           'good:\n  assets:\n    - assets/\n',
@@ -811,7 +811,7 @@ good:
         );
         resolvePackages(dir, engineGraph);
 
-        runGenerate(
+        await runGenerate(
           projectDir: dir,
           command: 'good generate',
           out: _quiet,
@@ -829,7 +829,7 @@ good:
           },
         );
 
-        runGenerate(
+        await runGenerate(
           projectDir: dir,
           command: 'good generate',
           out: _quiet,
@@ -896,7 +896,7 @@ good:
       expect(files['lib/main.dart'], contains('class MyArcadeApp'));
     });
 
-    test('starts the game before showing it', () {
+    test('starts the game before showing it', () async {
       final files = scaffoldFiles(
         projectName: 'demo',
         engine: GoodEngine.twoD,
@@ -1334,12 +1334,12 @@ good:
   });
 
   group('runGenerate', () {
-    test('fails rather than dropping an asset Flutter will not bundle', () {
+    test('fails rather than dropping an asset Flutter will not bundle', () async {
       final dir = _project(_pubspecWithAssets, <String>[
         'assets/player.png',
         'assets/ui/button.png',
       ]);
-      expect(
+      await expectLater(
         () => runGenerate(
           projectDir: dir,
           command: 'good generate',
@@ -1362,7 +1362,7 @@ good:
       );
     });
 
-    test('fails rather than generating over a shadowed column', () {
+    test('fails rather than generating over a shadowed column', () async {
       // The same refusal as the unbundled asset above, and here for the same
       // reason: nothing downstream will ever mention it. The row simply grows
       // by a column no expression can reach, and reads written against the
@@ -1379,7 +1379,7 @@ mixin Momentum on Component {
 }
 class Player extends EntityStruct with Velocity, Momentum {}
 ''');
-      expect(
+      await expectLater(
         () => runGenerate(
           projectDir: dir,
           command: 'good generate',
@@ -1405,7 +1405,7 @@ class Player extends EntityStruct with Velocity, Momentum {}
       );
     });
 
-    test('fails rather than generating over a broken describeX chain', () {
+    test('fails rather than generating over a broken describeX chain', () async {
       // The same refusal as the two above. A mixin that stops chaining
       // contributes no columns and no query bit, and every mixin applied
       // before it is cut off too - with nothing said at run time.
@@ -1422,7 +1422,7 @@ mixin Velocity on Component {
   }
 }
 ''');
-      expect(
+      await expectLater(
         () => runGenerate(
           projectDir: dir,
           command: 'good generate',
@@ -1451,7 +1451,7 @@ mixin Velocity on Component {
       );
     });
 
-    test('writes the enum when every asset is bundled', () {
+    test('writes the enum when every asset is bundled', () async {
       final dir = _project(
         '''
 name: demo
@@ -1462,7 +1462,7 @@ good:
 ''',
         <String>['assets/player.png', 'assets/ui/button.png'],
       );
-      runGenerate(
+      await runGenerate(
         projectDir: dir,
         command: 'good generate',
         out: _quiet,
@@ -1779,7 +1779,7 @@ good:
   });
 
   group('what the generated files import', () {
-    test('an entry package that re-exports nothing is not imported', () {
+    test('an entry package that re-exports nothing is not imported', () async {
       // #316. A project declaring a physics backend and goo2d has two engine
       // candidates; #309 drops goo2d as the less specific of the two, so the
       // entry package is the backend - whose library exports its own `src/`
@@ -1806,7 +1806,7 @@ good:
         reason: 'goo2d is what the backend is built on, so it is dropped',
       );
 
-      runGenerate(
+      await runGenerate(
         projectDir: dir,
         command: 'good generate',
         out: _quiet,
@@ -1832,7 +1832,7 @@ good:
       expect(readiness, contains("import 'package:good/good.dart';"));
     });
 
-    test('the bundle declares every package the generated files import', () {
+    test('the bundle declares every package the generated files import', () async {
       // An import the bundle's pubspec does not name is what
       // `depend_on_referenced_packages` reports, and `flutter analyze` fails a
       // project on an info.
@@ -1848,7 +1848,7 @@ good:
         'goo2d': <String>['good'],
         'good': <String>[],
       });
-      runGenerate(
+      await runGenerate(
         projectDir: dir,
         command: 'good generate',
         out: _quiet,
@@ -1867,7 +1867,7 @@ good:
       );
     });
 
-    test('a project that cannot draw declares and imports the kernel', () {
+    test('a project that cannot draw declares and imports the kernel', () async {
       // The other half of the same question: `Object?` on the keys, and the
       // kernel names still have to come from somewhere.
       final dir = _project(
@@ -1881,7 +1881,7 @@ good:
         'goo3d': <String>['good'],
         'good': <String>[],
       });
-      runGenerate(
+      await runGenerate(
         projectDir: dir,
         command: 'good generate',
         out: _quiet,
