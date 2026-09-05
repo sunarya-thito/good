@@ -1,4 +1,4 @@
-// Declared effectors - the `describeEffector` half of the API, where
+// Declared effectors - the `Effector.*` half of the API, where
 // `effectors_test.dart` covers the `Effectors2D` functions underneath.
 //
 // Requires the native library. packages/goo2d_ffi_box2d/README.md has the
@@ -41,13 +41,9 @@ class _Zone extends EntityStruct with Transform2D, Collider2D, Effector2D {
     halfHeight: 50,
     isTrigger: true,
   );
-  late final AreaEffector wind;
-
-  @override
-  void describeEffector(EffectorDescriptor descriptor) {
-    super.describeEffector(descriptor);
-    wind = descriptor.hasAreaEffector(region, forceY: -400);
-  }
+  // `late final` because the initialiser names `region`, the field above:
+  // an ordinary field initialiser cannot reach `this`.
+  late final wind = Effector.area(region: region, forceY: -400);
 }
 
 /// A pool of water, 100 wide and 20 tall. Declared at the origin its fluid is
@@ -62,17 +58,30 @@ class _Pool extends EntityStruct with Transform2D, Collider2D, Effector2D {
     halfHeight: 10,
     isTrigger: true,
   );
-  late final BuoyancyEffector water;
-
-  @override
-  void describeEffector(EffectorDescriptor descriptor) {
-    super.describeEffector(descriptor);
-    water = descriptor.hasBuoyancyEffector(region, density: 3);
-  }
+  late final water = Effector.buoyancy(region: region, density: 3);
 }
 
 class _Box extends EntityStruct with Transform2D, Collider2D, RigidBody2D {
   final box = ColliderBody.box(halfWidth: 0.5, halfHeight: 0.5);
+}
+
+/// The one way the field form can be written wrong: a region built inside the
+/// effector call, so no field holds the body.
+///
+/// It reads perfectly well, and nothing about the types objects. What it
+/// produces is a `ColliderBody` no collector reads - so no column is laid out
+/// for it, `Collider2D.bodies` never sees it, and the physics walk would read
+/// `halfWidth` off a column that was never given row space.
+class _Loose extends EntityStruct with Transform2D, Collider2D, Effector2D {
+  late final wind = Effector.area(
+    region: ColliderBody.box(halfWidth: 5, halfHeight: 5, isTrigger: true),
+    forceY: -400,
+  );
+}
+
+class _LooseScene extends SceneStruct {
+  @sub
+  final zone = _Loose();
 }
 
 class _Scene extends SceneStruct {
@@ -196,6 +205,33 @@ void main() {
     SceneRegistry.reset();
     ArchetypeRegistry.reset();
     ComponentTypeRegistry.reset();
+  });
+
+  test('an effector reaching a body no field holds is refused', () {
+    // Declared headless: an effector is declared when a scene declares the
+    // prefab, which is inside `initializeScene`, so this is the failure a
+    // game would hit at boot with no game to boot - and it is a boot failure
+    // on purpose. Left to run, it is a column with no row space, read once
+    // per step from inside the physics walk.
+    Object? caught;
+    try {
+      _LooseScene().initializeScene(MemoryPool(pageSize: 4096));
+    } catch (error) {
+      caught = error;
+    }
+    expect(caught, isNotNull, reason: 'declaring the prefab has to fail');
+    expect(
+      caught.toString(),
+      allOf(
+        contains('_Loose'),
+        contains('AreaEffector'),
+        contains('not one of its own declared bodies'),
+      ),
+      reason:
+          'the message has to name the prefab and the effector - the column '
+          'that would fail later names neither, and a caller reading '
+          '"halfWidth has no row space" has nothing to act on',
+    );
   });
 
   test('a declared area effector pushes a body inside its region', () async {

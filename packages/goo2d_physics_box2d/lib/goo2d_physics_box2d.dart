@@ -49,7 +49,7 @@
 ///
 /// **Box2D has no effectors** - Unity's are gameplay code that finds bodies in
 /// a region and applies a force - so this package supplies them two ways.
-/// Declare one with [Effector2D] and [EffectorDescriptor] and the physics
+/// Declare one with [Effector2D] and `Effector.area` and the physics
 /// system walks it before each step, which is the better default. `Effectors2D`
 /// exposes the same four as one-shot calls for a region computed per tick.
 /// Area, Point, Buoyancy and Surface are there; Platform (one-way) is not, and
@@ -62,7 +62,6 @@ export 'src/effector.dart'
         BuoyancyEffector,
         Effector,
         Effector2D,
-        EffectorDescriptor,
         PointEffector,
         SurfaceEffector;
 export 'src/effectors.dart' show Effectors2D;

@@ -314,13 +314,7 @@ its shape.
 ```dart
 class WindZone extends EntityStruct with Transform2D, Collider2D, Effector2D {
   final region = ColliderBody.box(halfWidth: 50, halfHeight: 50, isTrigger: true);
-  late final AreaEffector wind;
-
-  @override
-  void describeEffector(EffectorDescriptor descriptor) {
-    super.describeEffector(descriptor);
-    wind = descriptor.hasAreaEffector(region, forceY: 400);
-  }
+  late final wind = Effector.area(region: region, forceY: 400);
 }
 ```
 
@@ -336,10 +330,10 @@ Four kinds are provided:
 
 | Declare | Does |
 |---|---|
-| `hasAreaEffector(region, forceX:, forceY:, torque:)` | A uniform push, and optionally a spin |
-| `hasPointEffector(region, force:, minDistance:)` | Pulls toward or pushes from the centre. `minDistance` stops the force exploding at zero |
-| `hasBuoyancyEffector(region, density:, linearDrag:, angularDrag:)` | Water: floats what is less dense, drags what moves. The water line is the region's **top** edge |
-| `hasSurfaceEffector(region, speed:, speedY:, force:)` | A conveyor, dragging contents toward a target speed |
+| `Effector.area(region:, forceX:, forceY:, torque:)` | A uniform push, and optionally a spin |
+| `Effector.point(region:, force:, minDistance:)` | Pulls toward or pushes from the centre. `minDistance` stops the force exploding at zero |
+| `Effector.buoyancy(region:, density:, linearDrag:, angularDrag:)` | Water: floats what is less dense, drags what moves. The water line is the region's **top** edge |
+| `Effector.surface(region:, speed:, speedY:, force:)` | A conveyor, dragging contents toward a target speed |
 
 Platform (one-way) is not provided.
 
