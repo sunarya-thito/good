@@ -1,7 +1,11 @@
-import 'package:good_tool/src/accessor_emit.dart';
-import 'package:good_tool/src/engine_packages.dart';
-import 'package:good_tool/src/imports.dart';
-import 'package:good_tool/src/scan.dart';
+// Beside the scan that feeds it, for the reason `declaration_collectors.dart`
+// gives: this file is written for each engine package by the repository's own
+// generator and for a user's project by `good generate`, and one artifact
+// takes one emitter.
+
+import 'package:good_cli/src/generate/declaration_collectors.dart';
+import 'package:good_cli/src/generate/engine_package.dart';
+import 'package:good_cli/src/generate/imports.dart';
 
 /// The files [scan] would have this repository carry.
 ///
@@ -13,12 +17,15 @@ import 'package:good_tool/src/scan.dart';
 /// for why an empty entry has to be written.
 ///
 /// [known] is every package the scan read, where [packages] is the subset
-/// being written into - the same split [componentBitsFiles] makes, and for the
-/// same reason (#305).
+/// being written into - the same split the component-bit emitter makes, and
+/// for the same reason (#305). It is what lets a project's table name
+/// `goo2dDeclarations` as a dependency without generating into a copy of
+/// `goo2d` in a pub cache.
 List<GeneratedFile> declarationFiles(
   DeclarationCollectorScan scan,
   List<EnginePackage> packages,
   Imports imports, {
+  required List<String> regenerate,
   List<EnginePackage>? known,
 }) {
   final available = known ?? packages;
@@ -39,6 +46,7 @@ List<GeneratedFile> declarationFiles(
         contents: emitDeclarations(
           entries,
           package: package,
+          regenerate: regenerate,
           tableImports: <String>{...table.imports, ...entry.imports},
           dependencies: <EnginePackage>[
             for (final candidate in available)
@@ -76,11 +84,20 @@ List<GeneratedFile> declarationFiles(
 /// that archetype. It is what Dart's own initialisers did while the ambient
 /// declaration window still collected them, which is why the layout does not
 /// move now that nothing runs at a declaration.
+/// [regenerate] is the paragraph the banner opens with, one entry per line,
+/// without the `// ` - what to run to write this file again.
+///
+/// Passed in rather than written here because two tools write this file and
+/// the sentence differs: the repository's own generator is run from
+/// `packages/good_tool` and its output is committed, while a project's is
+/// written by `good generate` and rewritten by every build. The rest of the
+/// banner is about the file's contents and is the same either way.
 String emitDeclarations(
   List<DeclarationCollectorEntry> entries, {
   required EnginePackage package,
   required Set<String> tableImports,
   required List<EnginePackage> dependencies,
+  required List<String> regenerate,
 }) {
   final imports =
       <String>{
@@ -93,11 +110,11 @@ String emitDeclarations(
 
   final buffer = StringBuffer()
     ..writeln('// GENERATED - do not edit.')
-    ..writeln('//')
-    ..writeln('// Regenerate with `dart run good_tool` from')
-    ..writeln('// packages/good_tool, and commit what changes.')
-    ..writeln('// `dart run good_tool --check` is what CI runs; it fails if')
-    ..writeln('// this file is not what the generator would write.')
+    ..writeln('//');
+  for (final line in regenerate) {
+    buffer.writeln('// $line');
+  }
+  buffer
     ..writeln('//')
     ..writeln('// One function per class this package can instantiate that')
     ..writeln('// declares anything. A declaration is a field holding its own')

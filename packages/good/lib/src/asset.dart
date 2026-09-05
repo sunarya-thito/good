@@ -526,9 +526,9 @@ final class Asset<T> implements ScannableField, IntRepresentable {
         'the object holding it is registered - by SceneDescriptor.has for a '
         'prefab, or by initializeScene for the scene itself - so this one is '
         'either on an object nothing registered, or on a field the generated '
-        'collector does not list. A private field is not collectable; run '
-        '`dart run good_tool --declarations` to see which fields a collector '
-        'can read.',
+        'collector does not list. A private field is not collectable, and both '
+        'generators name the ones they had to leave out: `good generate` in a '
+        'project, `dart run good_tool --declarations` in an engine package.',
       );
     }
     return declared;

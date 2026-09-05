@@ -215,7 +215,8 @@ class CreateCommand extends Command with Verbose, Resolving {
         generated.bundle.name,
       ])
       ..printf(
-        "%s/ is good's, and lib/ is yours. The bindings import as "
+        "%s/ is good's, and so is lib/src/declarations.g.dart - everything "
+        'else under lib/ is yours. The bindings import as '
         '`package:%s/textures.dart`.\n',
         [generated.bundle.name, generated.bundle.name],
       )

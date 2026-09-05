@@ -348,8 +348,12 @@ List<ScannableField> collectDeclarations(Scannable object) {
       'Either the table holding ${object.runtimeType} was never named to '
       '`Game.declarations` - a scene brought up without a `Game` names it '
       'itself, through `DeclarationRegistry.installGenerated` - or the '
-      'generator never read the file ${object.runtimeType} is written in. Run '
-      '`dart run good_tool --dir <directory>` and commit what it writes.',
+      'generator never read the file ${object.runtimeType} is written in.\n'
+      '\n'
+      'In a project: run `good generate`, which writes '
+      '`lib/src/declarations.g.dart` for the classes you wrote, and name it to '
+      '`Game.declarations`. In an engine package: run `dart run good_tool '
+      '--dir <directory>` and commit what it writes.',
     );
   }
   return collect(object);
@@ -357,10 +361,16 @@ List<ScannableField> collectDeclarations(Scannable object) {
 
 /// One package's generated collectors, keyed by the class each one reads.
 ///
-/// Written by `good_tool` into `lib/src/declarations.g.dart` in each package
-/// that declares anything, and reached through that package's entry library -
+/// Written into `lib/src/declarations.g.dart` of every package that declares
+/// anything, and reached through that package's entry library -
 /// `goodDeclarations`, `goo2dDeclarations`. A game names the ones it uses to
 /// `Game.declarations`; importing one installs nothing.
+///
+/// A project has one too, and it is the one that cannot be left out: its
+/// classes are the game, the scenes and the prefabs the person wrote, and no
+/// engine package's table holds those. `good generate` writes it, keyed by the
+/// project's own name - `walkgameDeclarations` - and `good create` scaffolds
+/// the override that names it.
 ///
 /// # Why it names its dependencies
 ///

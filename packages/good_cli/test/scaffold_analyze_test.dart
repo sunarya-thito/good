@@ -6,10 +6,10 @@ import 'package:good_cli/src/generate/engine_dependency.dart';
 import 'package:good_cli/src/generate/run.dart';
 import 'package:good_cli/src/generate/scaffold.dart';
 import 'package:good_cli/src/generate/templates.dart';
-import 'package:good_cli/src/verbosable.dart';
 import 'package:test/test.dart';
 
 import '_resolved.dart';
+import '_scaffolded.dart';
 import '_temp.dart';
 
 // Whether a scaffolded project compiles - asked of the analyzer, not of the
@@ -23,52 +23,27 @@ import '_temp.dart';
 // A string assertion can only catch the mistakes somebody already thought of;
 // this checks the templates against the API as it is today.
 //
-// It runs neither `flutter create` nor `pub get`. The generated files import
-// `package:flutter`, `package:flutter_test` and the engine package, all of
-// which this repository has already resolved under `packages/`, so the
-// scaffolded project is handed the engine's own package config with its
-// relative entries made absolute and itself added. `dart analyze` then resolves
-// the real API out of the real source tree. Fifteen seconds per project,
-// against minutes for a real `flutter create` plus `flutter pub get`.
+// The project it reads is `scaffoldProject`'s, which is the same one
+// `scaffold_boot_test` runs - scaffolded, generated into, and resolved against
+// this repository's own packages. That sharing is not tidiness: this suite
+// used to write its own pubspec beside the templates, so what it analyzed was
+// a project nobody is handed, and a scaffold that could not boot passed it.
 //
 // # Every case here runs the analyzer the way the project's owner will
 //
 // `dart analyze` exits 0 on an info, and `flutter analyze` fails a project on
 // one, so an exit code alone says nothing about the diagnostics a user meets
 // first (#321). Two things close that gap and both are needed:
-// [_analyzeClean] passes `--fatal-infos`, and every fixture below writes the
-// `analysis_options.yaml` `flutter create` writes, so the rules in force are
-// the ones the project ships with.
+// [_analyzeClean] passes `--fatal-infos`, and every project analyzed carries
+// the `analysis_options.yaml` `flutter create` writes, so the rules in force
+// are the ones it ships with.
 //
-// The fixture pubspecs matter for the same reason. `depend_on_referenced
-// _packages` reads the `dependencies:` map, so a fixture that declares nothing
-// reports every import in it and a fixture that declares everything reports
-// none. Each one below declares what the real project declares, and the
-// generated-bindings case builds that list out of [generatedImports] - the
+// The pubspecs matter for the same reason. `depend_on_referenced_packages`
+// reads the `dependencies:` map, so a project that declares nothing reports
+// every import in it and one that declares everything reports none. The
+// scaffolded cases get theirs from `scaffoldProject`, and the
+// generated-bindings case builds its list out of [generatedImports] - the
 // function whose job is to name what the emitters import.
-
-/// `runGenerate` prints; nothing here reads what it printed.
-final VerboseOutput _quiet = _NullOutput();
-
-class _NullOutput implements VerboseOutput {
-  @override
-  void println(Object? object) {}
-  @override
-  void print(Object? object) {}
-  @override
-  void printf(String format, List<Object?> args) {}
-}
-
-/// The analysis options every fixture here is analyzed under, which is the
-/// file `flutter create` writes and nothing else.
-///
-/// That one line is what brings in `depend_on_referenced_packages`, through
-/// `package:lints/core.yaml`. The other lint these fixtures exist to catch,
-/// `unnecessary_import`, needs no line: it is not a lint rule in this SDK -
-/// naming it under `linter: rules:` is an `undefined_lint` warning - and the
-/// analyzer reports it on its own, at info severity, whatever the options file
-/// says.
-const String _analysisOptions = 'include: package:flutter_lints/flutter.yaml\n';
 
 /// Runs the analyzer over [path] and fails on anything it reports.
 ///
@@ -93,115 +68,19 @@ Future<void> _analyzeClean(String path, {required String reason}) async {
   );
 }
 
-/// The repository root, found by walking up from wherever the suite was run.
-Directory _repoRoot() {
-  var dir = Directory.current;
-  for (var i = 0; i < 6; i++) {
-    if (File('${dir.path}/mkdocs.yml').existsSync() &&
-        Directory('${dir.path}/packages').existsSync()) {
-      return dir;
-    }
-    final parent = dir.parent;
-    if (parent.path == dir.path) break;
-    dir = parent;
-  }
-  fail('run this suite from inside the repository');
-}
-
-/// `packages/<engine>`'s resolved package config, with every path absolute.
-///
-/// A relative `rootUri` is relative to the `.dart_tool` directory holding the
-/// file, so it means nothing once the config is written somewhere else.
-/// Resolving them here is what lets the scaffolded project sit in a temp
-/// directory and still see this repository's packages.
-Map<String, Object?> _absolutePackageConfig(Directory root, String engine) {
-  final file = File(
-    '${root.path}/packages/$engine/.dart_tool/package_config.json',
-  );
-  if (!file.existsSync()) {
-    fail(
-      'packages/$engine is not resolved - run `flutter pub get` there. This '
-      'test borrows its package config rather than resolving one of its own.',
-    );
-  }
-  final base = file.parent.uri;
-  final config = jsonDecode(file.readAsStringSync()) as Map<String, Object?>;
-  return <String, Object?>{
-    ...config,
-    'packages': <Object?>[
-      for (final entry in config['packages']! as List<Object?>)
-        <String, Object?>{
-          ...entry as Map<String, Object?>,
-          'rootUri': base.resolve(entry['rootUri']! as String).toString(),
-        },
-    ],
-  };
-}
-
 void main() {
   for (final engine in GoodEngine.values) {
     test('a scaffolded ${engine.package} project analyzes clean', () async {
-      const projectName = 'scaffold_probe';
-      final root = _repoRoot();
-      final dir = testTempDir('good_scaffold_analyze');
-
-      final files = scaffoldFiles(
-        projectName: projectName,
+      // Generated as well as scaffolded, which is the whole project rather
+      // than half of it. `good create` runs `good generate` before it returns,
+      // and the templates name what generation writes: the bundle's
+      // `ensureGameReady`, and the declaration table the game overrides
+      // `Game.declarations` with. Analyzing the templates alone was a check
+      // over a project nobody is ever handed.
+      final dir = scaffoldProject(
+        name: '${engine.package}_analyze_probe',
         engine: engine,
-        command: 'good create',
       );
-      for (final entry in files.entries) {
-        File('${dir.path}/${entry.key}')
-          ..parent.createSync(recursive: true)
-          ..writeAsStringSync(entry.value);
-      }
-
-      // `flutter create` writes the pubspec and `patchedPubspecLines` covers
-      // what good adds to it. What is needed here is the package's name, its
-      // language version, and the dependencies the lints read: an import the
-      // pubspec does not declare is a `depend_on_referenced_packages` info,
-      // and the point of this case is the templates' imports and not the
-      // fixture's.
-      File('${dir.path}/pubspec.yaml').writeAsStringSync('''
-name: $projectName
-
-environment:
-  sdk: ^3.13.0
-
-dependencies:
-  flutter:
-    sdk: flutter
-  ${engine.package}: $engineConstraint
-
-dev_dependencies:
-  flutter_test:
-    sdk: flutter
-  flutter_lints: any
-''');
-      File(
-        '${dir.path}/analysis_options.yaml',
-      ).writeAsStringSync(_analysisOptions);
-
-      final config = _absolutePackageConfig(root, engine.package);
-      File('${dir.path}/.dart_tool/package_config.json')
-        ..parent.createSync(recursive: true)
-        ..writeAsStringSync(
-          jsonEncode(<String, Object?>{
-            ...config,
-            'packages': <Object?>[
-              ...config['packages']! as List<Object?>,
-              // test/widget_test.dart imports the project by package name, the
-              // way `flutter create`'s own does.
-              <String, Object?>{
-                'name': projectName,
-                'rootUri': dir.uri.toString(),
-                'packageUri': 'lib/',
-                'languageVersion': '3.13',
-              },
-            ],
-          }),
-        );
-
       await _analyzeClean(
         dir.path,
         reason:
@@ -216,7 +95,7 @@ dev_dependencies:
     // string assertion only catches what somebody thought to assert. This is
     // the one that would notice `TextureSize` colliding with a name goo2d
     // exports, or an enum whose constructor no longer matches its fields.
-    final root = _repoRoot();
+    final root = repoRoot();
     final dir = testTempDir('good_generated_analyze');
     // The dependencies are `generatedImports`', which is the set the bundle's
     // own pubspec declares. An emitter that starts importing a package that
@@ -243,7 +122,7 @@ good:
 ''');
     File(
       '${dir.path}/analysis_options.yaml',
-    ).writeAsStringSync(_analysisOptions);
+    ).writeAsStringSync(scaffoldAnalysisOptions);
     // A 24-byte PNG: signature and IHDR, which is all a header read needs.
     final png = <int>[
       0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A,
@@ -292,7 +171,7 @@ const NineSliceBorder border = NineSliceBorder.pixels(
 int get pixels => Textures.sheet.width * Textures.sheet.height;
 ''');
 
-    final config = _absolutePackageConfig(root, 'goo2d');
+    final config = absolutePackageConfig(root, 'goo2d');
     File('${dir.path}/.dart_tool/package_config.json')
       ..parent.createSync(recursive: true)
       ..writeAsStringSync(
@@ -335,7 +214,7 @@ int get pixels => Textures.sheet.width * Textures.sheet.height;
     // The options file sits in the project and the bundle sits under it, which
     // is where the analyzer looks for one: a generated package inherits the
     // rules of the project it was generated into.
-    final root = _repoRoot();
+    final root = repoRoot();
     final dir = testTempDir('good_bundle_analyze');
     File('${dir.path}/pubspec.yaml').writeAsStringSync('''
 name: bundle_probe
@@ -356,7 +235,7 @@ good:
 ''');
     File(
       '${dir.path}/analysis_options.yaml',
-    ).writeAsStringSync(_analysisOptions);
+    ).writeAsStringSync(scaffoldAnalysisOptions);
     // A 24-byte PNG: signature and IHDR, which is all a header read needs.
     File('${dir.path}/assets/sheet.png')
       ..parent.createSync(recursive: true)
@@ -378,8 +257,8 @@ good:
     runGenerate(
       projectDir: dir,
       command: 'good generate',
-      out: _quiet,
-      verbose: _quiet,
+      out: quietOutput,
+      verbose: quietOutput,
       pubGet: false,
     );
     final bundle = Directory('${dir.path}/bundle_probe_bundle');
@@ -391,7 +270,7 @@ good:
 
     // Now the real packages, so `AssetKey`, `AudioClip` and `Texture` are the
     // declarations this repository ships rather than empty stub directories.
-    final config = _absolutePackageConfig(root, 'goo2d');
+    final config = absolutePackageConfig(root, 'goo2d');
     File('${dir.path}/.dart_tool/package_config.json').writeAsStringSync(
       jsonEncode(<String, Object?>{
         ...config,

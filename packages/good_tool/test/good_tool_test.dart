@@ -3,13 +3,19 @@ import 'dart:io';
 
 // ignore: implementation_imports
 import 'package:good_cli/src/generate/scan.dart';
+// ignore: implementation_imports
+import 'package:good_cli/src/generate/engine_package.dart';
+// ignore: implementation_imports
+import 'package:good_cli/src/generate/declaration_collectors.dart';
 import 'package:good_tool/src/accessor_emit.dart';
 import 'package:good_tool/src/component_emit.dart';
-import 'package:good_tool/src/declaration_emit.dart';
+// ignore: implementation_imports
+import 'package:good_cli/src/generate/declaration_emit.dart';
 import 'package:good_tool/src/doc_references.dart';
 import 'package:good_tool/src/engine_packages.dart';
 import 'package:good_tool/src/fixture_emit.dart';
-import 'package:good_tool/src/imports.dart';
+// ignore: implementation_imports
+import 'package:good_cli/src/generate/imports.dart';
 import 'package:good_tool/src/scan.dart';
 import 'package:path/path.dart' as p;
 import 'package:test/test.dart';
@@ -1401,6 +1407,7 @@ class Spawner<T extends EntityStruct> extends EntityStruct {
             .importFor(generatedDeclarationsType, demo)
             .imports,
         dependencies: const <EnginePackage>[],
+        regenerate: const <String>['Regenerate with `dart run good_tool`.'],
       );
       expect(
         written,

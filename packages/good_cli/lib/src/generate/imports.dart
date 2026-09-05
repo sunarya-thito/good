@@ -5,15 +5,15 @@
 // `goo2d_physics_box2d` reaches through `package:goo2d/goo2d.dart` because it
 // depends on `goo2d` and not on `good`. One resolver, so the two generated
 // files in a package cannot disagree about how that package spells an import.
+//
+// It sits beside the scan it reads rather than in the tool that grew it,
+// because `good generate` has the same question to answer for a user's own
+// project: which `package:` URI that project writes to name `ScannableField`.
 
-import 'package:good_tool/src/engine_packages.dart';
+import 'package:good_cli/src/generate/engine_package.dart';
+import 'package:good_cli/src/generate/scan.dart';
 import 'package:meta/meta.dart';
 import 'package:path/path.dart' as p;
-
-// good_cli's `lib/src` is private by convention and this reaches into it, for
-// the reason `accessor_scan.dart` states beside its own copy of this line.
-// ignore: implementation_imports
-import 'package:good_cli/src/generate/scan.dart';
 
 /// The package whose `lib/` holds [file].
 EnginePackage? packageOf(String file, Map<String, EnginePackage> byLibDir) {

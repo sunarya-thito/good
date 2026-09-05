@@ -1,7 +1,8 @@
-import 'package:good_tool/src/accessor_emit.dart';
-import 'package:good_tool/src/engine_packages.dart';
-import 'package:good_tool/src/imports.dart';
+// ignore: implementation_imports
+import 'package:good_cli/src/generate/imports.dart';
 import 'package:good_tool/src/scan.dart';
+// ignore: implementation_imports
+import 'package:good_cli/src/generate/engine_package.dart';
 
 /// The name of the type every generated table is an instance of.
 const String generatedComponentBitsType = 'GeneratedComponentBits';

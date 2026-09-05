@@ -8,13 +8,19 @@ import 'dart:io';
 import 'package:good_cli/src/generate/scan.dart';
 import 'package:good_tool/src/accessor_emit.dart';
 import 'package:good_tool/src/component_emit.dart';
-import 'package:good_tool/src/declaration_emit.dart';
+// ignore: implementation_imports
+import 'package:good_cli/src/generate/declaration_emit.dart';
 import 'package:good_tool/src/doc_references.dart';
 import 'package:good_tool/src/engine_packages.dart';
 import 'package:good_tool/src/fixture_emit.dart';
-import 'package:good_tool/src/imports.dart';
+// ignore: implementation_imports
+import 'package:good_cli/src/generate/imports.dart';
 import 'package:good_tool/src/scan.dart';
 import 'package:path/path.dart' as p;
+// ignore: implementation_imports
+import 'package:good_cli/src/generate/engine_package.dart';
+// ignore: implementation_imports
+import 'package:good_cli/src/generate/declaration_collectors.dart';
 
 /// The code generator for a package built on this engine.
 ///
@@ -312,7 +318,13 @@ Future<void> main(List<String> arguments) async {
   final files = <GeneratedFile>[
     ...accessorFiles(accessors, packages),
     ...componentBitsFiles(bits, packages, imports, known: readable),
-    ...declarationFiles(collectors, packages, imports, known: readable),
+    ...declarationFiles(
+      collectors,
+      packages,
+      imports,
+      known: readable,
+      regenerate: _regenerateWithGoodTool,
+    ),
   ];
   final absent = <EnginePackage, String>{
     for (final package in missingExports(
@@ -326,7 +338,13 @@ Future<void> main(List<String> arguments) async {
     ))
       package: package.componentBitsExport,
     for (final package in missingDeclarationExports(
-      declarationFiles(collectors, packages, imports, known: readable),
+      declarationFiles(
+        collectors,
+        packages,
+        imports,
+        known: readable,
+        regenerate: _regenerateWithGoodTool,
+      ),
       packages,
     ))
       package: package.declarationsExport,
@@ -772,3 +790,17 @@ String _displayPath(List<EnginePackage> packages, String path) {
   }
   return full;
 }
+
+/// What a file this tool writes says about getting it written again.
+///
+/// Verbatim what the committed files carry, and it says two things a project's
+/// copy of the same file does not: run it from `packages/good_tool`, and
+/// commit the result. Those hold because these files ship inside published
+/// packages - `good generate` writes the same shape into a project and neither
+/// sentence is true there. See `emitDeclarations`.
+const List<String> _regenerateWithGoodTool = <String>[
+  'Regenerate with `dart run good_tool` from',
+  'packages/good_tool, and commit what changes.',
+  '`dart run good_tool --check` is what CI runs; it fails if',
+  'this file is not what the generator would write.',
+];

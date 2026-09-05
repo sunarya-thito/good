@@ -1,5 +1,7 @@
 import 'dart:io';
 
+// ignore: implementation_imports
+import 'package:good_cli/src/generate/engine_package.dart';
 import 'package:good_tool/src/doc_references.dart';
 import 'package:good_tool/src/engine_packages.dart';
 import 'package:path/path.dart' as p;
