@@ -682,6 +682,65 @@ class Barrel extends EntityStruct {}
       );
     });
 
+    test('a cascade over a constructor still needs the marker', () async {
+      // Resolution does not make `@sub` optional and never could. It proves
+      // `Barrel()` is an `EntityStruct`; it cannot prove the field is a child
+      // rather than a spare, because those are the same type by construction.
+      // There is no such pair for the other roots - holding a `DataPointer`
+      // *is* declaring a column - which is why they need no marker and this
+      // does.
+      //
+      // The cascade is where a stronger scan could have taken the marker away
+      // by accident. A walk reading the initialiser as a chain of calls saw
+      // nothing at all here, so `final spare = Barrel()..tune();` was neither
+      // collected nor listed; a walk that resolved the *type* and kept the
+      // old test for "is this a constructor call" would have found a
+      // declaration, found no constructor call, and collected it with no
+      // marker on it. Both halves are asserted, because the second is the
+      // defect.
+      final scan = await _declarations('''
+class Turret extends EntityStruct {
+  @sub
+  final barrel = Barrel()..tune();
+  final spare = Barrel()..tune();
+}
+
+class Barrel extends EntityStruct {
+  void tune() {}
+}
+''');
+
+      expect(scan.refusals, isEmpty);
+      expect(scan.unresolved, isEmpty);
+      expect(scan.unmarked.keys, <String>['Turret.spare']);
+      expect(
+        <String>[
+          for (final declaration in scan.declarers.single.declarations)
+            declaration.name,
+        ],
+        <String>['barrel'],
+      );
+    });
+
+    test('a named constructor tells by its own shape', () async {
+      // `Entity.pack(...)` is dotted, and a dotted head says what it is where
+      // it is written - which is the whole of the shape half of the rule. So
+      // the marker is asked for on an *unnamed* constructor call and on
+      // nothing else.
+      final scan = await _declarations('''
+class Turret extends EntityStruct {
+  final barrel = Barrel.tuned();
+}
+
+class Barrel extends EntityStruct {
+  Barrel.tuned();
+}
+''');
+
+      expect(scan.unmarked, isEmpty);
+      expect(scan.declarers.single.declarations.single.name, 'barrel');
+    });
+
     test('an unmarked bare constructor still closes a ring', () async {
       // The marker decides what a collector reads. It decides nothing about
       // whether Dart builds the object, and it is the building that does not

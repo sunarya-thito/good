@@ -868,6 +868,19 @@ Future<ScanSources> readSources(
 }
 
 /// The context that reads [path], or [fallback] where none of them covers it.
+///
+/// [fallback] is right for the case it exists for and is not right in general.
+/// It is the context of the directory the walk was asked about, so it resolves
+/// a file correctly exactly when that directory's package config is the one
+/// naming the file's package - which is true of an engine package in a pub
+/// cache, since the project resolving it is what put it there.
+///
+/// It is **not** true of a package that simply has not been resolved, and the
+/// answer there is wrong rather than absent: a fixture `good` with no
+/// `.dart_tool/` of its own resolves `package:good/good.dart` through whatever
+/// `good` the caller's own config names, which for an in-process test is the
+/// real engine. Nothing says so. A fixture repository writes its own package
+/// config for that reason - see `resolveFixture` in good_tool's `_repo.dart`.
 AnalysisContext _contextFor(
   AnalysisContextCollection collection,
   String path,
