@@ -897,8 +897,20 @@ Future<ScanSources> readSources(
 /// # Where it goes, and what bounds it
 ///
 /// `.dart_tool/` under the directory the walk was asked about, which is the
-/// package or project whose sources it is caching and which every layout in
-/// this repository and every `flutter create` project already ignores in git.
+/// package or project whose sources it is caching.
+///
+/// **It ignores itself, rather than relying on a rule outside it.** Every
+/// package's own `.gitignore` covers `.dart_tool/` and so does what
+/// `flutter create` writes, and a repository *root* is neither a package nor a
+/// project: `good_tool --dir packages` run from one - which is what the usage
+/// text shows - left twenty-seven megabytes that `git status` reported and
+/// nothing ignored. Reproduced, and it is why a `.gitignore` holding `*` goes
+/// inside the directory: that covers wherever it lands, including a
+/// third-party monorepo no rule of this repository's ever reaches.
+///
+/// Rewritten when absent rather than once, because eviction deletes the oldest
+/// files in the directory and has no reason to spare this one.
+///
 /// A checkout that cannot be written to falls back to memory rather than
 /// failing: a cache is an optimisation and refusing to run without one would
 /// make it a dependency.
@@ -911,6 +923,8 @@ ByteStore _scanByteStore(String home) {
   final cache = p.join(home, '.dart_tool', 'good_scan');
   try {
     Directory(cache).createSync(recursive: true);
+    final ignore = File(p.join(cache, '.gitignore'));
+    if (!ignore.existsSync()) ignore.writeAsStringSync('*\n');
     return EvictingFileByteStore(cache, scanCacheMaxBytes);
   } on FileSystemException {
     return MemoryByteStore();
