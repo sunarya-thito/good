@@ -423,9 +423,8 @@ final class PolygonBody({
 ///
 /// Every `has*Collider` method takes named parameters for every field its
 /// returned body exposes, doubling as that archetype's default row state -
-/// the standing `MultiComponent` convention (see `Renderable2D.Sprite`'s
-/// `SpriteDescriptor.has` for the same shape) - so the common case needs no
-/// separate `onEntityMounted` write.
+/// the standing `MultiComponent` convention (`Sprite.of` is the same shape)
+/// - so the common case needs no separate `onEntityMounted` write.
 class ColliderDescriptor._(
   final DataDescriptor _data,
   final List<ColliderBody> _bodies,

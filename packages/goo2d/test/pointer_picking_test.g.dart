@@ -23,6 +23,7 @@ part of 'pointer_picking_test.dart';
 List<ScannableField> _collect$Button(Object object) {
   final owner = object as _Button;
   return <ScannableField>[
+    owner.sprite,
     owner.worldX,
     owner.worldY,
     owner.worldScaleX,
@@ -47,6 +48,7 @@ List<ScannableField> _collect$Button(Object object) {
 List<ScannableField> _collect$Panel(Object object) {
   final owner = object as _Panel;
   return <ScannableField>[
+    owner.sprite,
     owner.worldX,
     owner.worldY,
     owner.worldScaleX,
@@ -191,6 +193,7 @@ List<ScannableField> _collect$Pad(Object object) {
 List<ScannableField> _collect$Glass(Object object) {
   final owner = object as _Glass;
   return <ScannableField>[
+    owner.sprite,
     owner.worldX,
     owner.worldY,
     owner.worldScaleX,

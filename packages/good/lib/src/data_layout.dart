@@ -2528,6 +2528,18 @@ final class ArchetypeDataDescriptor extends _ColumnDescriptor {
   /// component-bit registry rather than a row layout. This descriptor lays
   /// out rows, and says so by taking only what it can lay out.
   void declareOne(ScannableField declaration) {
+    // A composite is a name for several columns and is no column itself, so
+    // what lands in the row is its members - `Sprite.of(...)` is twenty
+    // columns and none of its own. They land here, where the field holding
+    // the sprite sits, rather than at the end of the row: a composite is
+    // declared by a field like any other declaration and is laid out like
+    // one.
+    if (declaration is CompositeDeclaration) {
+      for (final composed in declaration.composedDeclarations) {
+        declareOne(composed);
+      }
+      return;
+    }
     if (declaration is! _Declared) return;
     _columns.add(declaration);
   }

@@ -18,13 +18,7 @@ late Game run;
 
 class _Sprite extends EntityStruct
     with Transform2D, WorldTransform2D, Renderable2D {
-  late final Sprite quad;
-
-  @override
-  void describeSprites(SpriteDescriptor descriptor) {
-    super.describeSprites(descriptor);
-    quad = descriptor.has(width: 10, height: 10);
-  }
+  final quad = Sprite.of(width: 10, height: 10);
 }
 
 class _Eye extends EntityStruct with Transform2D, WorldTransform2D, Camera {}
@@ -43,14 +37,8 @@ class _Target extends EntityStruct
         Collider2D,
         PointerReceiver,
         HoverReceiver {
-  late final Sprite quad;
+  final quad = Sprite.of(width: 40, height: 40);
   late final BoxBody hitArea;
-
-  @override
-  void describeSprites(SpriteDescriptor descriptor) {
-    super.describeSprites(descriptor);
-    quad = descriptor.has(width: 40, height: 40);
-  }
 
   @override
   void describeCollider(ColliderDescriptor descriptor) {

@@ -31,14 +31,8 @@ class _Button extends EntityStruct
         Collider2D,
         PointerReceiver,
         HoverReceiver {
-  late final Sprite sprite;
+  final sprite = Sprite.of(width: 40, height: 40);
   late final CircleBody hitArea;
-
-  @override
-  void describeSprites(SpriteDescriptor descriptor) {
-    super.describeSprites(descriptor);
-    sprite = descriptor.has(width: 40, height: 40);
-  }
 
   @override
   void describeCollider(ColliderDescriptor descriptor) {
@@ -73,17 +67,11 @@ class _Panel extends EntityStruct
         Collider2D,
         PointerReceiver,
         HoverReceiver {
-  late final Sprite sprite;
+  final sprite = Sprite.of(width: 200, height: 100, zIndex: 10);
   late final BoxBody hitArea;
 
   double lastWorldX = double.nan;
   double lastWorldY = double.nan;
-
-  @override
-  void describeSprites(SpriteDescriptor descriptor) {
-    super.describeSprites(descriptor);
-    sprite = descriptor.has(width: 200, height: 100, zIndex: 10);
-  }
 
   @override
   void describeCollider(ColliderDescriptor descriptor) {
@@ -230,14 +218,8 @@ class _Glass extends EntityStruct
         Renderable2D,
         Collider2D,
         HoverReceiver {
-  late final Sprite sprite;
+  final sprite = Sprite.of(width: 60, height: 60, zIndex: 50);
   late final BoxBody hitArea;
-
-  @override
-  void describeSprites(SpriteDescriptor descriptor) {
-    super.describeSprites(descriptor);
-    sprite = descriptor.has(width: 60, height: 60, zIndex: 50);
-  }
 
   @override
   void describeCollider(ColliderDescriptor descriptor) {

@@ -23,6 +23,7 @@ part of 'physics.dart';
 List<ScannableField> _collect$Crate(Object object) {
   final owner = object as Crate;
   return <ScannableField>[
+    owner.body,
     owner.flash,
     owner.bodyHandle,
     owner.bodyType,
@@ -51,6 +52,7 @@ List<ScannableField> _collect$Crate(Object object) {
 List<ScannableField> _collect$Ball(Object object) {
   final owner = object as Ball;
   return <ScannableField>[
+    owner.body,
     owner.flash,
     owner.bodyHandle,
     owner.bodyType,
@@ -79,6 +81,7 @@ List<ScannableField> _collect$Ball(Object object) {
 List<ScannableField> _collect$Ground(Object object) {
   final owner = object as Ground;
   return <ScannableField>[
+    owner.body,
     owner.bodyHandle,
     owner.bodyType,
     owner.bodyLinearVelocityX,
@@ -106,6 +109,7 @@ List<ScannableField> _collect$Ground(Object object) {
 List<ScannableField> _collect$Wall(Object object) {
   final owner = object as Wall;
   return <ScannableField>[
+    owner.body,
     owner.bodyHandle,
     owner.bodyType,
     owner.bodyLinearVelocityX,

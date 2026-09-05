@@ -883,6 +883,16 @@ final class _AssetDescriptor implements AssetDescriptor {
   /// against is a row layout and a listener set. This descriptor addresses
   /// assets, and says so by taking only what it can address.
   void declareOne(ScannableField declaration) {
+    // A composite holds its members and is not one itself, so an asset a
+    // sprite's texture column defaults to is reached through here and not
+    // through the field, which holds the sprite. The same recursion
+    // `ArchetypeDataDescriptor.declareOne` does, for the same reason.
+    if (declaration is CompositeDeclaration) {
+      for (final composed in declaration.composedDeclarations) {
+        declareOne(composed);
+      }
+      return;
+    }
     // A packed column defaulting to an asset holds a handle no field of its
     // own holds - `Field.asset(key)` - and that handle is an asset
     // declaration like any other. Taken before the type test below, because

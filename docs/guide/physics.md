@@ -32,7 +32,7 @@ dependencies:
 class Crate extends EntityStruct
     with Transform2D, WorldTransform2D, Renderable2D, Collider2D, RigidBody2D {
   late final BoxBody box;
-  late final Sprite sprite;
+  final sprite = Sprite.of(width: 1, height: 1, color: 0xFFCC8844);
 
   @override
   void describeCollider(ColliderDescriptor descriptor) {
@@ -40,12 +40,6 @@ class Crate extends EntityStruct
     box = descriptor.hasBoxCollider(
       halfWidth: 0.5, halfHeight: 0.5, friction: 0.4,
     );
-  }
-
-  @override
-  void describeSprites(SpriteDescriptor descriptor) {
-    super.describeSprites(descriptor);
-    sprite = descriptor.has(width: 1, height: 1, color: 0xFFCC8844);
   }
 }
 ```

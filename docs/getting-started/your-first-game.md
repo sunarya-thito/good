@@ -236,21 +236,12 @@ import 'package:my_game_bundle/textures.dart';
 
 class Player extends EntityStruct
     with Transform2D, WorldTransform2D, Renderable2D {
-  late final TextureAsset texture;
-  late final Sprite sprite;
+  final sprite = Sprite.of(
+    width: 64,
+    height: 64,
+    texture: Textures.spritesPlayer,
+  );
   final speed = Field.float64(220);
-
-  @override
-  void describeAssets(AssetDescriptor descriptor) {
-    super.describeAssets(descriptor);
-    texture = descriptor.has(Textures.spritesPlayer);
-  }
-
-  @override
-  void describeSprites(SpriteDescriptor descriptor) {
-    super.describeSprites(descriptor);
-    sprite = descriptor.has(width: 64, height: 64, texture: texture);
-  }
 }
 ```
 

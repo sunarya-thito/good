@@ -23,6 +23,7 @@ part of 'joints.dart';
 List<ScannableField> _collect$Anchor(Object object) {
   final owner = object as Anchor;
   return <ScannableField>[
+    owner.body,
     owner.bodyHandle,
     owner.bodyType,
     owner.bodyLinearVelocityX,
@@ -50,6 +51,7 @@ List<ScannableField> _collect$Anchor(Object object) {
 List<ScannableField> _collect$Link(Object object) {
   final owner = object as Link;
   return <ScannableField>[
+    owner.body,
     owner.bodyHandle,
     owner.bodyType,
     owner.bodyLinearVelocityX,
@@ -77,6 +79,7 @@ List<ScannableField> _collect$Link(Object object) {
 List<ScannableField> _collect$Weight(Object object) {
   final owner = object as Weight;
   return <ScannableField>[
+    owner.body,
     owner.bodyHandle,
     owner.bodyType,
     owner.bodyLinearVelocityX,
@@ -104,7 +107,8 @@ List<ScannableField> _collect$Weight(Object object) {
 List<ScannableField> _collect$Wheel(Object object) {
   final owner = object as Wheel;
   return <ScannableField>[
-    owner.disc,
+    owner.body,
+    owner.spoke,
     owner.bodyHandle,
     owner.bodyType,
     owner.bodyLinearVelocityX,

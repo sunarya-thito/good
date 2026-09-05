@@ -23,6 +23,7 @@ part of 'game_view_test.dart';
 List<ScannableField> _collect$Sprite(Object object) {
   final owner = object as _Sprite;
   return <ScannableField>[
+    owner.quad,
     owner.worldX,
     owner.worldY,
     owner.worldScaleX,

@@ -23,6 +23,7 @@ part of 'viewport_culling_test.dart';
 List<ScannableField> _collect$Quad(Object object) {
   final owner = object as _Quad;
   return <ScannableField>[
+    owner.quad,
     owner.worldX,
     owner.worldY,
     owner.worldScaleX,
@@ -47,6 +48,7 @@ List<ScannableField> _collect$Quad(Object object) {
 List<ScannableField> _collect$Flat(Object object) {
   final owner = object as _Flat;
   return <ScannableField>[
+    owner.quad,
     owner.transformOffsetX,
     owner.transformOffsetY,
     owner.transformScaleX,
@@ -60,6 +62,7 @@ List<ScannableField> _collect$Flat(Object object) {
 List<ScannableField> _collect$Panel(Object object) {
   final owner = object as _Panel;
   return <ScannableField>[
+    owner.frame,
     owner.worldX,
     owner.worldY,
     owner.worldScaleX,
