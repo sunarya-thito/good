@@ -21,8 +21,12 @@
 part of 'animation_test.dart';
 
 List<ScannableField> _collect$EnemyTimeline(Object object) {
-  object as _EnemyTimeline;
-  return const <ScannableField>[];
+  final owner = object as _EnemyTimeline;
+  return <ScannableField>[
+    owner.x,
+    owner.y,
+    owner.frame,
+  ];
 }
 
 List<ScannableField> _collect$Enemy(Object object) {

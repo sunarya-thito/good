@@ -15,19 +15,12 @@ late Game run;
 // that into a `TimelineSample`, which is an int. Everything else is derived.
 
 class _EnemyTimeline extends TimelineStruct {
-  late final Track<double> x;
-  late final Track<double> y;
-  late final Track<int> frame;
+  final x = Track.of<double>(0);
+  final y = Track.of<double>(-1);
+  final frame = Track.of<int>(0);
 
   late final TimelineAnimation entrance;
   late final TimelineAnimation blink;
-
-  @override
-  void describeTrack(TimelineDescriptor descriptor) {
-    x = descriptor.has<double>(0);
-    y = descriptor.has<double>(-1);
-    frame = descriptor.has<int>(0);
-  }
 
   @override
   void describeAnimation(TimelineAnimationDescriptor descriptor) {
@@ -61,9 +54,6 @@ class _Enemy extends EntityStruct {
 /// A timeline whose clip is declared and never keyed.
 class _Bare extends TimelineStruct {
   late final TimelineAnimation empty;
-
-  @override
-  void describeTrack(TimelineDescriptor descriptor) {}
 
   @override
   void describeAnimation(TimelineAnimationDescriptor descriptor) {

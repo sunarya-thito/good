@@ -98,17 +98,34 @@ abstract interface class Scannable {}
 /// carrying a key and `Barrel()` builds a prefab, and the scene addresses and
 /// registers what it finds afterwards.
 ///
-/// `Sprite` is the most recent, and it needed one thing more than a spelling:
-/// a sprite is twenty columns under one name, and nothing here could say that
-/// a value is several declarations. [CompositeDeclaration] says it, so
-/// `Sprite.of(...)` builds the columns from a field initialiser and the scene
-/// lays them out where the field sits.
+/// `Sprite` and `ColliderBody` are the most recent, and they needed one thing
+/// more than a spelling: each is a group of columns under one name, and
+/// nothing here could say that a value is several declarations.
+/// [CompositeDeclaration] says it, so `Sprite.of(...)` and `BoxBody.of(...)`
+/// build their columns from a field initialiser and the scene lays them out
+/// where the field sits. `Track` needed only the spelling - its descriptor
+/// was `const` and forwarded two arguments to a constructor.
 ///
-/// `ColliderBody`, `StateChannel` and `Track` are declaration values too and
-/// are not marked, for the same reason and not a different one: each is still
-/// handed out by a descriptor inside a hook, so every field holding one is
-/// `late` and marking the type would refuse them all. Each becomes a root
-/// with the change that gives it a `Field.*`-shaped spelling, not before.
+/// `StateChannel` is declaration value too and is not marked, for the same
+/// reason and not a different one: it is still handed out by a descriptor
+/// inside a hook, so every field holding one is `late` and marking the type
+/// would refuse them all. It becomes a root with the change that gives it a
+/// `Field.*`-shaped spelling, not before.
+///
+/// `TimelineAnimation` and `goo2d_physics_box2d`'s `Effector` are roots in
+/// waiting too, and each looked for a while like a value a hook genuinely had
+/// to hand out. Neither is. An effector acts through a `ColliderBody` the
+/// same prefab declares and a clip keys a `Track` the same timeline holds -
+/// both are sibling references, and a `late final` **with an initialiser**
+/// reads one, because that initialiser runs on first touch, after
+/// construction, and the collect pass is what touches it. A clip's id is a
+/// position in a list, which the pass that collects the field settles the way
+/// it settles a column's offset.
+///
+/// What holds them up is the scan, not the design: it refuses a `late` field
+/// before it asks whether the field has an initialiser, and a cascade in an
+/// initialiser leaves it with no chain to read at all. Both are `good_cli`
+/// changes.
 ///
 /// A field whose type is not one of these is not a declaration:
 ///

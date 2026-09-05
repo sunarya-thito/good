@@ -2606,11 +2606,11 @@ class StructRuleScan {
 ///
 /// The chain check asks about components and scenes and nothing else, because
 /// those are the types whose `describeX` methods chain. It is not "every
-/// `describeX` override must call super": `TimelineStruct.describeTrack` and
-/// `.describeAnimation` are **abstract**, so an override of either has no
-/// implementation above it and calling super would not compile. Both are
-/// written that way in `goo2d`'s own example, and a rule keyed on the name
-/// alone reports them - measured, before this line was here.
+/// `describeX` override must call super": `TimelineStruct.describeAnimation`
+/// is **abstract**, so an override of it has no implementation above it and
+/// calling super would not compile. It is written that way in `goo2d`'s own
+/// example, and a rule keyed on the name alone reports it - measured, before
+/// this line was here.
 StructRuleScan scanStructRules(Directory project) {
   final sources = readSources(project);
   final typesByName = sources.typesByName;

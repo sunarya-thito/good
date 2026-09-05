@@ -226,19 +226,12 @@ an integer, with no per-entity animation object anywhere.
 
 ```dart
 class EnemyTimeline extends TimelineStruct {
-  late final Track<double> x;
-  late final Track<double> y;
-  late final Track<int> frame;
+  final x = Track.of<double>(0);        // default outside any clip
+  final y = Track.of<double>(-1);
+  final frame = Track.of<int>(0);
 
   late final TimelineAnimation entrance;
   late final TimelineAnimation blink;
-
-  @override
-  void describeTrack(TimelineDescriptor descriptor) {
-    x = descriptor.has<double>(0);        // default outside any clip
-    y = descriptor.has<double>(-1);
-    frame = descriptor.has<int>(0);
-  }
 
   @override
   void describeAnimation(TimelineAnimationDescriptor descriptor) {
