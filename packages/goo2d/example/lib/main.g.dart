@@ -24,6 +24,7 @@ List<ScannableField> _collect$Breath(Object object) {
   final owner = object as Breath;
   return <ScannableField>[
     owner.scale,
+    owner.pulse,
   ];
 }
 
