@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 // ignore: implementation_imports
@@ -67,7 +68,7 @@ Directory fakeRepo(List<FakePackage> packages) {
       if (!package.published) 'publish_to: "none"',
       '',
       'environment:',
-      '  sdk: ^3.12.1',
+      '  sdk: ^3.13.0',
       '',
       'dependencies:',
       for (final dependency in package.dependencies) '  $dependency: ^1.0.0',
@@ -82,7 +83,116 @@ Directory fakeRepo(List<FakePackage> packages) {
         ..writeAsStringSync(contents);
     });
   }
+  _resolve(dir, packages);
   return dir;
+}
+
+/// The `.dart_tool/package_config.json` a `pub get` would leave in each
+/// fixture package, naming every other one.
+///
+/// Written per package and not once at the repository root, because that is
+/// where the analyzer looks: the nearest `pubspec.yaml` above a file is its
+/// context root, and a root with no config beside it resolves no `package:`
+/// URI at all.
+///
+/// It is what keeps a fixture's `package:good/good.dart` pointing at
+/// [kernelPackage] rather than at whatever `good` the suite's *own* package
+/// config happens to name. Without it the scan reads a fixture's columns
+/// through the real engine, and "transcribed rather than imported" quietly
+/// stops being true.
+///
+/// The language version is the one `scanFeatureSet` names. An experiment with
+/// no experimental release version applies only to a library at exactly that
+/// version, so a fixture written at any other one loses the experiments the
+/// walk is pinned to.
+void _resolve(Directory repo, List<FakePackage> packages) {
+  final byName = <String, FakePackage>{
+    for (final package in packages) package.name: package,
+  };
+  Object? entryFor(String name) => <String, Object?>{
+    'name': name,
+    'rootUri': Directory(
+      p.join(repo.path, 'packages', name),
+    ).uri.toString(),
+    'packageUri': 'lib/',
+    'languageVersion': '3.13',
+  };
+  // Each package's own closure, which is what `pub get` writes and not the
+  // whole repository. A config naming every fixture package makes
+  // `resolvedPackages` report a dependency the pubspec never declared, and
+  // `--dir`'s read set grows to cover it - so the fixture that exists to be
+  // missing a package is not missing it any more.
+  for (final package in packages) {
+    final closure = <String>{package.name};
+    final queue = <String>[...package.dependencies];
+    while (queue.isNotEmpty) {
+      final name = queue.removeLast();
+      if (!closure.add(name)) continue;
+      queue.addAll(byName[name]?.dependencies ?? const <String>[]);
+    }
+    final names = closure.toList()..sort();
+    final entries = <Object?>[for (final name in names) entryFor(name)];
+    File(
+      p.join(
+        repo.path,
+        'packages',
+        package.name,
+        '.dart_tool',
+        'package_config.json',
+      ),
+    )
+      ..parent.createSync(recursive: true)
+      ..writeAsStringSync(
+        jsonEncode(<String, Object?>{
+          'configVersion': 2,
+          'packages': entries,
+        }),
+      );
+  }
+}
+
+/// The package config a `pub get` would leave in [at].
+///
+/// [names] are fixture packages under `<repo>/packages/`; [selfName] is what
+/// [at] itself is called, which is what an `example/` needs so its own
+/// libraries can name each other by `package:` URI.
+///
+/// A fixture that skips this does not fail - it resolves through the context
+/// of whatever directory the walk was asked about, which for an in-process
+/// test is `good_tool` itself. `good_tool`'s own config names the **real**
+/// `good`, so a fixture's `package:good/good.dart` silently reaches the
+/// engine instead of [kernelPackage], and "transcribed rather than imported"
+/// stops being true with nothing saying so. Every fixture that writes a
+/// `package:` import writes one of these.
+void resolveFixture(
+  Directory at, {
+  required Directory repo,
+  required List<String> names,
+  String? selfName,
+}) {
+  final entries = <Object?>[
+    for (final name in names)
+      <String, Object?>{
+        'name': name,
+        'rootUri': Directory(
+          p.join(repo.path, 'packages', name),
+        ).uri.toString(),
+        'packageUri': 'lib/',
+        'languageVersion': '3.13',
+      },
+    if (selfName != null)
+      <String, Object?>{
+        'name': selfName,
+        'rootUri': at.uri.toString(),
+        'packageUri': 'lib/',
+        'languageVersion': '3.13',
+      },
+  ];
+  File(p.join(at.path, '.dart_tool', 'package_config.json'))
+    ..parent.createSync(recursive: true)
+    ..writeAsStringSync(
+      jsonEncode(<String, Object?>{'configVersion': 2, 'packages': entries}),
+    );
 }
 
 /// The `good` stand-in every fixture repository needs.

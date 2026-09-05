@@ -48,12 +48,29 @@ class _TextureScene extends SceneStruct {
 
   final TextureKey key;
 
-  late final TextureAsset texture;
+  /// The handle `describeAssets` fills in, held nullable on purpose.
+  ///
+  /// Everything in this file compares the descriptor route with what a load
+  /// hands back - `identical(loaded, scene.texture)` is the assertion below,
+  /// and "one key declared by two scenes is one instance" is the last one. A
+  /// field written `final texture = Asset.of(key);` builds its own handle per
+  /// instance, so converting this would leave every test here asserting about
+  /// the shape it exists to be contrasted with.
+  ///
+  /// A nullable handle is a reference to something somebody else declared,
+  /// which is exactly what this is, and that is what the scan reads it as:
+  /// `isDeclarationField` answers false on nullability, so this is neither
+  /// refused nor collected.
+  TextureAsset? _texture;
+
+  /// What the tests read. Throws rather than answering null before the
+  /// describe pass has run, which is the only order this fixture uses.
+  TextureAsset get texture => _texture!;
 
   @override
   void describeAssets(AssetDescriptor descriptor) {
     super.describeAssets(descriptor);
-    texture = descriptor.has(key);
+    _texture = descriptor.has(key);
   }
 }
 

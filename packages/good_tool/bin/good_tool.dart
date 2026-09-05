@@ -217,7 +217,7 @@ Future<void> main(List<String> arguments) async {
   }
 
   if (declarations) {
-    _declarations(
+    await _declarations(
       packages,
       scan.dependencies,
       verbose: verbose,
@@ -227,7 +227,7 @@ Future<void> main(List<String> arguments) async {
   }
 
   if (tests) {
-    _tests(packages, scan.dependencies, directories, check: check);
+    await _tests(packages, scan.dependencies, directories, check: check);
     return;
   }
 
@@ -237,7 +237,7 @@ Future<void> main(List<String> arguments) async {
   // without them `Component` and `Field` are undeclared names and the run
   // produces nothing (#305).
   final readable = <EnginePackage>[...packages, ...scan.dependencies];
-  final sources = readSources(
+  final sources = await readSources(
     Directory.current,
     rootOverride: <String>[for (final package in readable) package.libDir],
     // A generator must not read its own output. What this writes is an
@@ -256,6 +256,8 @@ Future<void> main(List<String> arguments) async {
       for (final package in packages) package.declarationsFile.path,
     },
   );
+  if (_unparsed(sources.unparsed)) return;
+  if (_unresolved(sources, packages)) return;
   final accessors = scanAccessors(packages: readable, sources: sources);
   final bits = scanComponentBits(packages: readable, sources: sources);
   final collectors = scanDeclarationCollectors(
@@ -503,15 +505,16 @@ void _check(
 /// ones are: a generated file nobody verifies drifts, and a fresh clone has
 /// to analyze before anything is run. `--tests --check` is the second CI
 /// step that says so.
-void _tests(
+Future<void> _tests(
   List<EnginePackage> packages,
   List<EnginePackage> dependencies,
   List<String> directories, {
   required bool check,
-}) {
+}) async {
   final readable = <EnginePackage>[...packages, ...dependencies];
-  final sources = readFixtureSources(packages, readable);
+  final sources = await readFixtureSources(packages, readable);
   if (_unparsed(sources.unparsed)) return;
+  if (_unresolved(sources, packages)) return;
   // Which packages have a `lib/` table at all, asked of the sources rather
   // than of the disk: a package declaring no scanned class gets no
   // `declarations.g.dart`, and a part naming one would name something the
@@ -606,17 +609,18 @@ void _tests(
 /// are read for the supertype walk alone - the same split [_docReferences]
 /// makes. A `late` declaration in an upstream package is that package's to
 /// fix, and a run over one package is not the place to raise it.
-void _declarations(
+Future<void> _declarations(
   List<EnginePackage> packages,
   List<EnginePackage> dependencies, {
   required bool verbose,
   required bool tests,
-}) {
+}) async {
   final readable = <EnginePackage>[...packages, ...dependencies];
   final sources = tests
-      ? readFixtureSources(packages, readable)
-      : readPackageSources(readable);
+      ? await readFixtureSources(packages, readable)
+      : await readPackageSources(readable);
   if (_unparsed(sources.unparsed)) return;
+  if (_unresolved(sources, packages)) return;
   // With `--tests` the judged trees are the fixture roots and not the `lib/`
   // beside them, because a `lib/` was judged by the run without it and
   // reporting the same refusal under two invocations makes neither of them
@@ -729,6 +733,29 @@ void _docReferences(
   }
   stderr.writeln(danglingReferenceSummary(scan));
   exitCode = 65;
+}
+
+/// Fails the run over source the analyzer could not resolve, and says which
+/// import it could not find.
+///
+/// The same shape as [_unparsed] and for a stronger version of the same
+/// reason. A file the parser gave up on contributes a fraction of itself; a
+/// file whose `package:good/good.dart` did not resolve contributes all of its
+/// syntax and **none** of its meaning - every field in it is typed
+/// `InvalidType`, so the scan finds no columns, no queries and no events, and
+/// says so in the shape of a clean run. Written without `--check` that answer
+/// deletes every generated accessor in the repository.
+///
+/// So it is checked before any mode prints a count, and the message names the
+/// URIs rather than the count, because the count is the thing that would be a
+/// lie.
+bool _unresolved(ScanSources sources, List<EnginePackage> packages) {
+  if (sources.resolves) return false;
+  stderr.writeln(
+    unresolvedUriMessage(sources, (path) => _displayPath(packages, path)),
+  );
+  exitCode = 65;
+  return true;
 }
 
 /// Fails the run over files the parser could not read, and says which.

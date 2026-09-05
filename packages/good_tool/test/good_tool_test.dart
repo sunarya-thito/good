@@ -95,9 +95,12 @@ Directory _runnableRepo() {
 }
 
 /// Writes what the tool would write into [repo], and returns the scan.
-AccessorScan _generate(Directory repo) {
+Future<AccessorScan> _generate(Directory repo) async {
   final packages = repoPackages(repo);
-  final scan = scanAccessors(packages: packages);
+  final scan = scanAccessors(
+    packages: packages,
+    sources: await readPackageSources(packages),
+  );
   for (final file in accessorFiles(scan, packages)) {
     file.file.parent.createSync(recursive: true);
     file.file.writeAsStringSync(file.contents);
@@ -152,6 +155,29 @@ void _write(Directory repo, String path, String contents) =>
       ..parent.createSync(recursive: true)
       ..writeAsStringSync(contents);
 
+/// A repository with exactly one declaration in it, so a count of declarations
+/// is a fact about resolution and nothing else.
+Directory _declaringRepo() => fakeRepo(<FakePackage>[
+  declarationKernel(),
+  const FakePackage(
+    'goo2d',
+    dependencies: <String>['good'],
+    files: <String, String>{
+      'goo2d.dart': "export 'src/transform.dart';\n",
+      'src/transform.dart': '''
+import 'package:good/good.dart';
+
+class Barrel extends EntityStruct {}
+
+class Turret extends EntityStruct {
+  @sub
+  final barrel = Barrel();
+}
+''',
+    },
+  ),
+]);
+
 /// A repository whose example is built on a package its own pubspec does not
 /// reach.
 ///
@@ -205,8 +231,19 @@ mixin RigidBody2D on Component {
       'publish_to: "none"\n'
       '\n'
       'environment:\n'
-      '  sdk: ^3.12.1\n',
+      '  sdk: ^3.13.0\n',
     );
+  // The example resolves all three, the way the real one does. What this
+  // fixture is about is a `--dir` set that does not *read* `physics`, which
+  // is a different thing from a checkout that cannot resolve it - and the
+  // two have different answers, so a fixture that confused them would test
+  // whichever refusal happened to come first.
+  resolveFixture(
+    Directory(example),
+    repo: repo,
+    names: const <String>['good', 'goo2d', 'physics'],
+    selfName: 'goo2d_example',
+  );
   File(p.join(example, 'lib', 'demo.dart'))
     ..parent.createSync(recursive: true)
     ..writeAsStringSync('''
@@ -231,7 +268,7 @@ void main() {
   group('the generated file runs', () {
     test('and each property reads and writes its own column', () async {
       final repo = _runnableRepo();
-      _generate(repo);
+      await _generate(repo);
 
       // The three lines #99's comment verified, plus a column nothing writes.
       // A generator pointing every property at one pointer passes "offsetX
@@ -267,7 +304,7 @@ void main() {
     test('reached by importing the engine, with nothing else imported',
         () async {
       final repo = _runnableRepo();
-      _generate(repo);
+      await _generate(repo);
 
       // #300's whole point. One import of the engine package, no generated
       // library named anywhere, no tool run on the user's side.
@@ -300,7 +337,7 @@ void main() {
     test('but a property whose name Accessor already has is never reached',
         () async {
       final repo = _runnableRepo();
-      _generate(repo);
+      await _generate(repo);
 
       _write(repo, 'bin/shadow.dart', '''
 import 'package:goo2d/goo2d.dart';
@@ -339,6 +376,65 @@ void main() {
   });
 
   group('the tool', () {
+    // The failure the whole scan is built to make impossible, and the one it
+    // is uniquely able to cause. Resolution answers `InvalidType` for every
+    // field in a file whose imports it cannot find, and nothing throws: the
+    // walk reads the whole tree, finds no column, no query and no event, and
+    // reports a clean pass over nothing. Run without `--check` that answer is
+    // written, and every generated accessor in the repository is deleted.
+    //
+    // So it is checked at the process boundary, on the two things a caller
+    // actually reads: the exit code, and whether the package is named.
+    //
+    // Mutation: make resolution quiet - drop the `unresolvedUris` collection
+    // in `readSources`, or return an empty map from it - and this fails on
+    // both counts, with the run reporting `0 declaration(s)` and exit 0. That
+    // is what the guard is for; nothing else in either suite notices.
+    test('refuses a package it could not resolve, by name', () async {
+      final repo = _declaringRepo();
+
+      // The control. The same tree, resolved, finds the declaration.
+      final resolved = await _tool(repo, const <String>[
+        '--dir',
+        'packages',
+        '--declarations',
+      ]);
+      expect(resolved.exitCode, 0, reason: resolved.stderr);
+      expect(resolved.stdout, contains('1 declaration(s)'));
+
+      // What an unresolved checkout is: the source is all there and the
+      // package config is not.
+      File(
+        p.join(
+          repo.path,
+          'packages',
+          'goo2d',
+          '.dart_tool',
+          'package_config.json',
+        ),
+      ).deleteSync();
+
+      final result = await _tool(repo, const <String>[
+        '--dir',
+        'packages',
+        '--declarations',
+      ]);
+
+      expect(result.exitCode, 65, reason: '${result.stdout}${result.stderr}');
+      expect(
+        result.stderr,
+        contains('package:good/good.dart'),
+        reason: 'the fix is a `pub get` in a package, so the report has to '
+            'name one - a count of nothing names nothing',
+      );
+      expect(
+        result.stdout,
+        isNot(contains('declaration(s)')),
+        reason: 'a count printed over a tree whose types are all unknown is '
+            'the failure, not the report of it',
+      );
+    }, timeout: const Timeout(Duration(minutes: 3)));
+
     test('writes, then reports the same files unchanged', () async {
       final repo = _runnableRepo();
       final first = await _tool(repo, const <String>['--dir', 'packages']);
@@ -363,7 +459,7 @@ void main() {
       expect(missing.exitCode, 65);
       expect(missing.stderr, contains('Missing: goo2d/'));
 
-      _generate(repo);
+      await _generate(repo);
       final current = await _tool(repo, const <String>['--dir', 'packages', '--check']);
       expect(
         current.exitCode,
@@ -388,7 +484,7 @@ void main() {
     test('--check fails when the barrel stops exporting the generated file',
         () async {
       final repo = _runnableRepo();
-      _generate(repo);
+      await _generate(repo);
       expect((await _tool(repo, const <String>['--dir', 'packages', '--check'])).exitCode, 0);
 
       final barrel = File(p.join(repo.path, 'packages/goo2d/lib/goo2d.dart'));
@@ -406,7 +502,7 @@ void main() {
 
     test('--check leaves the tree exactly as it found it', () async {
       final repo = _runnableRepo();
-      _generate(repo);
+      await _generate(repo);
       final file = File(
         p.join(repo.path, 'packages/goo2d/lib/src/accessors.g.dart'),
       );
@@ -783,6 +879,14 @@ void main() {
     }, timeout: const Timeout(Duration(minutes: 3)));
   });
 
+  // Every test in here reads the real packages, and reading them resolves
+  // them - twenty-five seconds of analyzer against the four seconds a parse
+  // took. `dart test`'s default timeout is thirty, so this group started
+  // failing on the clock rather than on anything it asserts, and which test
+  // fell over moved with what else the machine was doing.
+  //
+  // Stated on the group rather than on the one that happened to be slowest:
+  // they all read the same trees, so any of them can be the one over the line.
   group('this repository', () {
     // The one test that fails if somebody edits a column and forgets to
     // regenerate, run against the real packages rather than a fixture. CI runs
@@ -791,7 +895,10 @@ void main() {
     test('has the accessor files the generator would write', () async {
       final root = _actualRepoRoot();
       final packages = repoPackages(root);
-      final scan = scanAccessors(packages: packages);
+      final scan = scanAccessors(
+        packages: packages,
+        sources: await readPackageSources(packages),
+      );
 
       expect(
         scan.collisions,
@@ -853,7 +960,7 @@ void main() {
         ...found.packages,
         ...found.dependencies,
       ];
-      final sources = readPackageSources(readable);
+      final sources = await readPackageSources(readable);
       final scan = scanDeclarations(sources);
 
       // The pass has to be able to fail. A walk that read nothing reports no
@@ -970,7 +1077,7 @@ void main() {
     test('has a collector for every class it can instantiate', () async {
       final root = _actualRepoRoot();
       final packages = repoPackages(root);
-      final sources = readPackageSources(packages);
+      final sources = await readPackageSources(packages);
       final scan = scanDeclarationCollectors(
         packages: packages,
         sources: sources,
@@ -1037,7 +1144,10 @@ class Turret extends EntityStruct {
         ),
       ]);
       final packages = repoPackages(repo);
-      final scan = scanDeclarationCollectors(packages: packages);
+      final scan = scanDeclarationCollectors(
+        packages: packages,
+        sources: await readPackageSources(packages),
+      );
       final turret = scan.entries.singleWhere(
         (entry) => entry.type == 'Turret',
       );
@@ -1076,7 +1186,7 @@ class Turret extends EntityStruct {
       final packages = repoPackages(repo);
       final scan = scanFixtures(
         packages: packages,
-        sources: readFixtureSources(packages, packages),
+        sources: await readFixtureSources(packages, packages),
         tabled: <String>{'good'},
       );
       final turret = scan.libraries.single.collectors.singleWhere(
@@ -1123,7 +1233,7 @@ class Mortar extends Turret {}
       final packages = repoPackages(repo);
       final scan = scanFixtures(
         packages: packages,
-        sources: readFixtureSources(packages, packages),
+        sources: await readFixtureSources(packages, packages),
         tabled: <String>{'good'},
       );
       final derived = scan.libraries.singleWhere(
@@ -1184,7 +1294,7 @@ class Blast extends EntityStruct with _Extras {}
       final packages = repoPackages(repo);
       final scan = scanFixtures(
         packages: packages,
-        sources: readFixtureSources(packages, packages),
+        sources: await readFixtureSources(packages, packages),
         tabled: <String>{'good'},
       );
 
@@ -1216,8 +1326,14 @@ class Blast extends EntityStruct with _Extras {}
           'name: good_example\n'
           '\n'
           'environment:\n'
-          '  sdk: ^3.12.1\n',
+          '  sdk: ^3.13.0\n',
         );
+      resolveFixture(
+        Directory(example),
+        repo: repo,
+        names: const <String>['good'],
+        selfName: 'good_example',
+      );
       File(p.join(example, 'lib', 'base.dart'))
         ..parent.createSync(recursive: true)
         ..writeAsStringSync('''
@@ -1242,7 +1358,7 @@ class Mortar extends Turret {}
       final packages = repoPackages(repo);
       final scan = scanFixtures(
         packages: packages,
-        sources: readFixtureSources(packages, packages),
+        sources: await readFixtureSources(packages, packages),
         tabled: <String>{'good'},
       );
       final derived = scan.libraries.singleWhere(
@@ -1296,7 +1412,7 @@ class Stage extends EntityStruct {
 }
 ''');
       final packages = repoPackages(repo);
-      final scan = scanDeclarations(readFixtureSources(packages, packages));
+      final scan = scanDeclarations(await readFixtureSources(packages, packages));
       final stage = scan.declarers.singleWhere(
         (declarer) => declarer.type == 'Stage',
       );
@@ -1339,7 +1455,7 @@ class _Shot extends EntityStruct {
         final packages = repoPackages(repo);
         final scan = scanFixtures(
           packages: packages,
-          sources: readFixtureSources(packages, packages),
+          sources: await readFixtureSources(packages, packages),
           // What the run reads off `scanDeclarationCollectors`: `good` declares
           // scanned classes and `relay` declares none.
           tabled: <String>{'good'},
@@ -1385,7 +1501,10 @@ class Spawner<T extends EntityStruct> extends EntityStruct {
         ),
       ]);
       final packages = repoPackages(repo);
-      final scan = scanDeclarationCollectors(packages: packages);
+      final scan = scanDeclarationCollectors(
+        packages: packages,
+        sources: await readPackageSources(packages),
+      );
       final spawner = scan.entries.singleWhere((e) => e.type == 'Spawner');
       final enemy = scan.entries.singleWhere((e) => e.type == 'Enemy');
       expect(spawner.isGeneric, isTrue);
@@ -1393,11 +1512,11 @@ class Spawner<T extends EntityStruct> extends EntityStruct {
 
       final demo = packages.singleWhere((p) => p.name == 'demo');
       final imports = Imports(
-        declaredIn: declaredIn(readPackageSources(packages)),
+        declaredIn: declaredIn(await readPackageSources(packages)),
         byLibDir: <String, EnginePackage>{
           for (final package in packages) package.libDir: package,
         },
-        units: readPackageSources(packages).units,
+        units: (await readPackageSources(packages)).units,
         packages: packages,
       );
       final written = emitDeclarations(
@@ -1448,7 +1567,7 @@ class _Spawner<T extends EntityStruct> extends EntityStruct {
       final packages = repoPackages(repo);
       final scan = scanFixtures(
         packages: packages,
-        sources: readFixtureSources(packages, packages),
+        sources: await readFixtureSources(packages, packages),
         tabled: <String>{'good'},
       );
       final library = scan.libraries.single;
@@ -1504,7 +1623,10 @@ mixin Cached on Component {
         ),
       ]);
       final packages = repoPackages(repo);
-      final scan = scanAccessors(packages: packages);
+      final scan = scanAccessors(
+        packages: packages,
+        sources: await readPackageSources(packages),
+      );
       final cached = scan.extensions.singleWhere(
         (extension) => extension.component == 'Cached',
       );
@@ -1543,7 +1665,7 @@ mixin Cached on Component {
     test('has the component-bit table the generator would write', () async {
       final root = _actualRepoRoot();
       final packages = repoPackages(root);
-      final sources = readSources(
+      final sources = await readSources(
         root,
         rootOverride: <String>[for (final package in packages) package.libDir],
         exclude: <String>{
@@ -1609,7 +1731,7 @@ mixin Cached on Component {
         reason: 'a game needs bits of its own after these',
       );
     });
-  });
+  }, timeout: const Timeout(Duration(minutes: 3)));
 }
 
 /// A standalone package with the engine resolved beside it, not under it.

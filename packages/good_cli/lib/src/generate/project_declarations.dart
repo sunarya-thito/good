@@ -166,13 +166,13 @@ class ProjectDeclarations {
 /// So the precondition is checked outright - `Scannable` has to be among the
 /// types the walk read. That is one name and it is the root the whole test
 /// bottoms out at, so nothing but the engine's own source satisfies it.
-ProjectDeclarations projectDeclarations(
+Future<ProjectDeclarations> projectDeclarations(
   Directory projectDir, {
   required String command,
-}) {
+}) async {
   final packages = projectPackages(projectDir);
   final project = packages.project;
-  final sources = readSources(
+  final sources = await readSources(
     projectDir,
     // Its own output, and only its own. A stale table declares the name the
     // new one is about to, and a walk that read it back would resolve that

@@ -120,13 +120,13 @@ void main() {
 
 void main() {
   for (final engine in GoodEngine.values) {
-    test('a scaffolded ${engine.package} project boots and ticks', () {
+    test('a scaffolded ${engine.package} project boots and ticks', () async {
       // Nothing here ends in `_game`, so the scaffolded file is
       // `lib/game/<name>_game.dart` and the class is `<Name>Game` - see
       // `_gameFile` and `_gameClass`, which take the other branch for a
       // project already called one.
       final name = '${engine.package}_boot_probe';
-      final dir = scaffoldProject(name: name, engine: engine);
+      final dir = await scaffoldProject(name: name, engine: engine);
 
       final gameClass =
           '${name.split('_').map((word) => word[0].toUpperCase() + word.substring(1)).join()}Game';

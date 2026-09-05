@@ -61,8 +61,8 @@ class GenerateCommand extends Command with Verbose, Resolving {
   }
 
   @override
-  void execute() {
-    runGenerate(
+  Future<void> execute() async {
+    await runGenerate(
       projectDir: projectDir.value,
       command: _command,
       out: info,

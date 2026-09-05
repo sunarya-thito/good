@@ -116,7 +116,7 @@ class PackCommand extends Command with Verbose {
     // Which scene needs what, so a scene load reads its own chunk and at most
     // the shared one. A project this pass cannot read anything out of falls
     // back to directory grouping rather than failing - see `planPack`.
-    final usage = scanScenes(project, scan);
+    final usage = await scanScenes(project, scan);
     for (final entry in usage.unresolved.entries) {
       debug.printf('unresolved: %s -> %s\n', [entry.key, entry.value]);
     }

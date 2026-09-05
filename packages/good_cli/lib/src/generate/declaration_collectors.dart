@@ -161,9 +161,9 @@ class DeclarationCollectorScan {
 /// rather than tidy.
 DeclarationCollectorScan scanDeclarationCollectors({
   required List<EnginePackage> packages,
-  ScanSources? sources,
+  required ScanSources sources,
 }) {
-  final read = sources ?? readPackageSources(packages);
+  final read = sources;
   final byLibDir = <String, EnginePackage>{
     for (final package in packages) package.libDir: package,
   };

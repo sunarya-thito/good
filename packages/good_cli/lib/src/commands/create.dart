@@ -61,7 +61,7 @@ class CreateCommand extends Command with Verbose, Resolving {
   }
 
   @override
-  void execute() {
+  Future<void> execute() async {
     final projectName = name.value;
     if (projectName.isEmpty) {
       // The consumer carries an empty default so that `good create --help`
@@ -197,7 +197,7 @@ class CreateCommand extends Command with Verbose, Resolving {
     // synthetic command line to reach it would be indirection for its own
     // sake.
     info.println('');
-    final generated = runGenerate(
+    final generated = await runGenerate(
       projectDir: root,
       command: '${session.path.first} generate',
       out: info,

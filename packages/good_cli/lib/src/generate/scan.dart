@@ -28,59 +28,78 @@
 // is a pure function of what it read, and adding a sixth question costs a
 // function rather than a sixth walk.
 //
-// # Why it parses instead of resolving
+// # Why it resolves
 //
-// A resolved scan reads the element model, so it would take a column's value
-// type from the analyzer rather than deriving it, and "is this a Component"
-// from the real supertype graph rather than from names. That is better
-// information, and it is not available here.
+// The scan asks the analyzer what a field *is* and keys on the answer.
+// `final hp = Field.float64();` holds a `DataPointer<double>` because the
+// element model says so, not because a pattern here recognised `Field.float64`
+// as a dotted static.
 //
-// Resolution needs a `.dart_tool/package_config.json` beside every package it
-// reads, and this tool's whole input is "the directories `--dir` named".
-// `enginePackages` deliberately builds the engine-dependency graph out of the
-// pubspecs sitting next to each other, precisely so a checkout that has never
-// been resolved still generates - and measured on such a checkout, resolution
-// reports the type of every one of the 67 columns in this repository as
-// `InvalidType`, because `package:good/good.dart` does not resolve, so `Field`
-// is undeclared, so `final transformOffsetX = Field.float64()` has no inferred
-// type. Nothing throws. The run finds zero columns, reports success, and
-// `--check` calls all eight committed files stale - which, run without
-// `--check`, deletes every generated accessor in the repository. That is the
-// failure #305 is named for, with a bigger blast radius.
+// What that replaced was three layers of expression matching, each one added
+// after a declaration had gone missing: a dotted static, then a builder chain,
+// then a bare constructor call. Every layer had a fourth shape behind it, and
+// the fourth was a cascade. `Track.of<double>(0)..hashCode` is a
+// `CascadeExpression`; the chain walk followed `MethodInvocation` alone, so it
+// read an empty chain and the field was neither collected, nor refused, nor
+// listed anywhere. Silence is the one outcome this design exists to prevent,
+// and a rule derived from the shape of an expression never stops producing it.
 //
-// It would do the same to a project. `good generate` runs before
-// `flutter pub get`, on a project that may never have resolved, and the fixture
-// the shadowed-column refusal is tested against is a `game.dart` that imports
-// nothing at all.
+// # What resolution costs, and what it demands back
 //
-// Cost is the second argument and not the first. Measured over this
-// repository: this walk parses 123 files in 0.9s, and an
-// `AnalysisContextCollection` resolves the 79 under the four packages that
-// declare components in 14.1s - 7ms a file against 178ms, and `--check` is on
-// the inner loop of every CI run.
+// Roughly twenty times the walk. Parsing alone read this repository's files at
+// about 7ms each; resolving them takes tens of seconds, and `good build` runs
+// `good generate` every time, so it is paid on every build rather than on a
+// tool run somebody chose to make.
 //
-// What resolution would have bought is bought another way. Everything this
-// needs to know about the engine is *in the read set*: `Field`'s static
-// signatures are in `good/lib/src/data.dart`, and so is the `Component`
-// hierarchy, because a package generated into depends on `good` by definition
-// and `enginePackages` puts that `lib/` in the same walk. So a column's value
-// type is read off `Field.float64`'s own declared return type rather than out
-// of a table in this file that nothing would report as out of date.
+// It also demands a resolved checkout, which is what made it too expensive to
+// be wrong about. `package:good/good.dart` resolves through a
+// `.dart_tool/package_config.json`; without one, every column in this
+// repository comes back `InvalidType` and nothing throws - the run finds no
+// declarations, reports success, and `--check` calls every committed file
+// stale, which run without `--check` deletes every generated accessor and lays
+// out every row wrong.
 //
-// The one thing parsing gets wrong on its own is the language version, and that
-// is #348: `parseString` does not read `analysis_options.yaml`, so a file using
-// `primary-constructors` failed to parse, the parser recovered, and a shorter
-// tree came back with no error anywhere. [scanFeatureSet] names the experiments
-// instead of inheriting them, and [ScanSources.unparsed] carries every file
-// that still did not parse, so a caller fails the run rather than reporting a
-// clean pass over a tree it read a fraction of.
+// So an unresolved read is refused rather than answered.
+// [ScanSources.unresolvedUris] carries every URI the analyzer could not find
+// and [unresolvedUriMessage] names them; a mode that reports a count asks for
+// them first, because "no declarations" and "I could not read the engine" are
+// otherwise the same sentence.
+//
+// A file in the read set may sit outside every context the collection built -
+// an engine package installed in the pub cache carries no `.dart_tool/` of its
+// own. Those resolve through the context of the directory the walk was asked
+// about, which is the one whose package config names them; see [readSources].
+//
+// The language version and its experiments are still pinned here rather than
+// inherited, and #348 is still the reason - see [scanFeatureSet], which now
+// overrides each context's feature set instead of feeding `parseString`. A
+// file that still does not parse lands in [ScanSources.unparsed], so a caller
+// fails the run rather than reporting a clean pass over a tree it read a
+// fraction of.
 
 import 'dart:io';
 
-import 'package:analyzer/dart/analysis/features.dart';
-import 'package:analyzer/dart/analysis/utilities.dart';
+import 'package:analyzer/dart/analysis/analysis_context.dart';
+import 'package:analyzer/dart/analysis/analysis_context_collection.dart';
+import 'package:analyzer/dart/analysis/results.dart';
 import 'package:analyzer/dart/ast/ast.dart';
 import 'package:analyzer/dart/ast/visitor.dart';
+import 'package:analyzer/dart/element/element.dart';
+import 'package:analyzer/dart/element/type.dart';
+import 'package:analyzer/dart/analysis/features.dart';
+import 'package:analyzer/diagnostic/diagnostic.dart';
+import 'package:analyzer/error/error.dart';
+// The two things the public `AnalysisContextCollection` factory has no
+// parameter for: which feature set a context analyses with, and the type it
+// is handed as. See [scanFeatureSet] for why this walk has to say.
+// ignore: implementation_imports
+import 'package:analyzer/src/dart/analysis/analysis_context_collection.dart';
+// ignore: implementation_imports
+import 'package:analyzer/src/dart/analysis/analysis_options.dart';
+// ignore: implementation_imports
+import 'package:analyzer/src/dart/analysis/byte_store.dart';
+// ignore: implementation_imports
+import 'package:analyzer/src/dart/analysis/file_byte_store.dart';
 import 'package:meta/meta.dart';
 import 'package:path/path.dart' as p;
 import 'package:pub_semver/pub_semver.dart';
@@ -88,17 +107,28 @@ import 'package:pub_semver/pub_semver.dart';
 import 'package:good_cli/src/generate/assets.dart';
 import 'package:good_cli/src/generate/engine_dependency.dart';
 
-/// The language every file in the walk is parsed as.
+/// The language every file in the walk is analysed as.
 ///
-/// The experiments are named here and not inherited from an
-/// `analysis_options.yaml`, because `parseString` does not read one - which is
-/// the whole of #348. `good`, `goo2d`, `goo3d`, `good_net` and `good_net_p2p`
-/// all turn `primary-constructors` on, and a file this cannot parse is one
-/// whose components, columns and doc references all vanish from the answer.
+/// Pinned rather than read out of each package's `analysis_options.yaml`, and
+/// that is not the choice it looks like. An `enable-experiment:` entry for a
+/// feature with no experimental release version - `primary-constructors` is
+/// one - takes effect only for a library whose language version is *exactly*
+/// the analyzer's own (`restrictEnableFlagsToVersion`, `version ==
+/// sdkLanguageVersion`). `analyzer` 10.2.0's is **3.12.0** and every package
+/// here declares `sdk: ^3.13.0`, so the entry those files already carry is
+/// dropped and three of them fail to parse. `flutter analyze` does not see it,
+/// because it runs the analyzer built into the SDK, whose version matches.
 ///
-/// The SDK version is pinned rather than read from `Platform.version`, so the
-/// same source parses the same way on every machine. Raising it is a deliberate
-/// edit made when the repository starts using something newer.
+/// Measured against this repository at the analyzer constraint in
+/// `good_cli/pubspec.yaml`: `collider.dart`, `render_2d.dart` and
+/// `effector.dart`, six `experiment_not_enabled` between them and no other
+/// diagnostic. That is the same #348 shape as before - a file the run reads a
+/// fraction of - reached by a different route.
+///
+/// So the version is named here, and raising it is the deliberate edit made
+/// when the repository starts using something newer. It goes away when the
+/// analyzer constraint moves to a release whose own version is the one these
+/// pubspecs ask for.
 final FeatureSet scanFeatureSet = FeatureSet.fromEnableFlags2(
   sdkLanguageVersion: Version(3, 13, 0),
   flags: const <String>['primary-constructors', 'dot-shorthands'],
@@ -152,66 +182,55 @@ class ScannedImport {
   final Set<String> hidden;
 }
 
-/// One call in a field initialiser, as it is written.
+/// One field or top-level variable, and what the analyzer says it holds.
 ///
-/// A chain is a list of these, head first: `Query.where().withAll(A).build()`
-/// is `Query.where`, then `withAll`, then `build`. The head carries whatever
-/// was written before the first pair of brackets - `Field.float64`, `Query.of`
-/// - and every link after it carries a bare member name, because its receiver
-/// is whatever the previous call answered.
-@immutable
-class ScannedCall {
-  const ScannedCall({
-    required this.name,
-    required this.typeArguments,
-    required this.arguments,
-  });
-
-  /// The callee - `Field.float64` at the head, `withAll` in a link.
-  final String name;
-
-  /// The call's explicit type arguments, if it was given any.
-  final List<String> typeArguments;
-
-  /// The source of each positional argument, in order.
-  final List<String> arguments;
-}
-
-/// One field or top-level variable, as it is written.
+/// [valueType] is the whole of the answer to "is this a declaration", and it
+/// is the analyzer's, not this walk's: `final hp = Field.float64();` and
+/// `late final DataPointer<double> hp = ...;` reach it the same way, and so
+/// does a typedef, a builder chain and a cascade. Nothing here reads the
+/// initialiser's spelling to decide what the field is.
 ///
-/// Everything here is syntax. [typeSource] is the annotation if there is one
-/// and null if there is not; [initializer] is the chain of calls its
-/// initialiser is, if it is a call at all. Whether either of them makes this a
-/// column is [columnValueType]'s question and not this class's - a field is
-/// recorded whatever it holds, because several passes ask about different
-/// fields and none of them should need its own walk.
+/// Two things are still read off the initialiser, and neither of them is a
+/// type. [isBareConstruction] is what the `@sub` rule is about - how the line
+/// reads to a person - and [readsFields] is what a `late` initialiser touches
+/// on the way to its value, which is what closes a `LateInitializationError`
+/// ring.
 @immutable
 class ScannedField {
   const ScannedField({
     required this.name,
-    required this.typeSource,
-    required this.initializer,
+    required this.valueType,
+    required this.valueTypeProblem,
     required this.annotations,
     required this.isStatic,
     required this.isLate,
     required this.hasInitializer,
+    required this.isBareConstruction,
+    required this.readsFields,
   });
 
   final String name;
 
-  /// The written type annotation - `DataPointer<CameraView?>` - or null.
-  final String? typeSource;
-
-  /// The initialiser's calls, head first, or empty when the initialiser is
-  /// absent or is not a call at all.
+  /// The type the analyzer says the field holds - `InitialPointer<double>`,
+  /// `Query`, `Stopwatch` - or null where it could not name one.
   ///
-  /// A chain and not a single call, because a declaration is free to be
-  /// written as one: `Query.where().withAll(...).build()` is a `Query` and
-  /// nothing about the first call says so. A pass reading only the outermost
-  /// call sees `build` on a receiver it cannot name, and one reading only a
-  /// flattened dotted string sees an owner called `Query.where().withAll(...)`
-  /// - both of which answer "not a declaration" about a declaration.
-  final List<ScannedCall> initializer;
+  /// Null is the loud answer and not a quiet one. It means the element model
+  /// came back with `InvalidType` or with nothing at all, which in practice
+  /// means the file's imports did not resolve - and a field whose type is
+  /// unknown is reported rather than being called "not a declaration". See
+  /// [ScanSources.unresolvedUris] for the run-level half of the same fact.
+  final String? valueType;
+
+  /// What the analyzer said about this declaration when it could not type it,
+  /// or null when it could.
+  ///
+  /// Its own diagnostics rather than a sentence written here. The walk knows
+  /// only that the type is unknown; the analyzer knows that `withEverything`
+  /// is not a method on `QueryBuilder`, or that `package:good/good.dart` was
+  /// not found - and those are two entirely different edits by the person
+  /// reading the report. Everything overlapping the declaration, so a chain
+  /// that stops half way names the link it stopped at.
+  final String? valueTypeProblem;
 
   /// The annotations written on it, in source order, each as it was written -
   /// `system`, `LoadBefore(PhysicsSystem)`.
@@ -226,20 +245,42 @@ class ScannedField {
 
   /// Whether it is written `late`.
   ///
-  /// Read because a declaration held by a `late` field is refused, and
-  /// nothing else in the walk can tell one from an ordinary field: both are
-  /// `DataPointer<CameraView?> cameraView` with an initialiser somewhere
-  /// else. It was removed once as dead and is here again for the check that
-  /// needs it - see `declarationRefusals`.
+  /// A `late` field with an initialiser is allowed and is how a declaration
+  /// reaches `this`; a `late` field without one is the half of a double
+  /// declaration this walk can see. So this is read together with
+  /// [hasInitializer] and never on its own - see `scanDeclarations`.
   final bool isLate;
 
   /// Whether it has an initialiser at its declaration.
   ///
-  /// A `late final X x;` with no initialiser is the half of a double
-  /// declaration this walk can see; the other half is a statement in a
-  /// `describeX` body, which it deliberately does not go looking for. One
-  /// half is enough to refuse.
+  /// A `late final X x;` with no initialiser is filled in from somewhere the
+  /// declaration does not say - a `describeX` body, a constructor. This walk
+  /// deliberately does not go looking for the other half; one half is enough
+  /// to refuse.
   final bool hasInitializer;
+
+  /// Whether the initialiser is, at its head, a call to an unnamed
+  /// constructor - `Barrel()`, `Barrel()..tune()`.
+  ///
+  /// The head after cascades, chained calls and property accesses are peeled
+  /// off, because `Turret().tuned()` still reads as a constructor call to
+  /// whoever wrote the line and the marker rule is about how the line reads.
+  /// A named constructor is not one: `Entity.pack(...)` is dotted, and a
+  /// dotted head says what it is where it is written.
+  ///
+  /// Resolved and not guessed. `Barrel()` parses as a `MethodInvocation` and
+  /// only becomes an `InstanceCreationExpression` once the analyzer has said
+  /// that `Barrel` is a class, which is why a parse could never tell it from
+  /// a call to a top-level function without a table of class names.
+  final bool isBareConstruction;
+
+  /// The names of the owning class's own instance fields this field's
+  /// initialiser reads.
+  ///
+  /// Only a `late` initialiser can have any - a plain field initialiser
+  /// cannot reach `this` at all - and a ring in them is a
+  /// `LateInitializationError` that names nothing at run time.
+  final Set<String> readsFields;
 
   bool get isPrivate => name.startsWith('_');
 }
@@ -259,10 +300,6 @@ class ScannedMethod {
   const ScannedMethod({
     required this.name,
     required this.isStatic,
-    required this.returnTypeSource,
-    required this.typeParameters,
-    required this.parameters,
-    required this.parameterNames,
     required this.annotations,
     required this.isEmptyBody,
     required this.callsSuper,
@@ -271,18 +308,6 @@ class ScannedMethod {
 
   final String name;
   final bool isStatic;
-
-  /// The written return type - `InitialPointer<double>` - or null.
-  final String? returnTypeSource;
-
-  /// The method's own type parameter names, in order.
-  final List<String> typeParameters;
-
-  /// Each parameter's written type, keyed by parameter name.
-  final Map<String, String> parameters;
-
-  /// Parameter names, in order.
-  final List<String> parameterNames;
 
   /// The names of the annotations written on it - `override`, `mustCallSuper`.
   final Set<String> annotations;
@@ -443,7 +468,11 @@ class ScannedUnit {
 /// Everything one walk read.
 @immutable
 class ScanSources {
-  const ScanSources({required this.units, required this.unparsed});
+  const ScanSources({
+    required this.units,
+    required this.unparsed,
+    required this.unresolvedUris,
+  });
 
   /// Keyed by normalised absolute path.
   final Map<String, ScannedUnit> units;
@@ -455,6 +484,23 @@ class ScanSources {
   /// at, and the mode that has one exits on it - see #348 for what reporting it
   /// as a warning cost.
   final List<String> unparsed;
+
+  /// Every directive URI the analyzer could not find, keyed by the file that
+  /// writes it, as normalised absolute paths.
+  ///
+  /// This is the loud half of resolving. A file whose `package:good/good.dart`
+  /// does not resolve still parses, still declares its classes, and answers
+  /// `InvalidType` for every field in it - so the walk reads the whole tree,
+  /// finds no declaration anywhere, and reports a clean run over nothing. That
+  /// failure is silent by construction and cannot be caught downstream: an
+  /// empty answer and a correct answer are the same shape.
+  ///
+  /// So it is carried here, and a mode that reports a count says this first;
+  /// see [unresolvedUriMessage] and [ScanSources.resolves].
+  final Map<String, List<String>> unresolvedUris;
+
+  /// Whether every file the walk read resolved.
+  bool get resolves => unresolvedUris.isEmpty;
 
   /// Every type declared anywhere in the walk, keyed by name.
   ///
@@ -726,11 +772,12 @@ Map<String, String> _readPackageLibDirs(Iterable<String> paths) {
 /// `accessors.g.dart` is an ordinary hand-written extension on the next run, so
 /// a run that read it reported every property it would write as colliding with
 /// itself.
-ScanSources readSources(
+Future<ScanSources> readSources(
   Directory dir, {
   List<String>? rootOverride,
   Set<String> exclude = const <String>{},
-}) {
+}) async {
+  final home = p.normalize(p.absolute(dir.path));
   final roots = <String>[];
   if (rootOverride != null) {
     for (final root in rootOverride) {
@@ -754,42 +801,309 @@ ScanSources readSources(
     for (final path in exclude) p.normalize(p.absolute(path)),
   };
 
-  final units = <String, ScannedUnit>{};
-  final unparsed = <String>[];
+  final files = <String>[];
   for (final root in <String>{...roots}) {
     final directory = Directory(root);
     if (!directory.existsSync()) continue;
-    final files = <File>[
-      for (final entry in directory.listSync(recursive: true))
-        if (entry is File && entry.path.endsWith('.dart')) entry,
-    ]..sort((a, b) => a.path.compareTo(b.path));
-    for (final file in files) {
-      final path = p.normalize(p.absolute(file.path));
+    // Links are listed and never followed. `goo2d/example/windows/flutter/
+    // ephemeral/.plugin_symlinks/` links back to packages this walk already
+    // reads, so following it reads those packages a second time under a path
+    // that is inside nobody's package config - every file of them unresolved,
+    // and the run refused over source it had already read correctly.
+    final found = <String>[
+      for (final entry in directory.listSync(
+        recursive: true,
+        followLinks: false,
+      ))
+        if (entry is File && entry.path.endsWith('.dart'))
+          p.normalize(p.absolute(entry.path)),
+    ]..sort();
+    files.addAll(found);
+  }
+
+  final collection = AnalysisContextCollectionImpl(
+    includedPaths: _includedPaths(home, roots),
+    byteStore: _scanByteStore(home),
+    updateAnalysisOptions4: ({required AnalysisOptionsImpl analysisOptions}) {
+      analysisOptions.contextFeatures = scanFeatureSet;
+    },
+  );
+  final units = <String, ScannedUnit>{};
+  final unparsed = <String>[];
+  final unresolvedUris = <String, List<String>>{};
+  try {
+    final fallback = collection.contextFor(home);
+    for (final path in files) {
       if (skip.contains(path)) continue;
       if (units.containsKey(path)) continue;
-      final String content;
-      try {
-        content = file.readAsStringSync();
-      } on FileSystemException {
+      // A package the walk reads that no context covers - an engine package
+      // installed in the pub cache, which carries no `.dart_tool/` of its own
+      // and so is nobody's context root. The directory this walk was asked
+      // about is the one whose package config names it, so its context is the
+      // one that can resolve the file.
+      final AnalysisContext context = _contextFor(collection, path, fallback);
+      final resolved = await context.currentSession.getResolvedUnit(path);
+      if (resolved is! ResolvedUnitResult) {
         unparsed.add(path);
         continue;
       }
-      final parsed = parseString(
-        content: content,
-        featureSet: scanFeatureSet,
-        throwIfDiagnostics: false,
+      // Syntactic alone, because a semantic error is what an unresolved
+      // package produces by the hundred and it says nothing about whether the
+      // file was read. #348 is a file the parser gave up on, and that is this.
+      final syntactic = resolved.diagnostics.where(
+        (diagnostic) =>
+            diagnostic.diagnosticCode.type == DiagnosticType.SYNTACTIC_ERROR,
       );
-      if (parsed.errors.isNotEmpty) {
+      if (syntactic.isNotEmpty) {
         unparsed.add(path);
         continue;
       }
-      units[path] = _readUnit(path, parsed.unit);
+      final missing = _missingImports(resolved);
+      if (missing.isNotEmpty) unresolvedUris[path] = missing;
+      units[path] = _readUnit(path, resolved.unit, resolved.diagnostics);
     }
+  } finally {
+    await collection.dispose();
   }
-  return ScanSources(units: units, unparsed: unparsed);
+  return ScanSources(
+    units: units,
+    unparsed: unparsed,
+    unresolvedUris: unresolvedUris,
+  );
 }
 
-ScannedUnit _readUnit(String path, CompilationUnit unit) {
+/// Where a walk keeps what it linked, so the next one does not link it again.
+///
+/// Resolving is what this walk costs, and nearly all of it is the engine.
+/// Measured on a scaffolded 2D project - 78 files, of which 69 are `good` and
+/// `goo2d` - `good generate` went from 2.3s to 38.9s, and `good build` runs
+/// `good generate` every time. Those 69 files do not change between two runs
+/// in a project, and the analyzer already knows how not to link them twice: it
+/// wants somewhere to put the summaries, and this walk was handing it a fresh
+/// in-memory store every call and throwing it away. Over the same 78 files
+/// with one store kept: 24.2s, then 4.4s, then 3.5s - a warm walk costs about
+/// what the parse it replaced did.
+///
+/// # Why a stale entry is unreachable rather than wrong
+///
+/// Nothing here decides when to invalidate, and that is the only reason a
+/// cache on a generator is safe. The keys are content signatures over the
+/// files, the SDK, the package config and the enabled feature set
+/// (`AnalysisOptionsImpl.signatureForElements` hashes every known experiment),
+/// so editing a source file, changing a dependency or moving [scanFeatureSet]
+/// asks a *different* question and gets a miss. A wrong answer would need two
+/// different inputs to hash the same.
+///
+/// # Where it goes, and what bounds it
+///
+/// `.dart_tool/` under the directory the walk was asked about, which is the
+/// package or project whose sources it is caching and which every layout in
+/// this repository and every `flutter create` project already ignores in git.
+/// A checkout that cannot be written to falls back to memory rather than
+/// failing: a cache is an optimisation and refusing to run without one would
+/// make it a dependency.
+///
+/// [EvictingFileByteStore] and not a prune written here. It bounds the
+/// directory itself, and the isolate it spawns to do so does not hold the
+/// process open - checked by running, because a CLI that does not exit would
+/// be a worse defect than the one this fixes.
+ByteStore _scanByteStore(String home) {
+  final cache = p.join(home, '.dart_tool', 'good_scan');
+  try {
+    Directory(cache).createSync(recursive: true);
+    return EvictingFileByteStore(cache, scanCacheMaxBytes);
+  } on FileSystemException {
+    return MemoryByteStore();
+  }
+}
+
+/// How much linked summary is kept before the oldest is dropped.
+///
+/// Every edit to a source file mints new keys and orphans the ones it
+/// replaces, so this is what stands between a cache and a directory that grows
+/// for the life of a checkout.
+const int scanCacheMaxBytes = 256 * 1024 * 1024;
+
+/// The context that reads [path], or [fallback] where none of them covers it.
+///
+/// [fallback] is right for the case it exists for and is not right in general.
+/// It is the context of the directory the walk was asked about, so it resolves
+/// a file correctly exactly when that directory's package config is the one
+/// naming the file's package - which is true of an engine package in a pub
+/// cache, since the project resolving it is what put it there.
+///
+/// It is **not** true of a package that simply has not been resolved, and the
+/// answer there is wrong rather than absent: a fixture `good` with no
+/// `.dart_tool/` of its own resolves `package:good/good.dart` through whatever
+/// `good` the caller's own config names, which for an in-process test is the
+/// real engine. Nothing says so. A fixture repository writes its own package
+/// config for that reason - see `resolveFixture` in good_tool's `_repo.dart`.
+AnalysisContext _contextFor(
+  AnalysisContextCollection collection,
+  String path,
+  AnalysisContext fallback,
+) {
+  try {
+    return collection.contextFor(path);
+  } on StateError {
+    return fallback;
+  }
+}
+
+/// The directories an [AnalysisContextCollection] is opened over.
+///
+/// [home] always, because it is the directory whose package config resolves
+/// whatever the walk reads from outside the trees it was given. Each root's
+/// own package as well, but only where that package carries a
+/// `.dart_tool/package_config.json`: a directory without one becomes a context
+/// that resolves nothing, and every file under it would then answer
+/// `InvalidType` while a context that *could* have read it sat unused.
+///
+/// Nested paths are dropped rather than passed through. The collection groups
+/// included paths into contexts by walking up for a package, so two paths
+/// inside one package are one context said twice.
+List<String> _includedPaths(String home, List<String> roots) {
+  final included = <String>{home};
+  for (final root in roots) {
+    final package = _packageRootOf(root);
+    if (package == null) continue;
+    if (!File(
+      p.join(package, '.dart_tool', 'package_config.json'),
+    ).existsSync()) {
+      continue;
+    }
+    included.add(package);
+  }
+  final sorted = included.toList()..sort();
+  return <String>[
+    for (final path in sorted)
+      if (!sorted.any(
+        (other) => other != path && p.isWithin(other, path),
+      ))
+        path,
+  ];
+}
+
+/// The nearest directory at or above [from] holding a `pubspec.yaml`.
+String? _packageRootOf(String from) {
+  var dir = from;
+  while (true) {
+    if (File(p.join(dir, 'pubspec.yaml')).existsSync()) return dir;
+    final parent = p.dirname(dir);
+    if (parent == dir) return null;
+    dir = parent;
+  }
+}
+
+/// The URIs [resolved]'s `import` and `export` directives name and the
+/// analyzer could not find.
+///
+/// Imports and exports only, and the exclusion is the point. A `part` this
+/// walk cannot find is ordinarily one it is about to **write**: `--tests`
+/// reads a fixture library whose generated part is the thing the run
+/// produces, so counting those would refuse every new fixture at the run that
+/// was going to create it. A missing part leaves the names *it* declares
+/// undefined and types the rest of the library as usual, so a declaration
+/// caught by it is reported by name with the analyzer's own reason - loud, and
+/// in the right place.
+///
+/// An import that does not resolve is the other thing entirely. It leaves
+/// every field in the file typed `InvalidType`, so nothing is a declaration,
+/// nothing is refused, and the run writes that as the answer.
+///
+/// Found through the diagnostic's offset rather than through the directive's
+/// own resolution, because a directive naming a URI the analyzer never found
+/// carries no element to ask.
+List<String> _missingImports(ResolvedUnitResult resolved) {
+  final directives = <Directive>[
+    for (final directive in resolved.unit.directives)
+      if (directive is ImportDirective || directive is ExportDirective)
+        directive,
+  ];
+  if (directives.isEmpty) return const <String>[];
+  final missing = <String>[];
+  for (final diagnostic in resolved.diagnostics) {
+    if (!_missingUriCodes.contains(diagnostic.diagnosticCode.name)) continue;
+    final within = directives.any(
+      (directive) =>
+          diagnostic.offset >= directive.offset &&
+          diagnostic.offset < directive.end,
+    );
+    if (!within) continue;
+    missing.add(_quotedUri(diagnostic.message));
+  }
+  return missing;
+}
+
+/// The diagnostics that mean "this directive names a file the analyzer cannot
+/// find", which is what an unresolved package looks like from inside a file.
+const Set<String> _missingUriCodes = <String>{
+  'uri_does_not_exist',
+  'uri_has_not_been_generated',
+};
+
+/// The URI out of a `Target of URI doesn't exist: 'package:good/good.dart'.`
+///
+/// The message and not the directive, because a diagnostic carries no node and
+/// re-walking the unit to find the directive at an offset would be a second
+/// answer to a question the message already answers. A message that stops
+/// quoting its URI falls back to the whole message, which still names it.
+///
+/// The **last** pair of quotes, because the sentence has an apostrophe in it:
+/// reading from the first quote answers `t exist: `, which is what this
+/// printed the first time it ran.
+String _quotedUri(String message) {
+  final close = message.lastIndexOf("'");
+  if (close <= 0) return message;
+  final open = message.lastIndexOf("'", close - 1);
+  if (open < 0) return message;
+  return message.substring(open + 1, close);
+}
+
+/// What to say about a walk that could not resolve what it read.
+///
+/// Names the URIs and the files, because the fix is a `pub get` in a package
+/// the caller has to be able to find. It never says how many declarations were
+/// found: the whole point is that the number would be a lie.
+String unresolvedUriMessage(
+  ScanSources sources,
+  String Function(String path) display,
+) {
+  final buffer = StringBuffer();
+  buffer.writeln(
+    'The analyzer could not find every import in the source it read, so what '
+    'each field holds is unknown and no declaration in these files can be '
+    'read:',
+  );
+  final paths = sources.unresolvedUris.keys.toList()..sort();
+  final uris = <String>{
+    for (final path in paths) ...sources.unresolvedUris[path]!,
+  }.toList()..sort();
+  for (final uri in uris) {
+    buffer.writeln('  $uri');
+  }
+  buffer.writeln();
+  buffer.writeln(
+    'First seen in ${display(paths.first)}, and in '
+    '${paths.length} file(s) altogether.',
+  );
+  buffer.writeln();
+  buffer.write(
+    'Run `flutter pub get` (or `dart pub get`) in the package that writes '
+    'them and try again. This is refused rather than reported, because an '
+    'unresolved import leaves every field in the file typed `InvalidType` - '
+    'the run would find no columns, no queries and no events, write that as '
+    'the answer, and every generated accessor would be deleted by the write '
+    'that followed.',
+  );
+  return buffer.toString();
+}
+
+ScannedUnit _readUnit(
+  String path,
+  CompilationUnit unit,
+  List<Diagnostic> diagnostics,
+) {
   final declaredNames = <String>{};
   final imports = <ScannedImport>[];
   final exports = <ScannedExport>[];
@@ -839,16 +1153,16 @@ ScannedUnit _readUnit(String path, CompilationUnit unit) {
         variables.add(
           _readVariable(
             variable,
-            typeSource: declaration.variables.type?.toSource(),
             annotations: annotations,
             isStatic: true,
             isLate: true,
+            diagnostics: diagnostics,
           ),
         );
       }
     }
 
-    final scanned = _readType(path, declaration);
+    final scanned = _readType(path, declaration, diagnostics);
     if (scanned != null) types.add(scanned);
   }
 
@@ -862,7 +1176,11 @@ ScannedUnit _readUnit(String path, CompilationUnit unit) {
   );
 }
 
-ScannedType? _readType(String path, CompilationUnitMember declaration) {
+ScannedType? _readType(
+  String path,
+  CompilationUnitMember declaration,
+  List<Diagnostic> diagnostics,
+) {
   final String name;
   final typeParameters = <String>[];
   final supertypes = <String>[];
@@ -943,10 +1261,10 @@ ScannedType? _readType(String path, CompilationUnitMember declaration) {
         fields.add(
           _readVariable(
             variable,
-            typeSource: member.fields.type?.toSource(),
             annotations: annotations,
             isStatic: member.isStatic,
             isLate: member.fields.lateKeyword != null,
+            diagnostics: diagnostics,
           ),
         );
       }
@@ -987,94 +1305,130 @@ ScannedType? _readType(String path, CompilationUnitMember declaration) {
 List<ClassMember> _members(ClassBody body) =>
     body is BlockClassBody ? body.members : const <ClassMember>[];
 
-/// The calls [expression] is, head first, or none when it is not a call.
+/// Whether [expression] is, at its head, a call to an unnamed constructor.
 ///
-/// Written as a walk down the targets and reversed, because the AST nests the
-/// other way round: `a().b().c()` is a `c` whose target is a `b` whose target
-/// is an `a`. Only [MethodInvocation] links are followed - a cascade, a
-/// property access, an operator - because a link this cannot name is a chain
-/// this cannot resolve, and half a chain answers about the wrong type.
-List<ScannedCall> _readCallChain(Expression? expression) {
-  final calls = <ScannedCall>[];
+/// Walks down the targets rather than matching a shape, because the shapes a
+/// head can be wearing are open-ended: `Barrel()`, `Barrel()..tune()`,
+/// `Barrel().tuned()`, `(Barrel())` all read as a constructor call to whoever
+/// wrote the line, and each one of them was a separate patch when this was a
+/// pattern match. What stops the walk is a node with no target left, and the
+/// answer is whether that node is an `InstanceCreationExpression` the analyzer
+/// resolved with no constructor name on it.
+bool _isBareConstruction(Expression? expression) {
   var current = expression;
-  while (current is MethodInvocation) {
-    final target = current.target;
-    calls.add(
-      ScannedCall(
-        // The head keeps whatever was written before it - `Field.float64`,
-        // `Barrel` - and a link keeps only its own name, because its receiver
-        // is the call before it rather than anything written.
-        name: target is MethodInvocation || target == null
-            ? current.methodName.name
-            : '${target.toSource()}.${current.methodName.name}',
-        typeArguments: <String>[
-          for (final argument
-              in current.typeArguments?.arguments ?? const <TypeAnnotation>[])
-            argument.toSource(),
-        ],
-        arguments: <String>[
-          for (final argument in current.argumentList.arguments)
-            if (argument is! NamedExpression) argument.toSource(),
-        ],
-      ),
-    );
-    current = target;
+  while (true) {
+    switch (current) {
+      case ParenthesizedExpression():
+        current = current.expression;
+      case CascadeExpression():
+        current = current.target;
+      case MethodInvocation(target: final target?):
+        current = target;
+      case PropertyAccess(target: final target?):
+        current = target;
+      case InstanceCreationExpression():
+        return current.constructorName.name == null;
+      case _:
+        return false;
+    }
   }
-  return calls.reversed.toList();
+}
+
+/// The owning class's own instance fields [expression] reads.
+///
+/// Off the element model and not off the names written, so `b` in
+/// `late final a = b;` is here because the analyzer says it is this class's
+/// field, and `b` in `late final a = other.b;` is not. Only a `late`
+/// initialiser can read one at all - an ordinary field initialiser cannot
+/// reach `this` - which is why this is only ever asked about a `late` field.
+Set<String> _readFieldReads(Expression? expression) {
+  if (expression == null) return const <String>{};
+  final names = <String>{};
+  expression.accept(_FieldReadCollector(names));
+  return names;
+}
+
+/// What the analyzer reported over [variable]'s own source range.
+///
+/// Errors alone, deduplicated, in the order they were reported. A warning or a
+/// lint says nothing about why a type could not be worked out, and a run that
+/// quoted them would bury the one line that does.
+String? _whyUntyped(VariableDeclaration variable, List<Diagnostic> diagnostics) {
+  final said = <String>{};
+  for (final diagnostic in diagnostics) {
+    if (diagnostic.diagnosticCode.severity != DiagnosticSeverity.ERROR) {
+      continue;
+    }
+    if (diagnostic.offset < variable.offset) continue;
+    if (diagnostic.offset >= variable.end) continue;
+    said.add(diagnostic.message);
+  }
+  if (said.isEmpty) return null;
+  return said.join(' ');
+}
+
+class _FieldReadCollector extends RecursiveAstVisitor<void> {
+  _FieldReadCollector(this._names);
+
+  final Set<String> _names;
+
+  @override
+  void visitSimpleIdentifier(SimpleIdentifier node) {
+    final element = node.element;
+    if (element is PropertyAccessorElement && !element.isStatic) {
+      _names.add(node.name);
+    } else if (element is FieldElement && !element.isStatic) {
+      _names.add(node.name);
+    }
+    super.visitSimpleIdentifier(node);
+  }
 }
 
 ScannedField _readVariable(
   VariableDeclaration variable, {
-  required String? typeSource,
   required List<String> annotations,
   required bool isStatic,
   required bool isLate,
+  required List<Diagnostic> diagnostics,
 }) {
   final initializer = variable.initializer;
+  final type = variable.declaredFragment?.element.type;
+  final unknown = type == null || type is InvalidType;
   return ScannedField(
     name: variable.name.lexeme,
-    typeSource: typeSource,
-    initializer: _readCallChain(initializer),
+    // Null for `InvalidType` and for a fragment the resolution never
+    // produced, which are the same fact wearing two shapes: the analyzer
+    // could not say what this field holds. It is never flattened into a name
+    // here, because `InvalidType`'s display string is `InvalidType` and a
+    // walk keyed on names would take it for a class somebody wrote.
+    valueType: unknown ? null : type.getDisplayString(),
+    valueTypeProblem: unknown ? _whyUntyped(variable, diagnostics) : null,
     annotations: annotations,
     isStatic: isStatic,
     isLate: isLate,
     hasInitializer: initializer != null,
+    isBareConstruction: _isBareConstruction(initializer),
+    readsFields: isLate ? _readFieldReads(initializer) : const <String>{},
   );
 }
 
 ScannedMethod _readMethod(MethodDeclaration member) {
   final name = member.name.lexeme;
-  final parameters = <String, String>{};
-  final parameterNames = <String>[];
+  // The first parameter's name and nothing else about the signature. A
+  // `describeX` body's `<descriptor>.has<T>()` calls are read off that
+  // receiver; the written types went with `columnValueType`'s expression
+  // matching, which is the only thing that ever asked for them.
+  String? receiver;
   for (final parameter
       in member.parameters?.parameters ?? const <FormalParameter>[]) {
-    final parameterName = parameter.name?.lexeme;
-    if (parameterName == null) continue;
-    parameterNames.add(parameterName);
-    final normal = parameter is DefaultFormalParameter
-        ? parameter.parameter
-        : parameter;
-    if (normal is SimpleFormalParameter) {
-      final type = normal.type;
-      if (type != null) parameters[parameterName] = type.toSource();
-    }
+    receiver = parameter.name?.lexeme;
+    if (receiver != null) break;
   }
-  final visitor = _MethodBodyVisitor(
-    name: name,
-    receiver: parameterNames.isEmpty ? null : parameterNames.first,
-  );
+  final visitor = _MethodBodyVisitor(name: name, receiver: receiver);
   member.body.accept(visitor);
   return ScannedMethod(
     name: name,
     isStatic: member.isStatic,
-    returnTypeSource: member.returnType?.toSource(),
-    typeParameters: <String>[
-      for (final parameter
-          in member.typeParameters?.typeParameters ?? const <TypeParameter>[])
-        parameter.name.lexeme,
-    ],
-    parameters: parameters,
-    parameterNames: parameterNames,
     annotations: <String>{
       for (final annotation in member.metadata) annotation.name.name,
     },
@@ -1249,64 +1603,29 @@ class ColumnResolution {
 
 /// Whether [field] declares a column, and what its value type is.
 ///
-/// Two shapes declare one, and both are in the tree:
+/// One question, asked of the field's own type.
 ///
 /// ```dart
-/// final transformOffsetX = Field.float64();          // the factory's return
-/// late final DataPointer<CameraView?> cameraView;    // the annotation
+/// final transformOffsetX = Field.float64();   // double
+/// late final DataPointer<CameraView?> view = ...;   // CameraView?
 /// ```
 ///
-/// The first is answered by reading `Field.float64`'s own declared return type
-/// out of the parse - `InitialPointer<double>` - rather than out of a table
-/// here. `Field` is in the read set whenever a component is, because a package
-/// holding components depends on `good`, so such a table would be a second copy
-/// of something already present and free to go stale against it.
+/// Both reach it the same way, because the analyzer resolved both.
+///
+/// What it used to be was the factory's declared return type read out of the
+/// parse, with the type argument filled in from the call where the return type
+/// left one standing - two ways of inferring an `E`, a report for anything
+/// that was neither, and nothing at all for a builder chain. The analyzer does
+/// all of that already and is right about the cases the two ways were not
+/// written for.
 ///
 /// Returns null when the field is not a column at all, which is most of them.
-ColumnResolution? columnValueType(
-  ScannedField field,
-  Map<String, ScannedType> typesByName,
-) {
-  final annotation = field.typeSource;
-  if (annotation != null) {
-    final parsed = TypeSource.parse(annotation);
-    if (parsed == null) return null;
-    return _fromPointer(parsed);
-  }
-
-  // One call and no chain. A column is declared by a `Field.*` static and
-  // nothing else, so a builder chain is somebody else's declaration and this
-  // has nothing to say about it.
-  if (field.initializer.length != 1) return null;
-  final call = field.initializer.single;
-  final dot = call.name.lastIndexOf('.');
-  if (dot <= 0) return null;
-  final owner = typesByName[call.name.substring(0, dot)];
-  if (owner == null) return null;
-  final method = owner.methods[call.name.substring(dot + 1)];
-  if (method == null || !method.isStatic) return null;
-  final returnType = method.returnTypeSource;
-  if (returnType == null) return null;
-  final parsed = TypeSource.parse(returnType);
+ColumnResolution? columnValueType(ScannedField field) {
+  final declared = field.valueType;
+  if (declared == null) return null;
+  final parsed = TypeSource.parse(declared);
   if (parsed == null) return null;
-  final resolved = _fromPointer(parsed);
-  if (resolved == null || resolved.problem != null) return resolved;
-
-  final value = resolved.valueType!;
-  final variable = value.endsWith('?')
-      ? value.substring(0, value.length - 1)
-      : value;
-  if (!method.typeParameters.contains(variable)) return resolved;
-
-  final inferred = _inferTypeArgument(call, method, variable);
-  if (inferred == null) {
-    return ColumnResolution.problem(
-      'its value type is the `$variable` of ${owner.name}.${method.name}, and '
-      'the call leaves it to inference in a shape this pass does not read. '
-      'Write the type argument, or annotate the field',
-    );
-  }
-  return ColumnResolution.column(value.endsWith('?') ? '$inferred?' : inferred);
+  return _fromPointer(parsed);
 }
 
 ColumnResolution? _fromPointer(TypeSource parsed) {
@@ -1319,40 +1638,6 @@ ColumnResolution? _fromPointer(TypeSource parsed) {
   if (!pointerRoots.contains(parsed.name)) return null;
   if (parsed.arguments.length != 1) return null;
   return ColumnResolution.column(parsed.arguments.single);
-}
-
-/// The type argument a call left to inference, where the call says enough.
-///
-/// Two ways, and no third. An explicit `Field.enumOf<BodyType2D>(...)` says it
-/// outright. Otherwise a parameter declared `List<E>` given `BodyType2D.values`
-/// says it too, which is the shape every enum column in the tree is written in.
-/// Anything else is reported rather than guessed at: a wrong value type
-/// generates a property that reads the column as something it is not, and that
-/// compiles.
-String? _inferTypeArgument(
-  ScannedCall call,
-  ScannedMethod method,
-  String variable,
-) {
-  final index = method.typeParameters.indexOf(variable);
-  if (call.typeArguments.length == method.typeParameters.length) {
-    return call.typeArguments[index];
-  }
-  for (var i = 0; i < method.parameterNames.length; i++) {
-    if (i >= call.arguments.length) break;
-    final declared = method.parameters[method.parameterNames[i]];
-    if (declared == null) continue;
-    final parsed = TypeSource.parse(declared);
-    if (parsed == null) continue;
-    if (parsed.name != 'List' || parsed.arguments.length != 1) continue;
-    if (parsed.arguments.single != variable) continue;
-    final argument = call.arguments[i];
-    if (!argument.endsWith('.values')) continue;
-    final head = argument.substring(0, argument.length - '.values'.length);
-    if (!_namePattern.hasMatch(head)) continue;
-    return head;
-  }
-  return null;
 }
 
 /// The property name a column gets on the accessor.
@@ -1498,11 +1783,11 @@ Set<String> scannableAnnotationNames(ScanSources sources) {
       }
     }
     for (final variable in unit.variables) {
-      // The written type and not the initialiser: a marker is a const with
-      // its type spelled out, which is what makes `@sub` resolvable by a parse
-      // at all. One written `const sub = Sub._();` is not found here, and the
-      // type it is declared with is where it says so.
-      final declared = variable.typeSource;
+      // The variable's own type, whether or not it is written. `const Sub sub
+      // = Sub._();` and `const sub = Sub._();` are one marker declared two
+      // ways, and a walk reading the annotation alone found the first and
+      // called the second an ordinary constant.
+      final declared = variable.valueType;
       if (declared == null) continue;
       final parsed = TypeSource.parse(declared);
       if (parsed == null) continue;
@@ -1514,18 +1799,18 @@ Set<String> scannableAnnotationNames(ScanSources sources) {
   return names;
 }
 
-/// What a field's initialiser turned out to hold, or why the walk stopped.
+/// What a field holds, or why the walk cannot say.
 ///
 /// Null - the return of [resolveValueType] rather than a state of this class -
-/// is the third answer and the only one that is allowed to be quiet: nothing
-/// the walk read names the type, so it has nothing to say about the field.
-/// `final clock = Stopwatch();` is that, and so is a helper in a package this
-/// run never opened.
+/// is the quiet answer, and it now means one thing only: the analyzer named a
+/// type and it is not one this walk read. `final clock = Stopwatch();` is
+/// that. It is quiet because there is nothing to say: the field is not a
+/// declaration and nobody was mistaken about it.
 ///
-/// [problem] is the answer that is **not** allowed to be quiet. The walk read
-/// the class the call is made on and could not follow the call, so it knows
-/// enough to know it does not know - and a field it half-read is exactly the
-/// one that disappears from every list without a line anywhere.
+/// [problem] is the answer that is **not** allowed to be quiet. The analyzer
+/// could not name the field's type at all, which in practice means the file's
+/// imports did not resolve - and a field whose type is unknown is exactly the
+/// one that would otherwise disappear from every list without a line anywhere.
 @immutable
 class ValueTypeResolution {
   const ValueTypeResolution.type(String this.type) : problem = null;
@@ -1534,188 +1819,52 @@ class ValueTypeResolution {
   /// The type of the value the field holds - `InitialPointer<double>`.
   final String? type;
 
-  /// Why the walk could not carry the initialiser to a type, or null.
+  /// Why the walk cannot name what the field holds, or null.
   final String? problem;
 }
 
-/// The type of the value [field] holds, as far as the source says.
+/// The type of the value [field] holds, as the analyzer resolved it.
 ///
-/// The written annotation when there is one, and otherwise what the
-/// initialiser's calls answer, followed one link at a time.
-///
-/// Kept apart from [columnValueType] because the two answer different
-/// questions. [columnValueType] wants what one entity's *value* is (`double`,
-/// `CameraView?`), which is what a generated property returns. This wants what
-/// the *field* holds (`InitialPointer<double>`, `Query`), which is what
-/// decides whether the field is a declaration at all and what a collector
-/// would hand back.
-///
-/// # Why a chain and not a call
-///
-/// A declaration is free to be written as a builder:
+/// One question and one answer. A written annotation, a dotted static, a
+/// builder chain, a typedef, a cascade and a bare constructor call all reach
+/// it the same way, because none of them is read: the field's own resolved
+/// type is.
 ///
 /// ```dart
-/// final roots = Query.where().withAll(WorldTransform2D).build();
+/// final hp = Field.float64();                          // InitialPointer<double>
+/// final roots = Query.where().withAll(A).build();      // Query
+/// final q3 = Track.of<double>(0)..hashCode;            // Track<double>
+/// late final TextureAsset tex = Asset.of(k);           // Asset<Texture>
 /// ```
 ///
-/// which is the shape `Query.where`'s own doc teaches. Reading only the
-/// outermost call finds `build` on a receiver nothing named; reading only a
-/// flattened dotted string finds an owner called `Query.where().withAll(...)`.
-/// Both answer "not a declaration" about a declaration, and a field that is
-/// not a declaration is neither collected nor listed - which is the silence
-/// this design exists to prevent. So the head is resolved, and every link
-/// after it is looked up on what the link before it returned.
+/// Every one of those was a separate patch, and the last two were a miss and a
+/// silence. What decides whether the field is a declaration is only ever the
+/// head of the type, and [isDeclarationField] takes it from here.
 ///
-/// # What the type arguments say, and where they do not
+/// # What is still not enough for an emitter
 ///
-/// A factory's return type is written against the factory's own type
-/// parameters, so `Field.enumOf<BodyType2D>(...)` declares
-/// `PackedPointer<E>` and the `E` is filled in from the call - the same two
-/// ways [columnValueType] fills one in, and no third. Where neither way
-/// reaches, the parameter is left standing: `Field.array(.uint16, 32)`
-/// answers `DataArrayPointer<T>`, because `T` is inferred from a
-/// `DataElement<T>` argument written as a dot shorthand and nothing here
-/// resolves one.
-///
-/// That is enough to decide whether a field is a declaration, which is only
-/// ever the head of the type. It is **not** enough for an emitter that has to
-/// write the type out, and a caller doing that has to say what it does with a
-/// type argument still spelled `T`.
-String? declaredValueType(
-  ScannedField field,
-  Map<String, ScannedType> typesByName,
-) => resolveValueType(field, typesByName)?.type;
+/// A type argument that is a type parameter stays one: a field on
+/// `class Holder<T>` declared `DataPointer<T>` answers `DataPointer<T>`,
+/// because that is what it is. A caller that has to write the type out has to
+/// say what it does with a `T`.
+String? declaredValueType(ScannedField field) =>
+    resolveValueType(field)?.type;
 
 /// [declaredValueType], with the reason kept when there is one.
-///
-/// Null means the walk read nothing that names the type. Every other answer
-/// is either a type or a problem somebody has to be told about; see
-/// [ValueTypeResolution].
-ValueTypeResolution? resolveValueType(
-  ScannedField field,
-  Map<String, ScannedType> typesByName,
-) {
-  final annotation = field.typeSource;
-  if (annotation != null) return ValueTypeResolution.type(annotation);
-  final chain = field.initializer;
-  if (chain.isEmpty) return null;
-
-  var current = _headValueType(chain.first, typesByName);
-  if (current == null) return null;
-
-  for (final call in chain.skip(1)) {
-    final parsed = TypeSource.parse(current!);
-    if (parsed == null) {
-      return ValueTypeResolution.problem(
-        'the call before `.${call.name}(...)` answers `$current`, which this '
-        'walk cannot read as a type',
-      );
-    }
-    final receiver = typesByName[parsed.name];
-    // Not read at all, so nothing here has an opinion - the same answer a
-    // helper from an unresolved package gets, and for the same reason.
-    if (receiver == null) return null;
-    final method = _methodOn(receiver, call.name, typesByName);
-    if (method == null || method.isStatic) {
-      return ValueTypeResolution.problem(
-        '`${parsed.name}` was read and declares no instance method '
-        '`${call.name}`, so what `.${call.name}(...)` hands back cannot be '
-        'named. A declaration whose type cannot be named is neither collected '
-        'nor listed as uncollectable, which is why this is said out loud',
-      );
-    }
-    final returnType = method.returnTypeSource;
-    if (returnType == null) {
-      return ValueTypeResolution.problem(
-        '`${parsed.name}.${call.name}` has no written return type, so the '
-        'chain stops there and what the field holds is unnamed. Write the '
-        'return type',
-      );
-    }
-    if (method.typeParameters.contains(returnType)) {
-      return ValueTypeResolution.problem(
-        '`${parsed.name}.${call.name}` returns its own `$returnType`, and '
-        'nothing at the call site says what it was. Write the type argument, '
-        'or annotate the field',
-      );
-    }
-    current = returnType;
-  }
-  return ValueTypeResolution.type(current!);
-}
-
-/// The type the first call in a chain answers, or null when nothing read
-/// names it.
-///
-/// Two shapes, because two are written. `Field.float64(220)` is a static on a
-/// class the walk read, and its declared return type is the answer. `Barrel()`
-/// is a constructor, and the class is the answer - there is no return type to
-/// read, and a parse cannot tell a constructor from a function call except by
-/// finding the name in the classes it read.
-String? _headValueType(ScannedCall call, Map<String, ScannedType> typesByName) {
-  final dot = call.name.lastIndexOf('.');
-  if (dot < 0) {
-    final type = typesByName[call.name];
-    if (type == null) return null;
-    return call.typeArguments.isEmpty
-        ? type.name
-        : '${type.name}<${call.typeArguments.join(', ')}>';
-  }
-  if (dot == 0) return null;
-  final owner = typesByName[call.name.substring(0, dot)];
-  if (owner == null) return null;
-  // A named constructor lands here too - `Entity.pack(...)` - and is left
-  // alone rather than guessed at: the walk records methods and not
-  // constructors, so it cannot tell one from a static it never read.
-  final method = owner.methods[call.name.substring(dot + 1)];
-  if (method == null || !method.isStatic) return null;
-  final returnType = method.returnTypeSource;
-  if (returnType == null) return null;
-  if (method.typeParameters.isEmpty) return returnType;
-  final parsed = TypeSource.parse(returnType);
-  if (parsed == null || parsed.arguments.isEmpty) return returnType;
-  final arguments = <String>[];
-  for (final argument in parsed.arguments) {
-    final nullable = argument.endsWith('?');
-    final head = nullable
-        ? argument.substring(0, argument.length - 1)
-        : argument;
-    if (!method.typeParameters.contains(head)) {
-      arguments.add(argument);
-      continue;
-    }
-    final inferred = _inferTypeArgument(call, method, head);
-    arguments.add(
-      inferred == null ? argument : '$inferred${nullable ? '?' : ''}',
-    );
-  }
-  return '${parsed.name}<${arguments.join(', ')}>'
-      '${parsed.isNullable ? '?' : ''}';
-}
-
-/// [name] as [type] or anything above it declares it, or null.
-///
-/// Through the supertypes because a builder's methods are declared where the
-/// builder's interface is - `QueryBuilder.build`, not on whatever implements
-/// it - and a lookup that read only the receiver's own body would call an
-/// inherited call unresolvable and refuse a chain that is fine.
-ScannedMethod? _methodOn(
-  ScannedType type,
-  String name,
-  Map<String, ScannedType> typesByName, {
-  Set<String>? seen,
-}) {
-  final visited = seen ?? <String>{};
-  if (!visited.add(type.name)) return null;
-  final own = type.methods[name];
-  if (own != null) return own;
-  for (final supertype in type.supertypes) {
-    final above = typesByName[supertype];
-    if (above == null) continue;
-    final found = _methodOn(above, name, typesByName, seen: visited);
-    if (found != null) return found;
-  }
-  return null;
+ValueTypeResolution? resolveValueType(ScannedField field) {
+  final declared = field.valueType;
+  if (declared != null) return ValueTypeResolution.type(declared);
+  final why = field.valueTypeProblem;
+  return ValueTypeResolution.problem(
+    why == null
+        ? 'the analyzer could not say what this field holds, and reported '
+              'nothing about the line. A field whose type is unknown is '
+              'neither collected nor listed as uncollectable, so it is said '
+              'out loud instead'
+        : 'the analyzer could not say what this field holds: $why A field '
+              'whose type is unknown is neither collected nor listed as '
+              'uncollectable, so it is said out loud instead',
+  );
 }
 
 /// Whether [field] holds a declaration - a value marked [scannableFieldRoot].
@@ -1743,33 +1892,11 @@ bool isDeclarationField(
   ScannedField field,
   Map<String, ScannedType> typesByName,
 ) {
-  final declared = declaredValueType(field, typesByName);
+  final declared = declaredValueType(field);
   if (declared == null) return false;
   final parsed = TypeSource.parse(declared);
   if (parsed == null || parsed.isNullable) return false;
   return isSubtypeOf(parsed.name, scannableFieldRoot, typesByName);
-}
-
-/// Whether [field]'s initialiser starts with a plain constructor call.
-///
-/// `Enemy()` does; `Field.float64()`, `Query.all(A)` and `Asset.of(k)` do not,
-/// and neither does anything with no initialiser or one that is not a call.
-/// The test is the same one [_headValueType] makes - a head with no dot whose
-/// name is a class the walk read - because a parse cannot otherwise tell
-/// `Enemy()` from a call to a top-level function.
-///
-/// Read only where a chain *starts*. `Turret().tuned()` is still a
-/// constructor call to whoever reads the line, and the marker rule is about
-/// what the line looks like.
-bool isBareConstructorField(
-  ScannedField field,
-  Map<String, ScannedType> typesByName,
-) {
-  final chain = field.initializer;
-  if (chain.isEmpty) return false;
-  final head = chain.first;
-  if (head.name.contains('.')) return false;
-  return typesByName.containsKey(head.name);
 }
 
 /// Whether a generated collector reads [field] back off a constructed
@@ -1791,6 +1918,14 @@ bool isBareConstructorField(
 /// so what happens to it is that it is named, in
 /// [DeclarationScan.unmarked], and left out of the collector.
 ///
+/// The marker rule survives resolution and always would have. Resolution
+/// proves `Enemy()` is a [scannableFieldRoot]; it cannot say whether the field
+/// is a declared child or a spare, and that distinction is the whole reason
+/// the marker exists. What resolution *does* fix is the test for "bare
+/// constructor call" - see [ScannedField.isBareConstruction], which a
+/// `final spare = Barrel()..tune();` used to walk straight past into the
+/// collector.
+///
 /// [markers] is [scannableAnnotationNames] over the same walk.
 bool isCollectedDeclarationField(
   ScannedField field,
@@ -1798,7 +1933,7 @@ bool isCollectedDeclarationField(
   Set<String> markers,
 ) {
   if (!isDeclarationField(field, typesByName)) return false;
-  if (!isBareConstructorField(field, typesByName)) return true;
+  if (!field.isBareConstruction) return true;
   return field.annotations.any(
     (annotation) => markers.contains(annotationName(annotation)),
   );
@@ -1924,15 +2059,23 @@ class DeclarationScan {
   /// what is unknown, so it is reported instead of being answered either way.
   final List<DeclarationRefusal> unresolved;
 
-  /// Rings of structs that declare each other - see [declarationCycleMessage].
+  /// Rings a declaration waits on itself round - see
+  /// [declarationCycleMessage].
+  ///
+  /// Two shapes, and neither leaves a run anything to report from.
   ///
   /// A declared child is an ordinary field holding an ordinary constructor
   /// call, so a struct that declares itself, directly or round a ring, builds
-  /// one of itself while building itself. That does not terminate, and unlike
-  /// every other declaration mistake there is no moment at run time to catch
-  /// it in: nothing of this engine's is on the recursion, so what a run
-  /// produces is Dart's own `StackOverflowError` with no ring named. The ring
-  /// is a fact about the source, so this is where it can be named.
+  /// one of itself while building itself. That does not terminate, and nothing
+  /// of this engine's is on the recursion, so what a run produces is Dart's
+  /// own `StackOverflowError` with no ring named.
+  ///
+  /// A ring of `late` initialisers - `late final a = b; late final b = a;` -
+  /// compiles and throws `LateInitializationError` at the first touch, naming
+  /// one field and nothing about the ring. The collector's read *is* that
+  /// first touch, so the throw arrives at boot.
+  ///
+  /// Each ring is a fact about the source, so this is where it can be named.
   final List<DeclarationRefusal> cycles;
 
   /// Declarations that are accepted and that a collector cannot read, keyed
@@ -1944,21 +2087,18 @@ class DeclarationScan {
   /// this engine keeps being bitten by, and exactly why it is listed rather
   /// than swallowed.
   ///
-  /// Twenty-eight in this repository: eleven `Query` fields on five systems,
-  /// which nothing collects at run time and which cost nothing by being
-  /// missing, and seventeen `WorldTransform2D` and `WorldTransform3D` cache
-  /// columns - six and eleven - which are missing from the row of every struct
-  /// that mixes either in. It is not a refusal: whether those seventeen become
-  /// public, and every one of them would then generate a public accessor
-  /// property, is an open call, and a check that decided it by refusing would
-  /// be making it.
+  /// It is not a refusal: whether a private column becomes public, and every
+  /// one that does generates a public accessor property, is a call for whoever
+  /// owns the package - and a check that decided it by refusing would be
+  /// making it.
   ///
-  /// A count taken while [resolveValueType] read only a single call put it at
-  /// twenty-two, which is the seventeen plus the five queries written
-  /// `Query.all(...)`. The other six are written `Query.where()...build()`,
-  /// and a walk that stopped at the first call could not name them - so they
-  /// were not listed here, not commented into the generated file, and not
-  /// anywhere else either.
+  /// The count this list produces is a fact about the *scan* and not only
+  /// about the source, which is why it moved twice while the scan did. A walk
+  /// that read one call put it at twenty-two: the seventeen mixin cache
+  /// columns plus the five queries written `Query.all(...)`. The other six
+  /// were written `Query.where()...build()`, and a walk that stopped at the
+  /// first call could not name them - so they were not listed here, not
+  /// commented into the generated file, and not anywhere else either.
   final Map<String, String> uncollectable;
 
   /// Fields holding a declaration that nothing at the line says is one, keyed
@@ -1990,16 +2130,30 @@ class DeclarationScan {
 ///
 /// # What is refused, and why none of it is a style rule
 ///
-/// **`late`.** A `late final DataPointer<CameraView?> cameraView;` filled in
-/// from a `describeStruct` body is one declaration written twice, and the
-/// second half runs at a moment nothing at the declaration says. It is also
-/// what a collector trips over first: a collect pass reads declarations off a
-/// freshly constructed instance, and an unassigned `late final` throws there
-/// instead of yielding anything.
+/// **No initialiser, `late` or not.**
+/// `late final DataPointer<CameraView?> cameraView;` filled in from a
+/// `describeStruct` body is one declaration written twice, and the second half
+/// runs at a moment nothing at the declaration says. It is also what a
+/// collector trips over first: a collect pass reads declarations off a freshly
+/// constructed instance, and an unassigned `late final` throws there instead
+/// of yielding anything. Without the word it is the same field with the
+/// deferral unstated.
 ///
-/// **No initialiser at all.** The same thing with the word missing - the
-/// field is filled in from somewhere else, and the declaration does not say
-/// where.
+/// **A `late` field *with* an initialiser is allowed, and is how a declaration
+/// reaches `this`.** A `late` initialiser runs on first touch, after
+/// construction, so `Effector(region)` can name the field beside it and
+/// `Asset.of(key)` can read a constructor argument. The collector's read *is*
+/// that first touch and Dart memoises the result, so collect and gameplay see
+/// one object. The rule the `late` ban was carrying is the double declaration,
+/// and a `late final x = ...` is not one: it is written once, in the place
+/// that declares it.
+///
+/// Two things follow from running an initialiser later rather than never. An
+/// initialiser that throws now throws during collect, where the stack names
+/// the field rather than a hook. And a ring of them -
+/// `late final a = b; late final b = a;` - is a `LateInitializationError` that
+/// names nothing at run time, so it is refused here, the way a prefab ring is;
+/// see [DeclarationScan.cycles].
 ///
 /// # What is reported and not refused
 ///
@@ -2036,6 +2190,8 @@ DeclarationScan scanDeclarations(ScanSources sources) {
   final unmarked = <String, String>{};
   final markers = scannableAnnotationNames(sources);
 
+  final lateRings = <DeclarationRefusal>[];
+
   final paths = sources.units.keys.toList()..sort();
   for (final path in paths) {
     final unit = sources.units[path]!;
@@ -2063,13 +2219,14 @@ DeclarationScan scanDeclarations(ScanSources sources) {
     }
     for (final type in unit.types) {
       if (!isSubtypeOf(type.name, scannableRoot, scope)) continue;
+      lateRings.addAll(_lateInitializerRings(type, path, scope));
       final declarations = <ScannedDeclaration>[];
       for (final field in type.fields) {
         // Before the declaration test, because the declaration test is what
-        // cannot be answered. A field whose initialiser stopped half way is
-        // reported whatever it turns out to hold: going quiet here is how a
-        // declaration disappears from every list at once.
-        final resolution = resolveValueType(field, scope);
+        // cannot be answered. A field the analyzer could not type is reported
+        // whatever it turns out to hold: going quiet here is how a declaration
+        // disappears from every list at once.
+        final resolution = resolveValueType(field);
         if (resolution != null && resolution.problem != null) {
           unresolved.add(
             DeclarationRefusal(
@@ -2099,32 +2256,22 @@ DeclarationScan scanDeclarations(ScanSources sources) {
           );
           continue;
         }
-        if (field.isLate) {
-          refusals.add(
-            DeclarationRefusal(
-              owner: type.name,
-              field: field.name,
-              path: path,
-              reason:
-                  'it is late, so the value is assigned somewhere else - a '
-                  'describe pass, a constructor body - and the declaration is '
-                  'written twice. A collect pass reads declarations off a '
-                  'freshly constructed instance and finds this one '
-                  'unassigned. Give the field its initialiser',
-            ),
-          );
-          continue;
-        }
         if (!field.hasInitializer) {
           refusals.add(
             DeclarationRefusal(
               owner: type.name,
               field: field.name,
               path: path,
-              reason:
-                  'it has no initialiser, so whatever assigns it does so '
-                  'somewhere the declaration does not say. Give the field its '
-                  'initialiser',
+              reason: field.isLate
+                  ? 'it is late and has no initialiser, so the value is '
+                        'assigned somewhere else - a describe pass, a '
+                        'constructor body - and the declaration is written '
+                        'twice. A collect pass reads declarations off a '
+                        'freshly constructed instance and finds this one '
+                        'unassigned. Give the field its initialiser'
+                  : 'it has no initialiser, so whatever assigns it does so '
+                        'somewhere the declaration does not say. Give the '
+                        'field its initialiser',
             ),
           );
           continue;
@@ -2172,10 +2319,91 @@ DeclarationScan scanDeclarations(ScanSources sources) {
     declarers: declarers,
     refusals: refusals,
     unresolved: unresolved,
-    cycles: _declarationCycles(sources, typesByName, markers),
+    cycles: <DeclarationRefusal>[
+      ...lateRings,
+      ..._declarationCycles(sources, typesByName, markers),
+    ],
     uncollectable: uncollectable,
     unmarked: unmarked,
   );
+}
+
+/// Every ring of `late` fields whose initialisers read each other.
+///
+/// `late final a = b; late final b = a;` compiles, and the first touch of
+/// either throws `LateInitializationError: Field 'a' has not been initialized`
+/// - a message that names one field and nothing about the ring, from a stack
+/// with no engine frame on it. A collector's read *is* that first touch, so a
+/// ring among a scanned class's own fields is a boot that dies with nothing to
+/// go on. The ring is a fact about the source, so this is where it can be
+/// named, and it is the same trade [_declarationCycles] makes for prefabs.
+///
+/// Reported only where the ring contains a declaration. Two `late` fields of
+/// a scanned class that hold ordinary objects and read each other are a bug in
+/// somebody's code, and one nothing here is collecting - refusing it would be
+/// this tool deciding what a class may hold.
+///
+/// The reads come off the element model ([ScannedField.readsFields]), so
+/// `late final a = b;` counts and `late final a = other.b;` does not.
+List<DeclarationRefusal> _lateInitializerRings(
+  ScannedType type,
+  String path,
+  Map<String, ScannedType> typesByName,
+) {
+  final deferred = <String, ScannedField>{
+    for (final field in type.fields)
+      if (field.isLate && field.hasInitializer && !field.isStatic)
+        field.name: field,
+  };
+  if (deferred.length < 2) return const <DeclarationRefusal>[];
+
+  final found = <DeclarationRefusal>[];
+  final reported = <String>{};
+  final state = <String, int>{};
+  final stack = <String>[];
+
+  void walk(String name) {
+    state[name] = 1;
+    stack.add(name);
+    for (final read in deferred[name]!.readsFields) {
+      if (!deferred.containsKey(read)) continue;
+      final seen = state[read] ?? 0;
+      if (seen == 0) {
+        walk(read);
+      } else if (seen == 1) {
+        final ring = stack.sublist(stack.indexOf(read))..add(read);
+        if (!ring.any(
+          (field) => isDeclarationField(deferred[field]!, typesByName),
+        )) {
+          continue;
+        }
+        final key = (ring.toList()..sort()).join(',');
+        if (!reported.add(key)) continue;
+        found.add(
+          DeclarationRefusal(
+            owner: type.name,
+            field: ring.first,
+            path: path,
+            reason:
+                'its initialiser reads `${ring[1]}`, and that closes a ring: '
+                '${ring.join(' -> ')}. Every one of them is late, so each is '
+                'waiting on the next and the first read of any of them throws '
+                'LateInitializationError naming one field and nothing about '
+                'the ring. A collector reads declarations off a constructed '
+                'instance, so that read is the boot. Break the ring',
+          ),
+        );
+      }
+    }
+    stack.removeLast();
+    state[name] = 2;
+  }
+
+  final names = deferred.keys.toList()..sort();
+  for (final name in names) {
+    if ((state[name] ?? 0) == 0) walk(name);
+  }
+  return found;
 }
 
 /// Every ring of structs that build each other while being built.
@@ -2347,7 +2575,7 @@ List<ScannedDeclaration> flattenedDeclarations(
         ScannedDeclaration(
           owner: type.name,
           name: field.name,
-          valueType: declaredValueType(field, typesByName)!,
+          valueType: declaredValueType(field)!,
           annotations: <String>[
             for (final annotation in field.annotations)
               if (markers.contains(annotationName(annotation))) annotation,
@@ -2467,7 +2695,7 @@ String declarationCycleMessage(
   String Function(String path) display,
 ) {
   final lines = StringBuffer()
-    ..writeln('A struct declares itself, round a ring of declared children:')
+    ..writeln('A declaration waits on itself, round a ring:')
     ..writeln();
   for (final refusal in scan.cycles) {
     lines.writeln(
@@ -2478,16 +2706,18 @@ String declarationCycleMessage(
   lines
     ..writeln()
     ..writeln(
-      'A declared child is a field holding an ordinary constructor call, so a '
-      'ring of them is a constructor that calls itself. Nothing of this '
-      'engine is on that recursion and there is no moment in a run to catch '
-      'it in - what a run produces is a StackOverflowError naming nothing. '
-      'The ring is a fact about the source, so it is named here instead.',
+      'Two shapes reach this, and neither has a moment in a run to be caught '
+      'in. A declared child is a field holding an ordinary constructor call, '
+      'so a ring of them is a constructor that calls itself, and what a run '
+      'produces is a StackOverflowError naming nothing. A ring of `late` '
+      'initialisers is a LateInitializationError naming one field and nothing '
+      'about the ring, thrown at the first touch - which is the collector. '
+      'Each ring is a fact about the source, so it is named here instead.',
     );
   return lines.toString();
 }
 
-/// What a run stopping over an initialiser it could not follow says.
+/// What a run stopping over a field it could not type says.
 ///
 /// [display] names files the way [declarationRefusalMessage]'s does.
 String unresolvedInitializerMessage(
@@ -2495,7 +2725,7 @@ String unresolvedInitializerMessage(
   String Function(String path) display,
 ) {
   final lines = StringBuffer()
-    ..writeln('An initialiser was read part of the way and then stopped:')
+    ..writeln('A field on a scanned class has no type the analyzer could name:')
     ..writeln();
   for (final refusal in scan.unresolved) {
     lines.writeln(
@@ -2506,11 +2736,13 @@ String unresolvedInitializerMessage(
   lines
     ..writeln()
     ..writeln(
-      'Each of these is a field whose type this walk cannot name, on a class '
-      'it does scan. It cannot say whether the field is a declaration, so it '
-      'says that instead of picking an answer: a field it guessed was not one '
-      'would be left out of the collector, out of the row, and out of the '
-      'uncollectable list, with nothing anywhere to read.',
+      'Each of these is a field on a class this run does scan, and what it '
+      'holds decides whether it is a declaration. So an unknown type is said '
+      'rather than answered: a field guessed to be no declaration is left out '
+      'of the collector, out of the row, and out of the uncollectable list, '
+      'with nothing anywhere to read. The reason beside each one is the '
+      "analyzer's own, because the edit that fixes it is different every "
+      'time - a member that is not there, a package that did not resolve.',
     );
   return lines.toString();
 }
@@ -2611,8 +2843,8 @@ class StructRuleScan {
 /// calling super would not compile. It is written that way in `goo2d`'s own
 /// example, and a rule keyed on the name alone reports it - measured, before
 /// this line was here.
-StructRuleScan scanStructRules(Directory project) {
-  final sources = readSources(project);
+Future<StructRuleScan> scanStructRules(Directory project) async {
+  final sources = await readSources(project);
   final typesByName = sources.typesByName;
   final own = p.normalize(p.absolute(p.join(project.path, 'lib')));
 
@@ -2796,8 +3028,8 @@ class SceneUsage {
 /// attributes rather than under-attributes: an asset in one chunk too many
 /// costs bytes, and one missing from the chunk a scene loads is a game that
 /// fails at its first asset load. The same reason [unresolved] exists.
-SceneUsage scanScenes(Directory project, AssetScan assets) {
-  final sources = readSources(project);
+Future<SceneUsage> scanScenes(Directory project, AssetScan assets) async {
+  final sources = await readSources(project);
   final typesByName = sources.typesByName;
   final own = p.normalize(p.absolute(p.join(project.path, 'lib')));
 

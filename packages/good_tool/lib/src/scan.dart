@@ -209,9 +209,9 @@ class AccessorScan {
 /// semantically would still be noise in a review.
 AccessorScan scanAccessors({
   required List<EnginePackage> packages,
-  ScanSources? sources,
+  required ScanSources sources,
 }) {
-  final read = sources ?? readPackageSources(packages);
+  final read = sources;
   final byLibDir = <String, EnginePackage>{
     for (final package in packages) package.libDir: package,
   };
@@ -238,7 +238,7 @@ AccessorScan scanAccessors({
       final needed = <String>{};
       for (final field in type.fields) {
         if (field.isStatic) continue;
-        final column = columnValueType(field, typesByName);
+        final column = columnValueType(field);
         if (column == null) continue;
         final key = '${type.name}.${field.name}';
         if (column.problem != null) {
@@ -458,9 +458,9 @@ class ComponentBitScan {
 /// would give two machines two meanings for one query signature.
 ComponentBitScan scanComponentBits({
   required List<EnginePackage> packages,
-  ScanSources? sources,
+  required ScanSources sources,
 }) {
-  final read = sources ?? readPackageSources(packages);
+  final read = sources;
   final byLibDir = <String, EnginePackage>{
     for (final package in packages) package.libDir: package,
   };
@@ -731,7 +731,7 @@ bool _dependsOn(
 /// the packages being written into. Their own generated parts are left out
 /// for the reason the three `lib/` files are: a generator that read its own
 /// output back would be reading a copy of the answer it is computing.
-ScanSources readFixtureSources(
+Future<ScanSources> readFixtureSources(
   List<EnginePackage> packages,
   List<EnginePackage> readable,
 ) {
