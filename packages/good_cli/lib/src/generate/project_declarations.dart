@@ -40,6 +40,18 @@ import 'package:good_cli/src/generate/scan.dart';
 import 'package:meta/meta.dart';
 import 'package:path/path.dart' as p;
 
+/// The engine is not in what a project resolves, so nothing can be said about
+/// what its classes declare.
+///
+/// A type of its own, and an `ArgumentError` so it still exits 65 like every
+/// other refusal. The type is what lets `good generate` tell this apart from
+/// the other reasons this file refuses - a pubspec with no name, say - which
+/// matters because this is the only one a `--no-pub-get` run is entitled to
+/// carry on past.
+class UnresolvedEngine extends ArgumentError {
+  UnresolvedEngine(super.message);
+}
+
 /// A project and the engine packages it resolved, as packages a generator
 /// addresses.
 @immutable
@@ -169,7 +181,7 @@ ProjectDeclarations projectDeclarations(
   );
 
   if (!sources.typesByName.containsKey(scannableRoot)) {
-    throw ArgumentError(
+    throw UnresolvedEngine(
       'Cannot read the engine from ${projectDir.path}, so nothing can be said '
       'about which of its classes declare anything: $scannableRoot is in none '
       'of the source this read.\n'

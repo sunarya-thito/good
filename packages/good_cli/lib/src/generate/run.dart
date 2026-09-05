@@ -381,7 +381,10 @@ int _declarations(
   final ProjectDeclarations declarations;
   try {
     declarations = projectDeclarations(project, command: command);
-  } on ArgumentError {
+  } on UnresolvedEngine {
+    // Only this one. A pubspec with no name is refused here as everywhere
+    // else; what `--no-pub-get` buys is permission to leave the resolve to
+    // whoever runs next, and nothing more.
     if (pubGet) rethrow;
     out.println(
       '--no-pub-get: this project resolves no engine package, so its '
