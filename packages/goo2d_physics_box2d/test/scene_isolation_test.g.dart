@@ -23,6 +23,7 @@ part of 'scene_isolation_test.dart';
 List<ScannableField> _collect$Wall(Object object) {
   final owner = object as _Wall;
   return <ScannableField>[
+    owner.box,
     owner.bodyHandle,
     owner.bodyType,
     owner.bodyLinearVelocityX,
@@ -50,6 +51,7 @@ List<ScannableField> _collect$Wall(Object object) {
 List<ScannableField> _collect$Ball(Object object) {
   final owner = object as _Ball;
   return <ScannableField>[
+    owner.box,
     owner.bodyHandle,
     owner.bodyType,
     owner.bodyLinearVelocityX,

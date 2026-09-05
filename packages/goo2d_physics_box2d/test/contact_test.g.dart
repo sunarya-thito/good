@@ -23,6 +23,7 @@ part of 'contact_test.dart';
 List<ScannableField> _collect$Crate(Object object) {
   final owner = object as _Crate;
   return <ScannableField>[
+    owner.box,
     owner.bodyHandle,
     owner.bodyType,
     owner.bodyLinearVelocityX,
@@ -50,6 +51,7 @@ List<ScannableField> _collect$Crate(Object object) {
 List<ScannableField> _collect$Floor(Object object) {
   final owner = object as _Floor;
   return <ScannableField>[
+    owner.box,
     owner.bodyHandle,
     owner.bodyType,
     owner.bodyLinearVelocityX,
@@ -77,6 +79,7 @@ List<ScannableField> _collect$Floor(Object object) {
 List<ScannableField> _collect$Zone(Object object) {
   final owner = object as _Zone;
   return <ScannableField>[
+    owner.box,
     owner.bodyHandle,
     owner.bodyType,
     owner.bodyLinearVelocityX,

@@ -23,6 +23,7 @@ part of 'query_test.dart';
 List<ScannableField> _collect$Wall(Object object) {
   final owner = object as _Wall;
   return <ScannableField>[
+    owner.box,
     owner.bodyHandle,
     owner.bodyType,
     owner.bodyLinearVelocityX,
@@ -50,6 +51,7 @@ List<ScannableField> _collect$Wall(Object object) {
 List<ScannableField> _collect$Hidden(Object object) {
   final owner = object as _Hidden;
   return <ScannableField>[
+    owner.box,
     owner.bodyHandle,
     owner.bodyType,
     owner.bodyLinearVelocityX,

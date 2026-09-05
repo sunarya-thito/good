@@ -179,23 +179,17 @@ class Crate extends EntityStruct
   // scale twice and draws everything _pixelsPerMetre times too large,
   // which is exactly how this was first written.
   final body = Sprite.of(width: 1, height: 1, color: _crateColor);
-  late final BoxBody box;
+  final box = ColliderBody.box(
+    halfWidth: 0.5,
+    halfHeight: 0.5,
+    friction: 0.4,
+    restitution: 0.15,
+  );
 
   /// Seconds of flash remaining. A component field rather than plain Dart
   /// state on the prefab, because it is per *entity* - the prefab is one
   /// object shared by every crate.
   final flash = Field.float64();
-
-  @override
-  void describeCollider(ColliderDescriptor descriptor) {
-    super.describeCollider(descriptor);
-    box = descriptor.hasBoxCollider(
-      halfWidth: 0.5,
-      halfHeight: 0.5,
-      friction: 0.4,
-      restitution: 0.15,
-    );
-  }
 
   /// Enter only, not stay: a resting crate collides every single tick, so
   /// lighting on stay would leave the whole pile permanently lit and show
@@ -258,19 +252,13 @@ class Ball extends EntityStruct
         EntityLifecycleListener {
   // Matches the 0.4 m collider radius below.
   final body = Sprite.of(width: 0.8, height: 0.8, color: _ballColor);
-  late final CircleBody circle;
+  final circle = ColliderBody.circle(
+    radius: 0.4,
+    friction: 0.3,
+    restitution: 0.72,
+  );
 
   final flash = Field.float64();
-
-  @override
-  void describeCollider(ColliderDescriptor descriptor) {
-    super.describeCollider(descriptor);
-    circle = descriptor.hasCircleCollider(
-      radius: 0.4,
-      friction: 0.3,
-      restitution: 0.72,
-    );
-  }
 
   @override
   void onCollisionEnter2D(Collision2DEvent event) {
@@ -324,7 +312,7 @@ class Ball extends EntityStruct
 /// # Why this sizes itself per entity
 ///
 /// The arena grows with the population, so the floor's extent is not a
-/// constant. `describeCollider` can only set the field's *default*, and the
+/// constant. `ColliderBody.box` can only set the field's *default*, and the
 /// Box2D shape is built from whatever the field holds when the body is
 /// created - which is during `onEntitySpawned`, immediately after
 /// [onEntityMounted]. So writing the size here is the only point early enough
@@ -342,16 +330,10 @@ class Ground extends EntityStruct
         RigidBody2D,
         EntityLifecycleListener {
   final body = Sprite.of(color: _floorColor);
-  late final BoxBody box;
+  final box = ColliderBody.box(friction: 0.6);
 
   /// Set by [SandboxSystem] before the entity is added.
   Arena arena = Arena.forPopulation(0);
-
-  @override
-  void describeCollider(ColliderDescriptor descriptor) {
-    super.describeCollider(descriptor);
-    box = descriptor.hasBoxCollider(friction: 0.6);
-  }
 
   @override
   void describeStruct(DataDescriptor data) {
@@ -387,19 +369,13 @@ class Wall extends EntityStruct
         RigidBody2D,
         EntityLifecycleListener {
   final body = Sprite.of(color: _floorColor);
-  late final BoxBody box;
+  final box = ColliderBody.box();
 
   /// Set by [SandboxSystem] before the entity is added.
   Arena arena = Arena.forPopulation(0);
 
   /// Which side this one is: -1 for left, 1 for right.
   double side = -1;
-
-  @override
-  void describeCollider(ColliderDescriptor descriptor) {
-    super.describeCollider(descriptor);
-    box = descriptor.hasBoxCollider();
-  }
 
   @override
   void describeStruct(DataDescriptor data) {

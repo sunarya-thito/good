@@ -405,8 +405,8 @@ class Box2DPhysicsSystem extends GameSystem
           false,
           'an effector region must be a box or a circle collider - '
           '\${region.runtimeType} has no meaningful axis-aligned extent for '
-          'this to query. Declare the zone with hasBoxCollider or '
-          'hasCircleCollider.',
+          'this to query. Declare the zone with ColliderBody.box or '
+          'ColliderBody.circle.',
         );
         return;
     }

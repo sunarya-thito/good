@@ -38,13 +38,7 @@ class _Target extends EntityStruct
         PointerReceiver,
         HoverReceiver {
   final quad = Sprite.of(width: 40, height: 40);
-  late final BoxBody hitArea;
-
-  @override
-  void describeCollider(ColliderDescriptor descriptor) {
-    super.describeCollider(descriptor);
-    hitArea = descriptor.hasBoxCollider(halfWidth: 20, halfHeight: 20);
-  }
+  final hitArea = ColliderBody.box(halfWidth: 20, halfHeight: 20);
 
   @override
   void onHoverEnter(PointerPickEvent event) => events.add('enter');

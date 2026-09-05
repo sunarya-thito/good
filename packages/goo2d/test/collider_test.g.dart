@@ -23,6 +23,9 @@ part of 'collider_test.dart';
 List<ScannableField> _collect$Player(Object object) {
   final owner = object as _Player;
   return <ScannableField>[
+    owner.box,
+    owner.hurtbox,
+    owner.pickupRange,
     owner.transformOffsetX,
     owner.transformOffsetY,
     owner.transformScaleX,
@@ -36,6 +39,7 @@ List<ScannableField> _collect$Player(Object object) {
 List<ScannableField> _collect$Wall(Object object) {
   final owner = object as _Wall;
   return <ScannableField>[
+    owner.box,
     owner.transformOffsetX,
     owner.transformOffsetY,
     owner.transformScaleX,
@@ -49,6 +53,7 @@ List<ScannableField> _collect$Wall(Object object) {
 List<ScannableField> _collect$Polygon(Object object) {
   final owner = object as _Polygon;
   return <ScannableField>[
+    owner.triangle,
     owner.transformOffsetX,
     owner.transformOffsetY,
     owner.transformScaleX,
@@ -62,6 +67,8 @@ List<ScannableField> _collect$Polygon(Object object) {
 List<ScannableField> _collect$Capsule(Object object) {
   final owner = object as _Capsule;
   return <ScannableField>[
+    owner.pill,
+    owner.squashed,
     owner.transformOffsetX,
     owner.transformOffsetY,
     owner.transformScaleX,
@@ -75,6 +82,7 @@ List<ScannableField> _collect$Capsule(Object object) {
 List<ScannableField> _collect$Concave(Object object) {
   final owner = object as _Concave;
   return <ScannableField>[
+    owner.arrow,
     owner.transformOffsetX,
     owner.transformOffsetY,
     owner.transformScaleX,
@@ -98,9 +106,10 @@ List<ScannableField> _collect$Scene(Object object) {
   ];
 }
 
-List<ScannableField> _collect$AdHoc(Object object) {
-  final owner = object as _AdHoc;
+List<ScannableField> _collect$WidePolygon(Object object) {
+  final owner = object as _WidePolygon;
   return <ScannableField>[
+    owner.wide,
     owner.transformOffsetX,
     owner.transformOffsetY,
     owner.transformScaleX,
@@ -111,9 +120,10 @@ List<ScannableField> _collect$AdHoc(Object object) {
   ];
 }
 
-List<ScannableField> _collect$AdHocScene(Object object) {
-  final owner = object as _AdHocScene;
+List<ScannableField> _collect$WidePolygonScene(Object object) {
+  final owner = object as _WidePolygonScene;
   return <ScannableField>[
+    owner.polygon,
     owner.mountedEvent,
     owner.unmountedEvent,
   ];
@@ -134,8 +144,8 @@ const GeneratedDeclarations _colliderTestDeclarations =
         DeclarationCollector(_Capsule, _collect$Capsule),
         DeclarationCollector(_Concave, _collect$Concave),
         DeclarationCollector(_Scene, _collect$Scene),
-        DeclarationCollector(_AdHoc, _collect$AdHoc),
-        DeclarationCollector(_AdHocScene, _collect$AdHocScene),
+        DeclarationCollector(_WidePolygon, _collect$WidePolygon),
+        DeclarationCollector(_WidePolygonScene, _collect$WidePolygonScene),
       ],
       dependencies: <GeneratedDeclarations>[
         goo2dDeclarations,

@@ -24,6 +24,7 @@ List<ScannableField> _collect$Anchor(Object object) {
   final owner = object as Anchor;
   return <ScannableField>[
     owner.body,
+    owner.box,
     owner.bodyHandle,
     owner.bodyType,
     owner.bodyLinearVelocityX,
@@ -52,6 +53,7 @@ List<ScannableField> _collect$Link(Object object) {
   final owner = object as Link;
   return <ScannableField>[
     owner.body,
+    owner.box,
     owner.bodyHandle,
     owner.bodyType,
     owner.bodyLinearVelocityX,
@@ -80,6 +82,7 @@ List<ScannableField> _collect$Weight(Object object) {
   final owner = object as Weight;
   return <ScannableField>[
     owner.body,
+    owner.box,
     owner.bodyHandle,
     owner.bodyType,
     owner.bodyLinearVelocityX,
@@ -109,6 +112,7 @@ List<ScannableField> _collect$Wheel(Object object) {
   return <ScannableField>[
     owner.body,
     owner.spoke,
+    owner.circle,
     owner.bodyHandle,
     owner.bodyType,
     owner.bodyLinearVelocityX,

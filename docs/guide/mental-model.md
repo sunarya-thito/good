@@ -10,13 +10,7 @@ class Player extends EntityStruct
   final shieldEnergy = Field.float64();
 
   final sprite = Sprite.of(width: 64, height: 64);
-  late final CircleBody hitbox;
-
-  @override
-  void describeCollider(ColliderDescriptor descriptor) {
-    super.describeCollider(descriptor);
-    hitbox = descriptor.hasCircleCollider(radius: 0.5);
-  }
+  final hitbox = ColliderBody.circle(radius: 0.5);
 }
 
 late Player player;

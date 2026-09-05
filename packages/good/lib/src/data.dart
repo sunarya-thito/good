@@ -201,7 +201,7 @@ abstract class DataDescriptor {
   /// can reserve slots beyond the values it starts with and have them written
   /// per entity later. More values than the array can hold is an error.
   ///
-  /// `goo2d`'s `hasPolygonCollider(points: ...)` is the reference use: a
+  /// `goo2d`'s `ColliderBody.polygon(points: ...)` is the reference use: a
   /// prefab whose outline is fixed states it where it declares the field,
   /// instead of writing every vertex from `onEntityMounted`.
   ///

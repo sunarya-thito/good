@@ -63,20 +63,14 @@ const int _spokeColor = 0xFF1E88E5;
 class Anchor extends EntityStruct
     with Transform2D, Renderable2D, Collider2D, RigidBody2D {
   final body = Sprite.of(width: 1.2, height: 0.4, color: _anchorColor);
-  late final BoxBody box;
-
-  @override
-  void describeCollider(ColliderDescriptor descriptor) {
-    super.describeCollider(descriptor);
-    // Layer 1, excluded by everything else below: an anchor is scenery, and a
-    // chain that collides with its own anchor jitters against it forever.
-    box = descriptor.hasBoxCollider(
-      halfWidth: 0.6,
-      halfHeight: 0.2,
-      layer: 1,
-      excludeLayers: -1,
-    );
-  }
+  // Layer 1, excluded by everything else below: an anchor is scenery, and a
+  // chain that collides with its own anchor jitters against it forever.
+  final box = ColliderBody.box(
+    halfWidth: 0.6,
+    halfHeight: 0.2,
+    layer: 1,
+    excludeLayers: -1,
+  );
 
   @override
   void describeStruct(DataDescriptor data) {
@@ -93,21 +87,15 @@ class Link extends EntityStruct
     height: _linkHalfHeight * 2,
     color: _linkColor,
   );
-  late final BoxBody box;
-
-  @override
-  void describeCollider(ColliderDescriptor descriptor) {
-    super.describeCollider(descriptor);
-    // Layer 2, colliding with nothing: links are held together by joints, and
-    // letting neighbours collide as well makes a chain buzz rather than hang.
-    // That is the standard way to build a rope in Box2D, not a shortcut.
-    box = descriptor.hasBoxCollider(
-      halfWidth: _linkHalfWidth,
-      halfHeight: _linkHalfHeight,
-      layer: 2,
-      excludeLayers: -1,
-    );
-  }
+  // Layer 2, colliding with nothing: links are held together by joints, and
+  // letting neighbours collide as well makes a chain buzz rather than hang.
+  // That is the standard way to build a rope in Box2D, not a shortcut.
+  final box = ColliderBody.box(
+    halfWidth: _linkHalfWidth,
+    halfHeight: _linkHalfHeight,
+    layer: 2,
+    excludeLayers: -1,
+  );
 }
 
 /// A heavy mass on the end of a chain, so the breakable one has something to
@@ -115,21 +103,15 @@ class Link extends EntityStruct
 class Weight extends EntityStruct
     with Transform2D, Renderable2D, Collider2D, RigidBody2D {
   final body = Sprite.of(width: 1.6, height: 1.6, color: _weightColor);
-  late final BoxBody box;
-
-  @override
-  void describeCollider(ColliderDescriptor descriptor) {
-    super.describeCollider(descriptor);
-    // Density 12 against the links' default 1 - the whole point of this one
-    // is to load the chain above it hard enough to tear.
-    box = descriptor.hasBoxCollider(
-      halfWidth: 0.8,
-      halfHeight: 0.8,
-      density: 12,
-      layer: 2,
-      excludeLayers: -1,
-    );
-  }
+  // Density 12 against the links' default 1 - the whole point of this one
+  // is to load the chain above it hard enough to tear.
+  final box = ColliderBody.box(
+    halfWidth: 0.8,
+    halfHeight: 0.8,
+    density: 12,
+    layer: 2,
+    excludeLayers: -1,
+  );
 }
 
 /// A motorised wheel, pinned to a static hub by a revolute joint.
@@ -162,13 +144,7 @@ class Wheel extends EntityStruct
     zIndex: 1,
     pivot: const RelativeOffset2D(fractionX: 0.5, fractionY: 1),
   );
-  late final CircleBody circle;
-
-  @override
-  void describeCollider(ColliderDescriptor descriptor) {
-    super.describeCollider(descriptor);
-    circle = descriptor.hasCircleCollider(radius: 1.7, layer: 3);
-  }
+  final circle = ColliderBody.circle(radius: 1.7, layer: 3);
 }
 
 class Eye extends EntityStruct with Transform2D, WorldTransform2D, Camera {}

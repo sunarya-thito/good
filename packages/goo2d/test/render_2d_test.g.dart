@@ -407,6 +407,7 @@ List<ScannableField> _collect$PivotBody(Object object) {
   final owner = object as _PivotBody;
   return <ScannableField>[
     owner.quad,
+    owner.box,
     owner.worldX,
     owner.worldY,
     owner.worldScaleX,
