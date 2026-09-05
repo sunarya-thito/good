@@ -68,7 +68,7 @@ the same name:
 
 ```markdown
 <!-- snippet-setup
-final descriptor = given<EffectorDescriptor>();
+final track = given<Track<double>>();
 -->
 ```
 

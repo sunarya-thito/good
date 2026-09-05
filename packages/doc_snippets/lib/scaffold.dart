@@ -33,7 +33,7 @@ import 'package:goo2d/goo2d.dart';
 
 /// A stand-in for something a fragment is handed by the code around it.
 ///
-/// `final descriptor = given<EffectorDescriptor>();` in a
+/// `final track = given<Track<double>>();` in a
 /// `<!-- snippet-setup -->`
 /// block gives the fence a correctly typed local without a page of
 /// construction. Typed and never `dynamic`, so the call inside the fence is

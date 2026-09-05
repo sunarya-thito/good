@@ -24,6 +24,7 @@ List<ScannableField> _collect$Zone(Object object) {
   final owner = object as _Zone;
   return <ScannableField>[
     owner.region,
+    owner.wind,
     owner.transformOffsetX,
     owner.transformOffsetY,
     owner.transformScaleX,
@@ -38,6 +39,7 @@ List<ScannableField> _collect$Pool(Object object) {
   final owner = object as _Pool;
   return <ScannableField>[
     owner.region,
+    owner.water,
     owner.transformOffsetX,
     owner.transformOffsetY,
     owner.transformScaleX,
@@ -71,6 +73,29 @@ List<ScannableField> _collect$Box(Object object) {
     owner.transformScaleX,
     owner.transformScaleY,
     owner.transformRotation,
+    owner.mountedEvent,
+    owner.unmountedEvent,
+  ];
+}
+
+List<ScannableField> _collect$Loose(Object object) {
+  final owner = object as _Loose;
+  return <ScannableField>[
+    owner.wind,
+    owner.transformOffsetX,
+    owner.transformOffsetY,
+    owner.transformScaleX,
+    owner.transformScaleY,
+    owner.transformRotation,
+    owner.mountedEvent,
+    owner.unmountedEvent,
+  ];
+}
+
+List<ScannableField> _collect$LooseScene(Object object) {
+  final owner = object as _LooseScene;
+  return <ScannableField>[
+    owner.zone,
     owner.mountedEvent,
     owner.unmountedEvent,
   ];
@@ -136,6 +161,8 @@ const GeneratedDeclarations _effectorDeclaredTestDeclarations =
         DeclarationCollector(_Zone, _collect$Zone),
         DeclarationCollector(_Pool, _collect$Pool),
         DeclarationCollector(_Box, _collect$Box),
+        DeclarationCollector(_Loose, _collect$Loose),
+        DeclarationCollector(_LooseScene, _collect$LooseScene),
         DeclarationCollector(_Scene, _collect$Scene),
         DeclarationCollector(_Setup, _collect$Setup),
         DeclarationCollector(_OneShot, _collect$OneShot),
