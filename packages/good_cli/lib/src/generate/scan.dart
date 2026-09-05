@@ -245,10 +245,15 @@ class ScannedField {
 
   /// Whether it is written `late`.
   ///
-  /// A `late` field with an initialiser is allowed and is how a declaration
-  /// reaches `this`; a `late` field without one is the half of a double
-  /// declaration this walk can see. So this is read together with
-  /// [hasInitializer] and never on its own - see `scanDeclarations`.
+  /// **Read only to word a refusal, never to decide one.** What is refused is
+  /// a declaration with no initialiser, which [hasInitializer] answers on its
+  /// own; the word only changes the sentence, because `late final X x;` and
+  /// `X x;` are the same field with the deferral spelled two ways.
+  ///
+  /// Said outright because the obvious edit is wrong. A walk keyed on this
+  /// would re-refuse every `late final x = Effector(region);` - the shape that
+  /// exists so a declaration can reach `this` - and the refusal would look
+  /// like the old rule working rather than a new bug.
   final bool isLate;
 
   /// Whether it has an initialiser at its declaration.
@@ -2144,23 +2149,27 @@ class DeclarationScan {
 ///
 /// # What is refused, and why none of it is a style rule
 ///
-/// **No initialiser, `late` or not.**
+/// **A declaration with no initialiser, and that is the whole of the rule.**
 /// `late final DataPointer<CameraView?> cameraView;` filled in from a
 /// `describeStruct` body is one declaration written twice, and the second half
 /// runs at a moment nothing at the declaration says. It is also what a
 /// collector trips over first: a collect pass reads declarations off a freshly
 /// constructed instance, and an unassigned `late final` throws there instead
-/// of yielding anything. Without the word it is the same field with the
+/// of yielding anything. Drop the word and it is the same field with the
 /// deferral unstated.
 ///
-/// **A `late` field *with* an initialiser is allowed, and is how a declaration
-/// reaches `this`.** A `late` initialiser runs on first touch, after
-/// construction, so `Effector(region)` can name the field beside it and
-/// `Asset.of(key)` can read a constructor argument. The collector's read *is*
-/// that first touch and Dart memoises the result, so collect and gameplay see
-/// one object. The rule the `late` ban was carrying is the double declaration,
-/// and a `late final x = ...` is not one: it is written once, in the place
-/// that declares it.
+/// **`late` is not what is refused, and never was.** A `late` initialiser runs
+/// on first touch, after construction, so it is the one shape that can read
+/// `this` - `Effector(region)` names the field beside it, `Asset.of(key)`
+/// reads a constructor argument. The collector's read *is* that first touch
+/// and Dart memoises the result, so collect and gameplay see one object.
+/// `late final x = ...` is written once, in the place that declares it, which
+/// is what the rule asks for.
+///
+/// The distinction is load-bearing in one direction: this walk decides on
+/// [ScannedField.hasInitializer] and reads [ScannedField.isLate] only to word
+/// the message. A later edit that keyed the decision on the word would refuse
+/// every deferred declaration again, and would read as the old rule working.
 ///
 /// Two things follow from running an initialiser later rather than never. An
 /// initialiser that throws now throws during collect, where the stack names

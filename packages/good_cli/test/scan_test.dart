@@ -495,15 +495,15 @@ class Player extends EntityStruct {
     });
 
     test('a late field with an initialiser is a declaration', () async {
-      // The narrowing. A `late` initialiser runs on first touch, after
-      // construction, so it is the one shape that can read `this` - which is
-      // how an effector names the region beside it and how an asset key
-      // arrives as a constructor argument. The collector's read *is* that
-      // first touch, and Dart memoises the result, so collect and gameplay
-      // see one object.
+      // A `late` initialiser runs on first touch, after construction, so it
+      // is the one shape that can read `this` - which is how an effector names
+      // the region beside it and how an asset key arrives as a constructor
+      // argument. The collector's read *is* that first touch, and Dart
+      // memoises the result, so collect and gameplay see one object.
       //
-      // The pair matters more than either half: the ban was on the double
-      // declaration, and `late final x = ...` is written once.
+      // The pair with the test above is what holds the rule in place. What is
+      // refused is a declaration with no initialiser, so a walk rewritten to
+      // key on the word `late` passes that one and fails this one.
       final scan = await _declarations('''
 class Player extends EntityStruct {
   late final deferred = Field.float64();
