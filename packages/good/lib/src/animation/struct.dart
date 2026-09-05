@@ -97,11 +97,18 @@ final class Track<T> implements ScannableField {
   /// which is what makes the default-value fallback free instead of a lookup.
   final List<List<_Key<T>>> _clips = <List<_Key<T>>>[];
 
-  List<_Key<T>> _keysFor(int clipId) {
+  /// Hands [keys] to this track as clip [clipId]'s key list.
+  ///
+  /// The list is **installed**, not copied into. A clip buffers its keys
+  /// before it has an id (see [TimelineAnimation.clipId]), and a
+  /// `TrackAnimator` handed out during that buffering keeps writing into the
+  /// list it was given - so copying would silently drop every key written
+  /// after the timeline numbered the clip.
+  void _installKeys(int clipId, List<_Key<T>> keys) {
     while (_clips.length <= clipId) {
       _clips.add(<_Key<T>>[]);
     }
-    return _clips[clipId];
+    _clips[clipId] = keys;
   }
 
   /// The value at [sample].
@@ -164,6 +171,20 @@ final class _Key<T> {
   final Curve curve;
 }
 
+/// One track keyed in one clip, before the clip has an id.
+///
+/// Holds the list a [TrackAnimator] writes into and the track that list
+/// belongs to, and nothing else: numbering a clip is [install], once.
+final class _PendingTrack<T> {
+  _PendingTrack(this.track);
+
+  final Track<T> track;
+
+  final List<_Key<T>> keys = <_Key<T>>[];
+
+  void install(int clipId) => track._installKeys(clipId, keys);
+}
+
 /// A [Track] paired with the data it should be written into.
 final class TrackBinding<T> {
   @internal
@@ -179,31 +200,72 @@ final class TrackBinding<T> {
 
 /// One animation clip: a set of tracks with keyframes, and a length.
 ///
-/// Declared in [TimelineStruct.describeAnimation] and keyed there:
+/// Declared by the field that holds it, and keyed in the same line:
 ///
 /// ```dart
-/// toTheLeft = descriptor.has()
-///   ..track(positionX)
-///       .key(0)
-///       .key(100, Seconds(1.0), Curves.easeIn)
-///       .hold(Seconds(2.0))
-///       .key(0, Seconds(1.0), Curves.easeOut);
+/// class Breath extends TimelineStruct {
+///   final scale = Track.of(1.0);
+///
+///   late final entrance = TimelineAnimation()
+///     ..track(scale)
+///         .key(0.0)
+///         .key(100.0, Seconds(1.0), Curves.easeIn)
+///         .hold(Seconds(2.0))
+///         .key(0.0, Seconds(1.0), Curves.easeOut);
+/// }
 /// ```
-final class TimelineAnimation {
-  @internal
-  TimelineAnimation(this.clipId, this._owner);
+///
+/// `late final`, and that is what makes the line legal: an ordinary field
+/// initialiser cannot reach `this`, and `scale` is a sibling field. A `late`
+/// initialiser runs on first touch, which is the collect pass reading the
+/// field, and its value is memoised - so the clip the timeline numbers and
+/// the clip gameplay samples are one object.
+///
+/// `TimelineAnimation()` and not `TimelineAnimation.of()`: `of` names what a
+/// thing is *of*, and there is nothing here to be of.
+final class TimelineAnimation implements ScannableField {
+  TimelineAnimation();
 
   /// Position in the declaring timeline's clip list - what a [TimelineSample]
   /// carries, and what a [Track] indexes its keys by.
   ///
-  /// This is why a clip is still declared from a hook where a [Track] is a
-  /// field: the id is a position in a list the timeline owns, and it has to
-  /// be settled before `..track(x).key(...)` runs, because keying writes
-  /// straight into `Track._clips[clipId]`. A field initialiser has no
-  /// timeline to take a position in.
-  final int clipId;
+  /// **Taken when the timeline reads its fields, not when this is built.** A
+  /// field initialiser has no timeline to take a position in, so the clip
+  /// registers inert and is numbered afterwards - the move `Field.*`,
+  /// `Param.*`, `Channel.*` and `Query` each already make. Until then
+  /// `..track(x).key(...)` writes into a list this clip owns, and
+  /// [TimelineStruct.initializeTimeline] installs that list on the track
+  /// under this id.
+  ///
+  /// Reading it before then throws rather than answering with a placeholder:
+  /// a clip that answered `0` would key straight over clip zero's curve.
+  int get clipId {
+    final id = _clipId;
+    if (id < 0) throw _undeclared();
+    return id;
+  }
 
-  final TimelineStruct _owner;
+  int _clipId = -1;
+
+  TimelineStruct? _owner;
+
+  TimelineStruct get _declarer => _owner ?? (throw _undeclared());
+
+  StateError _undeclared() => StateError(
+    'this TimelineAnimation has not been declared. A clip takes its id and '
+    'its clock from the TimelineStruct whose field holds it, when the scene '
+    'reads the declarations of that struct - so one built outside a field, or '
+    'held in a field no collector reads, has neither. Keep it in a field: '
+    '`late final entrance = TimelineAnimation()..track(x).key(0.0);`',
+  );
+
+  /// The tracks keyed in this clip, and the key list each of them will be
+  /// given once this clip has an id.
+  ///
+  /// Also the duplicate check: two `track(x)` calls in one clip are two
+  /// overlapping key lists with no defensible blend, and this is the record
+  /// that says the first one happened.
+  final List<_PendingTrack<Object?>> _pending = <_PendingTrack<Object?>>[];
 
   int _lengthMicros = 0;
 
@@ -218,14 +280,42 @@ final class TimelineAnimation {
   /// twice in one clip would produce two overlapping key lists with no
   /// defensible blend, so it throws instead of picking one.
   TrackAnimator<T> track<T>(Track<T> track) {
-    final keys = track._keysFor(clipId);
-    if (keys.isNotEmpty) {
+    for (final pending in _pending) {
+      if (!identical(pending.track, track)) continue;
       throw StateError(
-        'this track is already keyed in clip $clipId. One track has one curve '
+        'this track is already keyed in this clip. One track has one curve '
         'per clip - to blend two shapes, declare two clips and sample both.',
       );
     }
-    return TrackAnimator<T>._(this, keys);
+    final pending = _PendingTrack<T>(track);
+    _pending.add(pending);
+    // Written before the clip has an id in the ordinary case, and after it in
+    // the case where gameplay keys a clip it already declared. One path
+    // either way: the list is this clip's, and the track is handed it either
+    // here or by `declaredAt`.
+    if (_clipId >= 0) pending.install(_clipId);
+    return TrackAnimator<T>._(this, pending.keys);
+  }
+
+  /// Numbers this clip and hands every buffered key list to its track.
+  ///
+  /// Called once, by [TimelineStruct.initializeTimeline], in field order -
+  /// so a clip's id is the position of the field that declares it.
+  @internal
+  void declaredAt(TimelineStruct owner, int clipId) {
+    if (_owner != null) {
+      throw StateError(
+        'this TimelineAnimation is declared twice - once by '
+        '${_owner.runtimeType} and again by ${owner.runtimeType}. A clip '
+        'belongs to the timeline whose field holds it, and its id is a '
+        'position in the clip list of that timeline, so it cannot be in two.',
+      );
+    }
+    _owner = owner;
+    _clipId = clipId;
+    for (final pending in _pending) {
+      pending.install(clipId);
+    }
   }
 
   void _grewTo(int micros) {
@@ -256,7 +346,7 @@ final class TimelineAnimation {
         : _lengthMicros;
     if (lengthMicros <= 0) return TimelineSample.pack(clipId, 0);
 
-    var micros = (_owner.state.time + offset).inMicroseconds;
+    var micros = (_declarer.state.time + offset).inMicroseconds;
     switch (wrapMode) {
       case WrapMode.clamp:
         if (micros < 0) micros = 0;
@@ -289,10 +379,10 @@ final class TimelineAnimation {
     required WrapMode wrapMode,
     required bool reverse,
   }) sync* {
-    final startedAt = _owner.state.time;
+    final startedAt = _declarer.state.time;
     final length = duration > Seconds.zero ? duration : this.length;
     while (true) {
-      final elapsed = _owner.state.time - startedAt;
+      final elapsed = _declarer.state.time - startedAt;
       final sample = animate(
         offset: -startedAt,
         duration: duration,
@@ -363,11 +453,6 @@ final class TrackAnimator<T> {
   }
 }
 
-/// Declares a timeline's clips - see [TimelineStruct.describeAnimation].
-abstract class TimelineAnimationDescriptor {
-  TimelineAnimation has();
-}
-
 /// A set of tracks and the clips that animate them.
 ///
 /// Declared on an `EntityStruct` through `Animations.describeAnimation`, and
@@ -375,8 +460,6 @@ abstract class TimelineAnimationDescriptor {
 /// Per-entity progress is one `double` of start time in the entity's own row;
 /// see [TimelineAnimation.animate].
 abstract class TimelineStruct implements Scannable {
-  void describeAnimation(TimelineAnimationDescriptor descriptor);
-
   SceneStruct? _scene;
 
   /// The simulation this timeline is sampled against - its clock is what
@@ -407,20 +490,29 @@ abstract class TimelineStruct implements Scannable {
   @internal
   List<TimelineAnimation> get clips => _clips;
 
-  /// Runs the clip declaration pass. Called once, when the owning struct is
-  /// registered.
+  /// Numbers this timeline's clips and binds it to the clock. Called once,
+  /// when the owning struct is registered.
   ///
-  /// There is no track pass to run first: a track is built by the field
-  /// initialiser that holds it, so every one of them already exists by the
-  /// time this object does. Clips still need this, and cannot be fields for
-  /// the reason [TimelineAnimation.clipId] gives - a clip's id is its
-  /// position in this timeline's list, and a field initialiser has no
-  /// timeline to be positioned in.
+  /// There is no declaration pass to run: a track and a clip are both built
+  /// by the field initialiser that holds them, so both already exist by the
+  /// time this object does. What is left is the half a field initialiser
+  /// cannot do - a clip's id is its position in this timeline's list, and a
+  /// field initialiser has no timeline to be positioned in - so the ids are
+  /// handed out here, in field order.
+  ///
+  /// The read of a `late final` clip field *is* its first touch, so the
+  /// initialiser's cascade runs here and its value is memoised: the clip this
+  /// numbers is the clip gameplay samples. A throwing initialiser therefore
+  /// throws from this line rather than from a hook.
   @internal
   void initializeTimeline(SceneStruct scene) {
     if (_scene != null) return;
     _scene = scene;
-    describeAnimation(_AnimationDescriptor(this));
+    for (final declaration in collectDeclarations(this)) {
+      if (declaration is! TimelineAnimation) continue;
+      declaration.declaredAt(this, _clips.length);
+      _clips.add(declaration);
+    }
   }
 }
 
@@ -442,17 +534,4 @@ TimelineLerp<T>? _defaultLerp<T>() {
         as TimelineLerp<T>;
   }
   return null;
-}
-
-final class _AnimationDescriptor implements TimelineAnimationDescriptor {
-  _AnimationDescriptor(this._owner);
-
-  final TimelineStruct _owner;
-
-  @override
-  TimelineAnimation has() {
-    final clip = TimelineAnimation(_owner._clips.length, _owner);
-    _owner._clips.add(clip);
-    return clip;
-  }
 }

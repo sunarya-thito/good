@@ -230,23 +230,17 @@ class EnemyTimeline extends TimelineStruct {
   final y = Track.of<double>(-1);
   final frame = Track.of<int>(0);
 
-  late final TimelineAnimation entrance;
-  late final TimelineAnimation blink;
+  // 0 -> 100 over one second, hold two, back to 0 over one. Four seconds.
+  late final entrance = TimelineAnimation()
+    ..track(x)
+        .key(0.0)
+        .key(100.0, Seconds(1.0))
+        .hold(Seconds(2.0))
+        .key(0.0, Seconds(1.0));
 
-  @override
-  void describeAnimation(TimelineAnimationDescriptor descriptor) {
-    // 0 -> 100 over one second, hold two, back to 0 over one. Four seconds.
-    entrance = descriptor.has()
-      ..track(x)
-          .key(0.0)
-          .key(100.0, Seconds(1.0))
-          .hold(Seconds(2.0))
-          .key(0.0, Seconds(1.0));
-
-    blink = descriptor.has()
-      ..track(y).key(0.0).key(10.0, Seconds(1.0))
-      ..track(frame).key(0).key(3, Seconds(1.0));
-  }
+  late final blink = TimelineAnimation()
+    ..track(y).key(0.0).key(10.0, Seconds(1.0))
+    ..track(frame).key(0).key(3, Seconds(1.0));
 }
 ```
 
@@ -367,12 +361,10 @@ Both forms complete the handle normally rather than throwing an error.
 A clip is written as a chain of keyframes per track. Two calls do everything:
 
 <!-- snippet-setup
-final descriptor = given<TimelineAnimationDescriptor>();
-var entrance = given<TimelineAnimation>();
 final x = given<Track<double>>();
 -->
 ```dart
-entrance = descriptor.has()
+final entrance = TimelineAnimation()
   ..track(x)
       .key(0.0)                                  // (1)!
       .key(100.0, Seconds(1.0))                  // (2)!
@@ -490,13 +482,11 @@ number and is the honest fallback for a type that cannot be interpolated.
 The `..` cascade is what lets one clip drive several tracks:
 
 <!-- snippet-setup
-final descriptor = given<TimelineAnimationDescriptor>();
-var blink = given<TimelineAnimation>();
 final y = given<Track<double>>();
 final frame = given<Track<int>>();
 -->
 ```dart
-blink = descriptor.has()
+final blink = TimelineAnimation()
   ..track(y).key(0.0).key(10.0, Seconds(1.0))
   ..track(frame).key(0).key(3, Seconds(1.0));
 ```

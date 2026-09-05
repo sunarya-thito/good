@@ -19,24 +19,22 @@ class _EnemyTimeline extends TimelineStruct {
   final y = Track.of<double>(-1);
   final frame = Track.of<int>(0);
 
-  late final TimelineAnimation entrance;
-  late final TimelineAnimation blink;
+  // 0 -> 100 over one second, hold two, back to 0 over one. Four seconds.
+  //
+  // `late final`, because the cascade reads `x` - a sibling field - and an
+  // ordinary field initialiser cannot reach `this`.
+  late final entrance = TimelineAnimation()
+    ..track(x)
+        .key(0.0)
+        .key(100.0, Seconds(1.0))
+        .hold(Seconds(2.0))
+        .key(0.0, Seconds(1.0));
 
-  @override
-  void describeAnimation(TimelineAnimationDescriptor descriptor) {
-    // 0 -> 100 over one second, hold two, back to 0 over one. Four seconds.
-    entrance = descriptor.has()
-      ..track(x)
-          .key(0.0)
-          .key(100.0, Seconds(1.0))
-          .hold(Seconds(2.0))
-          .key(0.0, Seconds(1.0));
-    // A second clip over the *same* struct's tracks. `y` is keyed here and
-    // nowhere in `entrance`, which is what the default-value fallback is for.
-    blink = descriptor.has()
-      ..track(y).key(0.0).key(10.0, Seconds(1.0))
-      ..track(frame).key(0).key(3, Seconds(1.0));
-  }
+  // A second clip over the *same* struct's tracks. `y` is keyed here and
+  // nowhere in `entrance`, which is what the default-value fallback is for.
+  late final blink = TimelineAnimation()
+    ..track(y).key(0.0).key(10.0, Seconds(1.0))
+    ..track(frame).key(0).key(3, Seconds(1.0));
 }
 
 class _Enemy extends EntityStruct {
@@ -53,12 +51,7 @@ class _Enemy extends EntityStruct {
 
 /// A timeline whose clip is declared and never keyed.
 class _Bare extends TimelineStruct {
-  late final TimelineAnimation empty;
-
-  @override
-  void describeAnimation(TimelineAnimationDescriptor descriptor) {
-    empty = descriptor.has();
-  }
+  final empty = TimelineAnimation();
 }
 
 class _Scene extends SceneStruct {
@@ -148,6 +141,76 @@ void main() {
       expect(sample.clipId, 1);
       expect(sample.micros, 250000);
       expect(sample.elapsed.inSeconds, closeTo(0.25, 1e-9));
+    });
+
+    test('a clip keys the id it was given, not the one it was written in',
+        () async {
+      // The whole of what a field initialiser cannot do. `..track(x).key(...)`
+      // runs while `entrance` is being built, and at that moment the clip has
+      // no position in anything - so the keys go into a list the clip owns and
+      // the timeline hands that list to the track when it numbers the clip.
+      //
+      // Asserted through `blink`, the second clip, because clip zero is what a
+      // buffer flushed under the wrong id lands on: a clip that kept an
+      // unnumbered id and flushed anyway writes `y` and `frame` into clip 0,
+      // where `entrance` already lives.
+      run = await _boot();
+      final timeline = _timeline();
+
+      expect(
+        timeline.y[TimelineSample.pack(timeline.blink.clipId, 1000000)],
+        closeTo(10.0, 1e-9),
+        reason:
+            'blink keyed y, and the keys have to be readable under blink own '
+            'id - the id it did not have while the cascade ran',
+      );
+      expect(
+        timeline.y[TimelineSample.pack(timeline.entrance.clipId, 1000000)],
+        -1,
+        reason:
+            'entrance never mentions y, so a key list flushed under clip zero '
+            'instead of blink id shows up here',
+      );
+    });
+
+    test('a clip declared in a field is the clip gameplay samples', () async {
+      // `late final` memoises, and the collector read *is* the first touch -
+      // so the object the timeline numbered and the object the field hands
+      // back are one. A getter recomputing the initialiser would hand out a
+      // fresh, unnumbered clip on every read and nothing above would notice.
+      run = await _boot();
+      final timeline = _timeline();
+
+      expect(identical(timeline.entrance, timeline.entrance), isTrue);
+      expect(
+        timeline.clips,
+        <TimelineAnimation>[timeline.entrance, timeline.blink],
+        reason: 'in field order, which is clip-id order',
+      );
+    });
+
+    test('a clip nothing declared has no id and no clock, and says so',
+        () async {
+      // The honest failure for a clip built outside a field, or held in a
+      // field no collector reads. Answering `0` would key straight over clip
+      // zero curve; answering with a clock would sample against nothing.
+      run = await _boot();
+      final loose = TimelineAnimation()..track(_timeline().x).key(0.0);
+
+      expect(
+        () => loose.clipId,
+        throwsA(
+          isA<StateError>().having(
+            (e) => e.message,
+            'message',
+            allOf(
+              contains('has not been declared'),
+              contains('Keep it in a field'),
+            ),
+          ),
+        ),
+      );
+      expect(() => loose.animate(), throwsStateError);
     });
 
     test('a keyframe written in milliseconds lands in microseconds', () async {

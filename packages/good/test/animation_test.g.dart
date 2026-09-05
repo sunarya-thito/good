@@ -26,6 +26,8 @@ List<ScannableField> _collect$EnemyTimeline(Object object) {
     owner.x,
     owner.y,
     owner.frame,
+    owner.entrance,
+    owner.blink,
   ];
 }
 
@@ -40,8 +42,10 @@ List<ScannableField> _collect$Enemy(Object object) {
 }
 
 List<ScannableField> _collect$Bare(Object object) {
-  object as _Bare;
-  return const <ScannableField>[];
+  final owner = object as _Bare;
+  return <ScannableField>[
+    owner.empty,
+  ];
 }
 
 List<ScannableField> _collect$Scene(Object object) {

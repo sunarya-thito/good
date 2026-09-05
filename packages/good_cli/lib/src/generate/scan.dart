@@ -1926,6 +1926,31 @@ bool isDeclarationField(
 /// `final spare = Barrel()..tune();` used to walk straight past into the
 /// collector.
 ///
+/// # A spare is only possible where the value is itself scanned
+///
+/// ```dart
+/// late final entrance = TimelineAnimation()..track(scale).key(0.0);
+/// ```
+///
+/// That head is as bare as `Barrel()` and needs no marker, because there is
+/// no such thing as a spare `TimelineAnimation`: one built and not declared
+/// has no clip id and no clock, and every member on it throws. Holding one
+/// *is* declaring one, exactly as it is for the `Field.float64()` a dotted
+/// static hands back.
+///
+/// So the test is not the spelling and not the package: it is whether the
+/// value is a class the scan reads **in its own right** - a
+/// [scannableRoot]. That is what makes a spare a real thing to hold. A
+/// `Barrel` is a prefab with its own collector, its own declarations and its
+/// own registration, and it is complete whether or not a parent declares it;
+/// the two shapes are the same type by construction and no amount of type
+/// information separates them, which is why `@sub` is always required on a
+/// sub-entity. A declaration value that is not itself scanned has no life
+/// outside the field that holds it, and nothing to be mistaken for.
+///
+/// `EntityStruct` is the only type in the engine that is both today, which is
+/// the same statement as "`@sub` is the only marker the rule reaches".
+///
 /// [markers] is [scannableAnnotationNames] over the same walk.
 bool isCollectedDeclarationField(
   ScannedField field,
@@ -1934,9 +1959,24 @@ bool isCollectedDeclarationField(
 ) {
   if (!isDeclarationField(field, typesByName)) return false;
   if (!field.isBareConstruction) return true;
+  if (!isScannedValue(field, typesByName)) return true;
   return field.annotations.any(
     (annotation) => markers.contains(annotationName(annotation)),
   );
+}
+
+/// Whether [field]'s value is a class the scan reads in its own right.
+///
+/// The half of [isCollectedDeclarationField] that decides whether a spare is
+/// even possible - see its doc. Read off the same resolved type, by the same
+/// supertype walk, so a second root marked [scannableRoot] in `good` is
+/// answered here without an edit.
+bool isScannedValue(ScannedField field, Map<String, ScannedType> typesByName) {
+  final declared = declaredValueType(field);
+  if (declared == null) return false;
+  final parsed = TypeSource.parse(declared);
+  if (parsed == null) return false;
+  return isSubtypeOf(parsed.name, scannableRoot, typesByName);
 }
 
 /// One declaration a scanned class holds, as codegen and a collector need it.

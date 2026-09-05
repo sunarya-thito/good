@@ -80,6 +80,11 @@ abstract interface class MultiComponent implements Component {}
 abstract class EntityStruct implements MultiComponent, ScannableField {}
 abstract class SceneStruct implements Scannable {}
 abstract class GameSystem implements Scannable {}
+abstract class TimelineStruct implements Scannable {}
+
+class TimelineAnimation implements ScannableField {
+  void key() {}
+}
 
 class DataPointer<T> implements ScannableField {}
 class InitialPointer<T> extends DataPointer<T> {}
@@ -719,6 +724,46 @@ class Barrel extends EntityStruct {
             declaration.name,
         ],
         <String>['barrel'],
+      );
+    });
+
+    test('a bare constructor of a value nothing scans needs no marker',
+        () async {
+      // The other half of the marker rule, and the half a reader gets
+      // backwards. `TimelineAnimation()` is as bare as `Barrel()` and takes
+      // no marker, because there is no spare to be told apart from: a clip
+      // built and never declared has no id and no clock, so holding one *is*
+      // declaring one - the same fact that lets `Field.float64()` go
+      // unmarked.
+      //
+      // What separates the two is not the spelling and not the package: a
+      // `Barrel` is a class the scan reads in its own right, with its own
+      // collector and its own registration, and it is complete whether or not
+      // a parent declares it. A `TimelineAnimation` is not scanned at all.
+      // Both are asserted here, in one fixture, because a rule that answered
+      // the same for both is exactly the failure worth catching.
+      final scan = await _declarations('''
+class Breath extends TimelineStruct {
+  final empty = TimelineAnimation();
+  late final entrance = TimelineAnimation()..key();
+}
+
+class Turret extends EntityStruct {
+  final spare = Barrel();
+}
+
+class Barrel extends EntityStruct {}
+''');
+
+      expect(scan.refusals, isEmpty);
+      expect(scan.unresolved, isEmpty);
+      expect(scan.unmarked.keys, <String>['Turret.spare']);
+      expect(
+        <String>[
+          for (final declarer in scan.declarers)
+            for (final declaration in declarer.declarations) declaration.name,
+        ],
+        <String>['empty', 'entrance'],
       );
     });
 

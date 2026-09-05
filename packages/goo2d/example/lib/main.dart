@@ -29,15 +29,15 @@ const int _wingmanColor = 0xFFFFEE58;
 class Breath extends TimelineStruct {
   final scale = Track.of<double>(1.0);
 
-  late final TimelineAnimation pulse;
-
-  @override
-  void describeAnimation(TimelineAnimationDescriptor descriptor) {
-    // Half a second up. `WrapMode.pingPong` at sample time plays it back down
-    // again, so the shape is authored once rather than twice and cannot go
-    // asymmetric when someone edits one half.
-    pulse = descriptor.has()..track(scale).key(1.0).key(1.12, Seconds(0.5));
-  }
+  // Half a second up. `WrapMode.pingPong` at sample time plays it back down
+  // again, so the shape is authored once rather than twice and cannot go
+  // asymmetric when someone edits one half.
+  //
+  // `late final` because the cascade reads `scale`, the field above: an
+  // ordinary field initialiser cannot reach `this`, and a `late` one runs on
+  // first touch, which is the collect pass.
+  late final pulse = TimelineAnimation()
+    ..track(scale).key(1.0).key(1.12, Seconds(0.5));
 }
 
 class Player extends EntityStruct
