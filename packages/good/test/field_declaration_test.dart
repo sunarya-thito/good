@@ -106,6 +106,30 @@ _Level _level() {
   return level;
 }
 
+/// A column its own **constructor body** assigns.
+///
+/// The scan cannot see where this value comes from, so it reports the field
+/// rather than refusing it - and this is the half that shows why refusing
+/// would have been wrong. A constructor body runs before a collect pass, so
+/// the field is assigned by the time a collector reads it.
+class _FromConstructor extends EntityStruct {
+  _FromConstructor() {
+    speed = Field.float64(4);
+  }
+
+  late DataPointer<double> speed;
+}
+
+/// The same field with nothing assigning it anywhere.
+///
+/// Indistinguishable from [_FromConstructor] to anything reading one file, and
+/// the opposite at run time. This is what makes the report the right answer
+/// and a refusal the wrong one: the failure is already loud, already at the
+/// first thing that touches the field, and already names it.
+class _FromNowhere extends EntityStruct {
+  late DataPointer<double> speed;
+}
+
 void main() {
   _installDeclarations();
 
@@ -164,6 +188,39 @@ void main() {
     expect(
       level.twin.archetype.archetypeId,
       isNot(level.declared.archetype.archetypeId),
+    );
+  });
+
+  // The pair the declaration scan deliberately refuses to choose between.
+  // `good_cli`'s walk reports both and refuses neither, because it cannot see
+  // which is which; what tells them apart is running them, and that is what
+  // these two do. Delete either and the scan's decision stops being justified
+  // by anything.
+  test('a field its constructor body assigns is collected', () {
+    final owner = _FromConstructor();
+
+    expect(
+      collectDeclarations(owner),
+      contains(owner.speed),
+      reason: 'a constructor body runs before the collect pass, so this is '
+          'assigned by the time the generated collector reads it',
+    );
+  });
+
+  test('a field nothing assigns throws at collect, naming the field', () {
+    expect(
+      () => collectDeclarations(_FromNowhere()),
+      throwsA(
+        isA<Error>().having(
+          (error) => '$error',
+          'message',
+          allOf(contains('speed'), contains('has not been initialized')),
+        ),
+      ),
+      reason: 'this is what the build-time refusal was buying earlier notice '
+          'of - the run already fails, at the collector, with the field named, '
+          'so refusing bought earlier detection rather than detection and '
+          'refused the constructor-body shape to get it',
     );
   });
 

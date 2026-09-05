@@ -479,19 +479,30 @@ class Player extends EntityStruct {
       expect(declaration.valueType, 'InitialPointer<double>');
     });
 
-    test('a late field with no initialiser is refused', () async {
-      // The Camera.cameraView shape: the field declared here, the value
-      // assigned from a describe pass. One declaration written twice, and the
-      // half that runs does so where the declaration does not say.
+    test('a field assigned in a constructor body is collected, and said',
+        () async {
+      // This used to be refused, and refusing it was wrong. A constructor body
+      // runs *before* a collect pass, so the field is assigned by the time the
+      // collector reads it - probed directly:
+      //
+      //   late Ptr hp;  Player() { hp = Ptr('uint8'); }  ->  Ptr(uint8)
+      //
+      // The walk cannot see that, and it cannot see a `describeStruct` body
+      // either, so it does not guess: the field is collected, and the fact
+      // that its value comes from somewhere else is reported.
       final scan = await _declarations('''
 class Player extends EntityStruct {
-  late final DataPointer<double> filled;
+  late DataPointer<double> filled;
+
+  Player() {
+    filled = Field.float64();
+  }
 }
 ''');
 
-      expect(_refused(scan), <String>['Player.filled']);
-      expect(scan.declarers, isEmpty);
-      expect(scan.refusals.single.reason, contains('freshly constructed'));
+      expect(_refused(scan), isEmpty);
+      expect(scan.deferred.keys, <String>['Player.filled']);
+      expect(scan.declarers.single.declarations.single.name, 'filled');
     });
 
     test('a late field with an initialiser is a declaration', () async {
@@ -555,15 +566,31 @@ class Player extends EntityStruct {
       expect(scan.declarers.single.declarations.single.name, 'speed');
     });
 
-    test('a declaration with no initialiser at all is refused', () async {
+    test('a field assigned nowhere is said, not refused', () async {
+      // The genuinely broken shape - and it is *not* refused either, because
+      // nothing here can tell it from the one above. What catches it is the
+      // run: an unassigned `late` field throws at the first thing that touches
+      // it, which is the collector, and the message names the field -
+      //
+      //   LateInitializationError: Field 'mp' has not been initialized.
+      //
+      // so refusing here would buy earlier detection rather than detection,
+      // and would pay for it by refusing the constructor-body shape as well.
       final scan = await _declarations('''
 class Player extends EntityStruct {
-  DataPointer<double> filled;
+  late DataPointer<double> filled;
 }
 ''');
 
-      expect(_refused(scan), <String>['Player.filled']);
-      expect(scan.refusals.single.reason, contains('no initialiser'));
+      expect(_refused(scan), isEmpty);
+      expect(scan.deferred.keys, <String>['Player.filled']);
+      expect(
+        scan.deferred['Player.filled'],
+        allOf(contains('constructor body'), contains('describe pass')),
+        reason: 'the report is only worth printing if it names both shapes - '
+            'one of them is fine and the other throws, and the reader is the '
+            'only one who knows which this is',
+      );
     });
 
     test('a static declaration is refused', () async {
