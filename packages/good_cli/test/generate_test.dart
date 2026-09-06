@@ -1100,10 +1100,14 @@ good:
     test('declares the composition pass nothing else declares', () {
       expect(
         files()['lib/game/demo_game.dart'],
-        contains('WorldTransform3DSystem.new'),
+        contains(
+          '@system\n  final worldTransform = WorldTransform3DSystem();',
+        ),
         reason:
             'Renderer2DState declares the 2D twin for you. Without this a '
-            'child never moves with its parent',
+            'child never moves with its parent - and without the marker the '
+            'field holds a spare, the system is never declared, and the '
+            'project still analyzes clean',
       );
     });
 

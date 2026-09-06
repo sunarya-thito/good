@@ -68,6 +68,8 @@ List<ScannableField> _collect$Turner(Object object) {
 List<ScannableField> _collect$GameState(Object object) {
   final owner = object as _GameState;
   return <ScannableField>[
+    owner.physics,
+    owner.turner,
     owner.fixedTickEvent,
     owner.tickEvent,
     owner.gameMountedEvent,

@@ -40,6 +40,7 @@ List<ScannableField> _collect$Reporter(Object object) {
 List<ScannableField> _collect$IsolateAudioState(Object object) {
   final owner = object as _IsolateAudioState;
   return <ScannableField>[
+    owner.reporter,
     owner.fixedTickEvent,
     owner.tickEvent,
     owner.gameMountedEvent,

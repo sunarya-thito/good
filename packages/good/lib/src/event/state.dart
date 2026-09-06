@@ -89,8 +89,8 @@ abstract class StateChannel<T> implements ValueListenable<T>, ScannableField {
 }
 
 /// Declares published state - see `Game.describeState`. Same one-pass
-/// declarative shape as `SystemDescriptor`/`BufferDescriptor`/
-/// `CommandDescriptor`/`SceneDescriptor`, and the same *width* vocabulary as
+/// declarative shape as `BufferDescriptor`/`CommandDescriptor`/
+/// `SceneDescriptor`, and the same *width* vocabulary as
 /// `DataDescriptor`: a state channel is a fixed-width slot in
 /// shared memory exactly as a component field is a fixed-width slice of a
 /// row, so it is declared the same way and needs no codec.

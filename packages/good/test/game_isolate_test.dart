@@ -236,11 +236,8 @@ class _IsolateState extends GameState<_IsolateGame> {
     }
   }
 
-  @override
-  void describeSystems(SystemDescriptor descriptor) {
-    super.describeSystems(descriptor);
-    descriptor.has(_MoverSystem.new);
-  }
+  @system
+  final moverSystem = _MoverSystem();
 }
 
 /// A system that throws on its third tick, on the game isolate, with a real
@@ -259,11 +256,8 @@ class _DyingState extends GameState<_DyingGame> {
   @override
   void onMounted() {}
 
-  @override
-  void describeSystems(SystemDescriptor descriptor) {
-    super.describeSystems(descriptor);
-    descriptor.has(_DyingSystem.new);
-  }
+  @system
+  final dyingSystem = _DyingSystem();
 }
 
 class _DyingGame extends Game with _Declares {
@@ -291,11 +285,8 @@ class _RandomIsolateState extends GameState<_RandomIsolateGame> {
   @override
   void onMounted() {}
 
-  @override
-  void describeSystems(SystemDescriptor descriptor) {
-    super.describeSystems(descriptor);
-    descriptor.has(_RandomReporter.new);
-  }
+  @system
+  final randomReporter = _RandomReporter();
 }
 
 class _RandomIsolateGame extends Game with _Declares {
@@ -391,11 +382,8 @@ class _PingState extends GameState<_PingGame> {
     loadScene(_MoverScene());
   }
 
-  @override
-  void describeSystems(SystemDescriptor descriptor) {
-    super.describeSystems(descriptor);
-    descriptor.has(_PingSystem.new);
-  }
+  @system
+  final pingSystem = _PingSystem();
 }
 
 class _PingGame extends Game with _Declares {
@@ -442,11 +430,8 @@ class _ChannelState extends GameState<_ChannelGame> {
     loadScene(_MoverScene());
   }
 
-  @override
-  void describeSystems(SystemDescriptor descriptor) {
-    super.describeSystems(descriptor);
-    descriptor.has(_CounterSystem.new);
-  }
+  @system
+  final counterSystem = _CounterSystem();
 }
 
 class _ChannelGame extends Game with _Declares {
@@ -506,11 +491,8 @@ class _InputProbeState extends GameState<_InputProbeGame> {
     loadScene(_MoverScene());
   }
 
-  @override
-  void describeSystems(SystemDescriptor descriptor) {
-    super.describeSystems(descriptor);
-    descriptor.has(_InputProbeSystem.new);
-  }
+  @system
+  final inputProbeSystem = _InputProbeSystem();
 }
 
 class _InputProbeGame extends Game with _Declares {
@@ -654,11 +636,8 @@ class _TexturedState extends GameState<_TexturedGame> {
     loadScene(_TexturedScene());
   }
 
-  @override
-  void describeSystems(SystemDescriptor descriptor) {
-    super.describeSystems(descriptor);
-    descriptor.has(_TexturedSystem.new);
-  }
+  @system
+  final texturedSystem = _TexturedSystem();
 }
 
 class _TexturedGame extends Game with _Declares {
@@ -817,11 +796,8 @@ class _UnloadState extends GameState<_UnloadGame> {
     if (loadedScenes.isNotEmpty) unloadScene(loadedScenes.first);
   }
 
-  @override
-  void describeSystems(SystemDescriptor descriptor) {
-    super.describeSystems(descriptor);
-    descriptor.has(_MoverSystem.new);
-  }
+  @system
+  final moverSystem2 = _MoverSystem();
 }
 
 class _UnloadGame extends Game with _Declares {
@@ -922,11 +898,8 @@ class _AskingState extends GameState<_AskingGame> {
     unawaited(game.askGame().catchError((Object _) {}));
   }
 
-  @override
-  void describeSystems(SystemDescriptor descriptor) {
-    super.describeSystems(descriptor);
-    descriptor.has(_AskingSystem.new);
-  }
+  @system
+  final askingSystem = _AskingSystem();
 }
 
 class _AskingGame extends Game with _Declares {
@@ -1187,12 +1160,10 @@ class _CensusIsolateState extends GameState<_CensusIsolateGame> {
     loadScene(level);
   }
 
-  @override
-  void describeSystems(SystemDescriptor descriptor) {
-    super.describeSystems(descriptor);
-    descriptor.has(_IdleSystem.new);
-    descriptor.has(_SleepySystem.new);
-  }
+  @system
+  final idleSystem = _IdleSystem();
+  @system
+  final sleepySystem = _SleepySystem();
 
   @override
   void describeCommands(CommandDescriptor descriptor) {
@@ -1266,11 +1237,8 @@ class _RegistrarSystem extends GameSystem with FixedTickable {
 }
 
 class _RegistrarState extends GameState<_RegistrarGame> {
-  @override
-  void describeSystems(SystemDescriptor descriptor) {
-    super.describeSystems(descriptor);
-    descriptor.has(_RegistrarSystem.new);
-  }
+  @system
+  final registrarSystem = _RegistrarSystem();
 }
 
 class _RegistrarGame extends Game with _Declares {
@@ -2109,7 +2077,7 @@ void main() {
       // The whole ordering claim in Game.describeBuffers, asserted directly:
       // start() has returned, so the announcement has already landed - even
       // though the buffer is declared by a *system*, whose declaration only
-      // exists after describeSystems ran on the far side.
+      // exists after the far side collected its state's systems.
       expect(game.bufferCount, 1);
       final handle = game.pings;
       expect(handle.isConnected, isTrue);

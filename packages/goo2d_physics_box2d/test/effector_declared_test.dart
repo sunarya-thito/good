@@ -31,7 +31,7 @@ import 'package:goo2d_physics_box2d/goo2d_physics_box2d.dart';
 part 'effector_declared_test.g.dart';
 
 late Game run;
-late Box2DPhysicsSystem physics;
+Box2DPhysicsSystem get physics => run.state.getSystem<Box2DPhysicsSystem>();
 
 /// A wind zone: a region, and an effector acting through it. No rigid body of
 /// its own - a force field is not a thing that falls.
@@ -131,7 +131,7 @@ class _Setup extends GameSystem with FixedTickable {
 }
 
 // ignore: library_private_types_in_public_api
-late _Setup setup;
+_Setup get setup => run.state.getSystem<_Setup>();
 
 /// Drives the one-shot `Effectors2D.buoyancyEffector`, and only that. The
 /// `compareTo` is the whole reason it exists: a force applied after
@@ -149,7 +149,7 @@ class _OneShot extends GameSystem with FixedTickable {
 }
 
 // ignore: library_private_types_in_public_api
-late _OneShot oneShot;
+_OneShot get oneShot => run.state.getSystem<_OneShot>();
 
 /// World gravity for the next [_boot]. Zero for the wind tests, so the only
 /// thing that can move a body vertically is the effector under test; -10 for
@@ -160,13 +160,12 @@ class _GameState extends GameState<_Game> {
   @override
   void onMounted() => loadScene(_Scene());
 
-  @override
-  void describeSystems(SystemDescriptor descriptor) {
-    super.describeSystems(descriptor);
-    setup = descriptor.has(_Setup.new);
-    oneShot = descriptor.has(_OneShot.new);
-    physics = descriptor.has(() => Box2DPhysicsSystem(gravityY: _gravityY));
-  }
+  @system
+  final setup = _Setup();
+  @system
+  final oneShot = _OneShot();
+  @system
+  late final physics = Box2DPhysicsSystem(gravityY: _gravityY);
 }
 
 class _Game extends Game {

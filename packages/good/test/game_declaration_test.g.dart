@@ -98,6 +98,7 @@ List<ScannableField> _collect$SystemHostGame(Object object) {
 List<ScannableField> _collect$SystemHostState(Object object) {
   final owner = object as _SystemHostState;
   return <ScannableField>[
+    owner.gameBuildingSystem,
     owner.fixedTickEvent,
     owner.tickEvent,
     owner.gameMountedEvent,
@@ -143,6 +144,7 @@ List<ScannableField> _collect$CrossingGame(Object object) {
 List<ScannableField> _collect$CrossingState(Object object) {
   final owner = object as _CrossingState;
   return <ScannableField>[
+    owner.crossingSystem,
     owner.fixedTickEvent,
     owner.tickEvent,
     owner.gameMountedEvent,

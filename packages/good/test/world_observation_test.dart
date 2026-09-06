@@ -86,17 +86,19 @@ class _Observer extends GameSystem with EntitySpawnListener, SceneLoadListener {
 }
 
 // ignore: library_private_types_in_public_api
-late _Observer observer;
+/// The live run, so [observer] reads the system off the state that holds it
+/// rather than off a global some declaration pass filled in.
+late Game run;
+
+// ignore: library_private_types_in_public_api
+_Observer get observer => run.state.getSystem<_Observer>();
 
 class _GameState extends GameState<_Game> {
   @override
   void onMounted() => loadScene(_Scene());
 
-  @override
-  void describeSystems(SystemDescriptor descriptor) {
-    super.describeSystems(descriptor);
-    observer = descriptor.has(_Observer.new);
-  }
+  @system
+  final observer = _Observer();
 }
 
 class _Game extends Game {
@@ -108,7 +110,7 @@ class _Game extends Game {
 }
 
 Future<(Game, _Scene)> _boot() async {
-  final run = await Game.startInline(_Game.new);
+  run = await Game.startInline(_Game.new);
   addTearDown(() async {
     if (run.isRunning) await run.stop();
   });

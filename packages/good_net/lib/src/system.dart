@@ -81,15 +81,48 @@ mixin NetSessionListener on GameListener {
 mixin MultiplayerState<G extends Game> on GameState<G> {
   /// Declares this game's messages and its backend - see [NetDescriptor].
   ///
-  /// Runs once, at boot, from [describeSystems] - and so on the simulating
-  /// copy only, because that is the one place `describeSystems` is invoked.
-  /// The main-isolate copy of the state never runs it and never builds a
-  /// transport, so there is no second socket to keep shut.
+  /// Runs once, at boot, from [network]'s initialiser - and so on the
+  /// simulating copy only, because a `late final` initialiser runs on first
+  /// touch and the boot pass's `collectDeclarations` is the only thing that
+  /// touches it. `Game._bootGame` is the one place that runs, so the
+  /// main-isolate copy of the state never builds a transport and there is no
+  /// second socket to keep shut.
   void describeNetwork(NetDescriptor descriptor);
 
   /// The system carrying this game's traffic - `network.host(...)`,
   /// `network.join(code)`, `network.session`.
-  late final NetworkSystem network;
+  ///
+  /// `late final` **with** an initialiser, which is one declaration deferred
+  /// to first touch rather than the banned double-declaration shape - the
+  /// initialiser is what reaches `this`, and [describeNetwork] is an instance
+  /// method of the state.
+  @system
+  late final NetworkSystem network = buildNetworkSystem();
+
+  /// Builds the system, runs [describeNetwork] into it, and seals what that
+  /// declared.
+  ///
+  /// The order matters and is the reason this is not two passes: a message
+  /// binds to the thing that will send it at declare time, so the system has
+  /// to exist before the pass runs - and the pass has to have run before the
+  /// registry can be sealed and hashed.
+  ///
+  /// It is a method rather than a cascade in the initialiser because
+  /// [NetBinder] needs the system twice, as its registry and as its sender,
+  /// and a cascade has no name for the object it is cascading over.
+  ///
+  /// **Not private**, and that is not a preference. A private member of a
+  /// mixin collides with itself the moment the mixin is applied twice in one
+  /// chain - a state that extends another state already mixing this in is
+  /// exactly that, and it is `private_collision_in_mixin_application` at the
+  /// application, in the user's file, naming a member they cannot see.
+  @protected
+  NetworkSystem buildNetworkSystem() {
+    final system = NetworkSystem();
+    describeNetwork(NetBinder(system.registry, system));
+    system.registry.seal();
+    return system;
+  }
 
   /// A peer joined the session. See [NetPeerListener].
   final peerJoinedEvent = Event.of<NetPeerListener, NetPeerId>(
@@ -121,31 +154,6 @@ mixin MultiplayerState<G extends Game> on GameState<G> {
         reverse: true,
       );
 
-  /// Declares the system, runs [describeNetwork] into it, and seals what that
-  /// declared.
-  ///
-  /// The order matters and is the reason this is not two passes: a message
-  /// binds to the thing that will send it at declare time, so the system has
-  /// to exist before the pass runs - and the pass has to have run before the
-  /// registry can be sealed and hashed.
-  ///
-  /// The declaration is what builds it, which is why it comes first here and
-  /// did not used to. `SystemDescriptor.has` opens the event binder and the
-  /// input registry around the constructor call, and a `NetworkSystem` built
-  /// beside it and handed over afterwards would have had neither - so its
-  /// four dispatchers could not move onto their fields. Everything after this
-  /// line reads `network` back off the handle rather than off a local.
-  ///
-  /// Declared **before** `super.describeSystems`, so that in the absence of
-  /// any `compareTo` opinion it is also first in declaration order.
-  @override
-  @mustCallSuper
-  void describeSystems(SystemDescriptor descriptor) {
-    network = descriptor.has(NetworkSystem.new);
-    describeNetwork(NetBinder(network.registry, network));
-    network.registry.seal();
-    super.describeSystems(descriptor);
-  }
 }
 
 /// Carries a game's network messages: drains what arrived at the top of each
@@ -166,9 +174,10 @@ mixin MultiplayerState<G extends Game> on GameState<G> {
 /// number papers over that, because the outcome is *correct either way*:
 /// whichever runs second sees the other's writes on the next
 /// tick instead of this one, which for traffic that already crossed the
-/// internet is a rounding error. Declaration order breaks the tie
-/// (`GameState.sortSystems` is deterministic about that), and
-/// [MultiplayerState] declares this one first.
+/// internet is a rounding error. `Box2DPhysicsSystem` returns -1 against
+/// everything, so as written it wins the pair outright; if it ever narrows to
+/// naming the systems it means, declaration order breaks the tie and that is
+/// the order the two `@system` fields are written in.
 ///
 /// Outbound is flushed in [onTick] - the presentation pass, which runs once
 /// per *frame*, after however many fixed steps that frame afforded. So three
@@ -177,7 +186,7 @@ mixin MultiplayerState<G extends Game> on GameState<G> {
 class NetworkSystem extends GameSystem
     with FixedTickable, Tickable, GameSystemLifecycleListener
     implements NetSender, NetListener {
-  /// Built by [MultiplayerState.describeSystems].
+  /// Built by [MultiplayerState.network]'s initialiser.
   @internal
   NetworkSystem();
 

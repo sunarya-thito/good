@@ -131,6 +131,9 @@ List<ScannableField> _collect$OneShot(Object object) {
 List<ScannableField> _collect$GameState(Object object) {
   final owner = object as _GameState;
   return <ScannableField>[
+    owner.setup,
+    owner.oneShot,
+    owner.physics,
     owner.fixedTickEvent,
     owner.tickEvent,
     owner.gameMountedEvent,

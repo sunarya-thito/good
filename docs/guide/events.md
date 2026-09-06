@@ -117,9 +117,9 @@ however it was built, so neither can assume a binder of its own. A pair you
 declare on your own struct or your own system can, as long as you let the
 framework build it.
 
-That caveat is worth reading twice for a system, because the failure is quiet.
-`SceneDescriptor.has` and `SystemDescriptor.has` both take a `T Function()`, and
-a closure may hand back an object that already existed:
+That caveat is worth reading twice for a prefab, because the failure is quiet.
+`SceneDescriptor.has` takes a `T Function()`, and a closure may hand back an
+object that already existed:
 
 <!-- snippet: skip the wrong half of a before/after, and deliberately so -->
 ```dart
@@ -128,12 +128,8 @@ final _spawner = Spawner();                 // built here, in a state field
 descriptor.has(() => _spawner);             // handed over, not built
 ```
 
-A prefab handed over that way throws, because nothing was open above it. A
-system does not: a `GameState` is itself framework-built, so *its* binder is
-open while its fields initialise, and the system's dispatcher is created
-against the state. It then reaches the state's entire composition — every
-sibling system, every scene, every prefab — rather than the system's own
-listeners. Build inside the closure, or pass the constructor:
+A prefab handed over that way throws, because nothing was open above it. Build
+inside the closure, or pass the constructor:
 
 <!-- snippet: skip two fragments of one class body, not a class -->
 ```dart
@@ -244,7 +240,7 @@ receives one event twice.
 ## Ordering
 
 Delivery follows collection order, and collection order is declaration order:
-systems in the order `describeSystems` declared them (then `compareTo`), scenes
+systems in the order their `@system` fields declared them (then `compareTo`), scenes
 in `describeScenes` order, prefabs in `describeScene` order. Nothing sorts at
 dispatch time.
 

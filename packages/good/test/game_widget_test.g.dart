@@ -23,6 +23,7 @@ part of 'game_widget_test.dart';
 List<ScannableField> _collect$BareState(Object object) {
   final owner = object as _BareState;
   return <ScannableField>[
+    owner.tickingSystem,
     owner.fixedTickEvent,
     owner.tickEvent,
     owner.gameMountedEvent,
@@ -73,6 +74,7 @@ List<ScannableField> _collect$VisibilitySystem(Object object) {
 List<ScannableField> _collect$VisibilityState(Object object) {
   final owner = object as _VisibilityState;
   return <ScannableField>[
+    owner.visibility,
     owner.fixedTickEvent,
     owner.tickEvent,
     owner.gameMountedEvent,

@@ -81,6 +81,7 @@ List<ScannableField> _collect$PauseMover(Object object) {
 List<ScannableField> _collect$IsolateState(Object object) {
   final owner = object as _IsolateState;
   return <ScannableField>[
+    owner.moverSystem,
     owner.fixedTickEvent,
     owner.tickEvent,
     owner.gameMountedEvent,
@@ -105,6 +106,7 @@ List<ScannableField> _collect$DyingSystem(Object object) {
 List<ScannableField> _collect$DyingState(Object object) {
   final owner = object as _DyingState;
   return <ScannableField>[
+    owner.dyingSystem,
     owner.fixedTickEvent,
     owner.tickEvent,
     owner.gameMountedEvent,
@@ -134,6 +136,7 @@ List<ScannableField> _collect$RandomReporter(Object object) {
 List<ScannableField> _collect$RandomIsolateState(Object object) {
   final owner = object as _RandomIsolateState;
   return <ScannableField>[
+    owner.randomReporter,
     owner.fixedTickEvent,
     owner.tickEvent,
     owner.gameMountedEvent,
@@ -175,6 +178,7 @@ List<ScannableField> _collect$PingSystem(Object object) {
 List<ScannableField> _collect$PingState(Object object) {
   final owner = object as _PingState;
   return <ScannableField>[
+    owner.pingSystem,
     owner.fixedTickEvent,
     owner.tickEvent,
     owner.gameMountedEvent,
@@ -204,6 +208,7 @@ List<ScannableField> _collect$CounterSystem(Object object) {
 List<ScannableField> _collect$ChannelState(Object object) {
   final owner = object as _ChannelState;
   return <ScannableField>[
+    owner.counterSystem,
     owner.fixedTickEvent,
     owner.tickEvent,
     owner.gameMountedEvent,
@@ -238,6 +243,7 @@ List<ScannableField> _collect$InputProbeSystem(Object object) {
 List<ScannableField> _collect$InputProbeState(Object object) {
   final owner = object as _InputProbeState;
   return <ScannableField>[
+    owner.inputProbeSystem,
     owner.fixedTickEvent,
     owner.tickEvent,
     owner.gameMountedEvent,
@@ -293,6 +299,7 @@ List<ScannableField> _collect$TexturedSystem(Object object) {
 List<ScannableField> _collect$TexturedState(Object object) {
   final owner = object as _TexturedState;
   return <ScannableField>[
+    owner.texturedSystem,
     owner.fixedTickEvent,
     owner.tickEvent,
     owner.gameMountedEvent,
@@ -374,6 +381,7 @@ List<ScannableField> _collect$DropScene(Object object) {
 List<ScannableField> _collect$UnloadState(Object object) {
   final owner = object as _UnloadState;
   return <ScannableField>[
+    owner.moverSystem2,
     owner.fixedTickEvent,
     owner.tickEvent,
     owner.gameMountedEvent,
@@ -420,6 +428,7 @@ List<ScannableField> _collect$AskingSystem(Object object) {
 List<ScannableField> _collect$AskingState(Object object) {
   final owner = object as _AskingState;
   return <ScannableField>[
+    owner.askingSystem,
     owner.fixedTickEvent,
     owner.tickEvent,
     owner.gameMountedEvent,
@@ -538,6 +547,8 @@ List<ScannableField> _collect$SleepASystem(Object object) {
 List<ScannableField> _collect$CensusIsolateState(Object object) {
   final owner = object as _CensusIsolateState;
   return <ScannableField>[
+    owner.idleSystem,
+    owner.sleepySystem,
     owner.fixedTickEvent,
     owner.tickEvent,
     owner.gameMountedEvent,
@@ -567,6 +578,7 @@ List<ScannableField> _collect$RegistrarSystem(Object object) {
 List<ScannableField> _collect$RegistrarState(Object object) {
   final owner = object as _RegistrarState;
   return <ScannableField>[
+    owner.registrarSystem,
     owner.fixedTickEvent,
     owner.tickEvent,
     owner.gameMountedEvent,

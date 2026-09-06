@@ -83,11 +83,8 @@ class _CompositeSystem extends GameSystem {
 }
 
 class _CompositeGameState extends GameState<_CompositeGame> {
-  @override
-  void describeSystems(SystemDescriptor descriptor) {
-    super.describeSystems(descriptor);
-    descriptor.has(_CompositeSystem.new);
-  }
+  @system
+  final compositeSystem = _CompositeSystem();
 }
 
 class _CompositeGame extends Game {
@@ -108,11 +105,8 @@ class _RestoreSystem extends GameSystem {
 }
 
 class _RestoreGameState extends GameState<_RestoreGame> {
-  @override
-  void describeSystems(SystemDescriptor descriptor) {
-    super.describeSystems(descriptor);
-    descriptor.has(_RestoreSystem.new);
-  }
+  @system
+  final restoreSystem = _RestoreSystem();
 }
 
 class _RestoreGame extends Game {

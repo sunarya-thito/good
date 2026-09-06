@@ -358,7 +358,7 @@ final class InputEventStream<T> {
 
 /// Declares a game's input actions - see `Game.describeInputs` and
 /// `GameSystem.describeInputs`. Same one-pass declarative shape as
-/// `SystemDescriptor`/`BufferDescriptor`/`StateDescriptor`.
+/// `BufferDescriptor`/`StateDescriptor`.
 ///
 /// One descriptor is shared by every `describeInputs` pass in a boot (the
 /// `Game`'s runs first, then every declared system's, in declaration order),

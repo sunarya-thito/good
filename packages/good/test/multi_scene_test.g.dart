@@ -50,6 +50,7 @@ List<ScannableField> _collect$Census(Object object) {
 List<ScannableField> _collect$MultiState(Object object) {
   final owner = object as _MultiState;
   return <ScannableField>[
+    owner.census2,
     owner.fixedTickEvent,
     owner.tickEvent,
     owner.gameMountedEvent,

@@ -37,15 +37,40 @@ mixin GameSystemLifecycleListener on GameListener {
 /// to the pair that disagrees - it permutes the list, so an unrelated and
 /// perfectly consistent constraint elsewhere is dropped. That is what #5 was.
 ///
-/// # One isolate, and no mirror
+/// # Declaring one
 ///
-/// A `GameSystem` is a [GameListener] and nothing else: it lives where the
-/// tick loop does, and only there. `GameState.describeSystems` is *declared*
-/// on both copies - the state object itself is built on each, so `Game2D`'s
-/// `Renderer2DState` can contribute the two systems 2D rendering needs - but
-/// it is **invoked** from exactly one place, the boot phase that runs on the
-/// copy that ticks. Main never calls it, so no system object is ever
-/// constructed there. There is no twin to hold anything.
+/// A system is an `@system` field of the `GameState` that runs it:
+///
+/// ```dart
+/// class MyState extends GameState<MyGame> {
+///   @system final movement = MovementSystem();
+///   @system final combat = CombatSystem(hitPause: 3);
+/// }
+/// ```
+///
+/// Configuration is ordinary constructor arguments, because nothing is open
+/// around the call. The marker is required and is not an aid to a weak scan:
+/// a `GameSystem` is both [Scannable] and [ScannableField], so `final spare =
+/// MovementSystem();` is a legal field holding a complete object that
+/// declares nothing, and the two are the same type by construction. See
+/// [system].
+///
+/// # One isolate, and one mirror that never runs
+///
+/// A `GameSystem` is a [GameListener] and nothing else: it *runs* where the
+/// tick loop does, and only there. The object is built wherever
+/// `Game.createState` is called, which on a spawned run is both copies -
+/// main's declaration mirror and, after the deep copy, the game isolate's.
+/// Only the second is ever declared: `Game._bootGame` is the one place
+/// `GameState.declareSystems` is called, so main's copies are never bound,
+/// never collected into a dispatcher and never ticked, and `getSystem` over
+/// there still finds nothing.
+///
+/// That costs nothing because a system's construction reaches nothing. A
+/// [Query] holds the types it named and takes its bits in `resolve()`, an
+/// [Input] resolves against the raw block on the copy that ticks, and a
+/// dispatcher is built inert and filled by the boot pass. Deferring the query
+/// mask is what made an ordinary field possible at all.
 ///
 /// Most declaration passes do run on both copies, and that is what makes an
 /// index a wire identity: `describeState`, `describeBuffers`,
@@ -64,7 +89,7 @@ mixin GameSystemLifecycleListener on GameListener {
 /// [EventDispatcher].
 abstract class GameSystem extends GameListenerBase
     with EventBus, Coroutines
-    implements Comparable<GameSystem>, Scannable {
+    implements Comparable<GameSystem>, Scannable, ScannableField {
   GameState? _state;
 
   bool _enabled = true;
@@ -126,8 +151,8 @@ abstract class GameSystem extends GameListenerBase
 
   // These two stayed in `describeEvents` for as long as a dispatcher had to be
   // created inside somebody's binder, and the failure was worse here than
-  // anywhere else. `SystemDescriptor.has` takes a `T Function()`, and a
-  // closure may hand back a system that already existed -
+  // anywhere else. The pass that declared a system took a `T Function()`, and
+  // a closure could hand back a system that already existed -
   // `descriptor.has(() => _spawner)`, where `_spawner` is a field of the
   // `GameState`. A prefab written that way threw, because nothing was open
   // above it. A system did not: the state's own binder was open while its
@@ -135,6 +160,10 @@ abstract class GameSystem extends GameListenerBase
   // the state and collected the state's entire composition - every sibling
   // system, every scene, every prefab. Measured, not reasoned: two listeners
   // belonging to two unrelated systems, and none of its own.
+  //
+  // That shape is unwritable now: a system is a field of the state, so the
+  // spare and the declared one are told apart by `@system` and not by a
+  // closure the framework calls.
   //
   // Nothing is open around a construction now. A dispatcher is built by the
   // field initialiser that declares it and read off the system it belongs to,
@@ -145,7 +174,7 @@ abstract class GameSystem extends GameListenerBase
 
   /// Called once by the boot pass on the game isolate, immediately before
   /// [describeQuery]. Not part of the user-facing API: a system is bound by
-  /// declaring it in `Game.describeSystems`, never by hand.
+  /// declaring it on an `@system` field of a `GameState`, never by hand.
   @internal
   void bindState(GameState state) => _state = state;
 
@@ -161,9 +190,9 @@ abstract class GameSystem extends GameListenerBase
     final state = _state;
     if (state == null) {
       throw StateError(
-        '$runtimeType is not bound to a GameState. Declare it in '
-        'Game.describeSystems - a system constructed by hand has no scene to '
-        'query and no tick to run on.',
+        '$runtimeType is not bound to a GameState. Declare it on an '
+        '`@system` field of your GameState - a system constructed by hand has '
+        'no scene to query and no tick to run on.',
       );
     }
     return state;
@@ -216,9 +245,10 @@ abstract class GameSystem extends GameListenerBase
   // exist. A `StateChannel` and a `BufferHandle` are backed by native memory
   // that the **main isolate** allocates before the spawn and frees on stop,
   // and their identity across the boundary is their index in that one
-  // declaration pass. A system is not present for it: `describeSystems` runs
-  // on the game isolate, so a system's declaration would have an index on one
-  // copy and none on the other, which is the same thing as not having one.
+  // declaration pass. A system is not present for it: the pass that collects
+  // a state's systems runs on the game isolate, so a system's declaration
+  // would have an index on one copy and none on the other, which is the same
+  // thing as not having one.
   //
   // Declare them on the `Game` - which is also the side that *reads* them,
   // since a channel exists to be shown and a draw buffer exists to be drained
@@ -279,9 +309,9 @@ abstract class GameSystem extends GameListenerBase
   @mustCallSuper
   void describeInputs(InputDescriptor descriptor) {}
 
-  /// A sibling system declared in the same `describeSystems`. Reaching one
-  /// directly is the escape hatch for cross-system state; note it says
-  /// nothing about ordering, which is declaration order and nothing else.
+  /// A sibling system declared on the same `GameState`. Reaching one directly
+  /// is the escape hatch for cross-system state; note it says nothing about
+  /// ordering, which is [compareTo] and declaration order and nothing else.
   ///
   /// Goes through the [GameState], which is where the declared systems live.
   /// There is no `Game.getSystem` to shortcut through any more - a system is a

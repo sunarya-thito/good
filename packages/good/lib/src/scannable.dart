@@ -66,13 +66,20 @@ abstract interface class Scannable {}
 ///   * `Asset`, whose handle carries a key and takes its address when the
 ///     scene holding it is brought up;
 ///   * `EntityStruct`, so a struct held in another struct's field is that
-///     struct's declared child.
+///     struct's declared child;
+///   * `GameSystem`, so a system held in a `GameState`'s field is one of that
+///     state's declared systems.
 ///
-/// The last one is the one that reads oddly, because an `EntityStruct` is a
-/// whole prefab rather than a handle to something. It is a declaration for
-/// the same reason the rest are: the field holds a value nothing registered,
-/// and the class that holds it is what the registration has to be attributed
-/// to. `_SceneDescriptor._register` is what reads them back off.
+/// The last two are the ones that read oddly, because an `EntityStruct` is a
+/// whole prefab and a `GameSystem` a whole system, rather than a handle to
+/// something. They are declarations for the same reason the rest are: the
+/// field holds a value nothing registered, and the class that holds it is
+/// what the registration has to be attributed to. `_SceneDescriptor._register`
+/// reads the prefabs back off; `Game._bootGame` reads the systems.
+///
+/// They are also the only two types that are [Scannable] as well, which is
+/// what makes [sub] and [system] mandatory where the rest need no marker -
+/// see [system].
 ///
 /// # What a root has to be able to do first
 ///
@@ -257,6 +264,64 @@ class Sub implements ScannableAnnotation {
 /// marker exists is that such a field stays legal. `good_tool --declarations
 /// --verbose` names every one of them.
 const Sub sub = Sub._();
+
+/// The type of [system]. Written `@system`, never `@System()`.
+///
+/// Public for the reason [Sub] is - the annotation is written in user code -
+/// and constructed only here, so there is one spelling of it.
+///
+/// The name was checked before it was taken, the way `Child` had to be: there
+/// is no other `System` in this repository, and `package:flutter` publishes
+/// `SystemChannels`, `SystemChrome`, `SystemSound` and `SystemMouseCursors`
+/// but no bare `System`. `dart:io` has none either.
+class System implements ScannableAnnotation {
+  const System._();
+}
+
+/// Says the field it is written on declares a `GameSystem` this state runs.
+///
+/// ```dart
+/// class MyState extends GameState<MyGame> {
+///   @system final movement = MovementSystem();
+///   @system final physics = Box2DPhysicsSystem(gravityY: -10);
+///
+///   final template = MovementSystem();   // declares nothing
+/// }
+/// ```
+///
+/// # Why the type is not enough
+///
+/// Exactly [Sub]'s argument, and `GameSystem` is the second type in the
+/// engine to need it. A system is both [Scannable] - the scan reads its own
+/// queries, actions and dispatchers off it - and [ScannableField], a value a
+/// field of a `GameState` declares. That pair is what makes a spare a real
+/// thing to hold: a `MovementSystem()` nobody declared is a complete object
+/// with its own queries and its own events, and it is the same type as the
+/// declared one by construction. No amount of type information separates
+/// them, so the line says which it is.
+///
+/// It is also why the marker does not expire. `final movement =
+/// MovementSystem();` is spelled exactly like a field holding an ordinary
+/// object, and nothing at that line says the boot pass binds it to this
+/// state, resolves its queries, seals its input actions and puts it in the
+/// fixed-tick loop.
+///
+/// # It is read at build time and never at run time
+///
+/// `good_tool` reads this off the source and leaves an unmarked
+/// bare-constructor field out of the generated collector, so
+/// [collectDeclarations] never sees the difference. An unmarked field is
+/// **reported and not refused** - `good_tool --declarations --verbose` names
+/// every one of them.
+///
+/// # Order
+///
+/// Field order is declaration order, and declaration order is only the
+/// tie-break. What decides execution order is `GameSystem.compareTo`, which
+/// `GameState.sortSystems` turns into a constraint graph - see its doc. A
+/// system with no opinion keeps its declared position relative to every other
+/// system with no opinion, and nothing else about the list is a promise.
+const System system = System._();
 
 /// The type of [hide]. Written `@hide`, never `@Hide()`.
 ///

@@ -72,12 +72,10 @@ class _PingScene extends SceneStruct with _Ping {
 class _PingState extends GameState<_PingGame> with _Ping {
   final ping = Event.signal<_Ping>((listener) => listener.onPing());
 
-  @override
-  void describeSystems(SystemDescriptor descriptor) {
-    super.describeSystems(descriptor);
-    descriptor.has(_PingSystem.new);
-    descriptor.has(_DeafSystem.new);
-  }
+  @system
+  final pingSystem = _PingSystem();
+  @system
+  final deafSystem = _DeafSystem();
 }
 
 class _PingGame extends Game {
@@ -89,7 +87,7 @@ class _PingGame extends Game {
 
   late final _PingScene level;
 
-  /// Reached through the state - `describeSystems` is a `GameState` pass now.
+  /// Reached through the state - a system is an `@system` field of one.
   _PingSystem get pinger => run.state.getSystem<_PingSystem>();
 
   @override

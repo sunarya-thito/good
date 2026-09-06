@@ -35,6 +35,7 @@ List<ScannableField> _collect$CompositeSystem(Object object) {
 List<ScannableField> _collect$CompositeGameState(Object object) {
   final owner = object as _CompositeGameState;
   return <ScannableField>[
+    owner.compositeSystem,
     owner.fixedTickEvent,
     owner.tickEvent,
     owner.gameMountedEvent,
@@ -65,6 +66,7 @@ List<ScannableField> _collect$RestoreSystem(Object object) {
 List<ScannableField> _collect$RestoreGameState(Object object) {
   final owner = object as _RestoreGameState;
   return <ScannableField>[
+    owner.restoreSystem,
     owner.fixedTickEvent,
     owner.tickEvent,
     owner.gameMountedEvent,

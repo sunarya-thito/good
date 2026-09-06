@@ -78,11 +78,8 @@ class _FieldState extends GameState<_FieldGame> with _Noted {
     reverse: true,
   );
 
-  @override
-  void describeSystems(SystemDescriptor descriptor) {
-    super.describeSystems(descriptor);
-    descriptor.has(_NotedSystem.new);
-  }
+  @system
+  final notedSystem = _NotedSystem();
 }
 
 abstract class _NotedGame extends Game {

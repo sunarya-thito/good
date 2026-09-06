@@ -33,6 +33,7 @@ List<ScannableField> _collect$StickSystem(Object object) {
 List<ScannableField> _collect$StickState(Object object) {
   final owner = object as _StickState;
   return <ScannableField>[
+    owner.stickSystem,
     owner.fixedTickEvent,
     owner.tickEvent,
     owner.gameMountedEvent,

@@ -45,11 +45,8 @@ class _ContactSystem extends GameSystem with FixedTickable {
 }
 
 class _StackedState extends GameState<_StackedGame> {
-  @override
-  void describeSystems(SystemDescriptor descriptor) {
-    super.describeSystems(descriptor);
-    descriptor.has(_ContactSystem.new);
-  }
+  @system
+  final contactSystem = _ContactSystem();
 }
 
 class _StackedGame extends Game {

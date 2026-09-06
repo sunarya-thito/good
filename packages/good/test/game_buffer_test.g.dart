@@ -47,6 +47,7 @@ List<ScannableField> _collect$PingSystem(Object object) {
 List<ScannableField> _collect$BufferState(Object object) {
   final owner = object as _BufferState;
   return <ScannableField>[
+    owner.pingSystem,
     owner.fixedTickEvent,
     owner.tickEvent,
     owner.gameMountedEvent,

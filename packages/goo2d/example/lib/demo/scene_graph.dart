@@ -225,14 +225,19 @@ class CritterSystem extends GameSystem with FixedTickable {
 class SceneGraphState extends DemoState<SceneGraphGame> {
   final Swarm swarm = Swarm();
 
+  // The two blanket probes, declared here rather than on `DemoState` because
+  // a subclass's fields are initialised first and a blanket claim only beats
+  // another blanket claim by being declared first - see `DemoState`.
+  @system
+  final fixedPhaseStart = FixedPhaseStart();
+  @system
+  final presentPhaseStart = PresentPhaseStart();
+
   @override
   void onMounted() => loadScene(swarm);
 
-  @override
-  void describeSystems(SystemDescriptor descriptor) {
-    super.describeSystems(descriptor);
-    descriptor.has(CritterSystem.new);
-  }
+  @system
+  final critterSystem = CritterSystem();
 
   /// One critter and its three limbs, **all in the same tick**.
   ///

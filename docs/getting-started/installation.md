@@ -119,7 +119,7 @@ import 'package:goo2d/goo2d.dart';   // ECS, scenes, tick loop, rendering, GameV
 ```
 
 Opt-in packages stay separate because they carry weight not every game wants.
-Each also needs its system declared in `describeSystems`:
+Each also needs its system declared on an `@system` field of the state:
 
 ```yaml title="pubspec.yaml"
 dependencies:

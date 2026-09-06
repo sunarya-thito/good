@@ -32,6 +32,16 @@ List<ScannableField> _collect$OriginProbe(Object object) {
 List<ScannableField> _collect$ProbedState(Object object) {
   final owner = object as _ProbedState;
   return <ScannableField>[
+    owner.probe,
+    owner.fixedPhaseStart,
+    owner.presentPhaseStart,
+    owner.critterSystem,
+    owner.fixedPhaseEnd,
+    owner.renderPhaseStart,
+    owner.renderPhaseEnd,
+    owner.demoStats,
+    owner.worldTransform,
+    owner.renderer,
     owner.fixedTickEvent,
     owner.tickEvent,
     owner.gameMountedEvent,

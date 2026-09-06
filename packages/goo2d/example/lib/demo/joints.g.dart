@@ -187,6 +187,17 @@ List<ScannableField> _collect$JointSystem(Object object) {
 List<ScannableField> _collect$JointState(Object object) {
   final owner = object as JointState;
   return <ScannableField>[
+    owner.fixedPhaseStart,
+    owner.presentPhaseStart,
+    owner.box2DPhysicsSystem,
+    owner.jointSystem,
+    owner.jointStats,
+    owner.fixedPhaseEnd,
+    owner.renderPhaseStart,
+    owner.renderPhaseEnd,
+    owner.demoStats,
+    owner.worldTransform,
+    owner.renderer,
     owner.fixedTickEvent,
     owner.tickEvent,
     owner.gameMountedEvent,

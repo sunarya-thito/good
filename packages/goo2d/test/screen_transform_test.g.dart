@@ -244,6 +244,8 @@ List<ScannableField> _collect$Stage(Object object) {
 List<ScannableField> _collect$StageState(Object object) {
   final owner = object as _StageState;
   return <ScannableField>[
+    owner.worldTransform,
+    owner.renderer,
     owner.fixedTickEvent,
     owner.tickEvent,
     owner.gameMountedEvent,

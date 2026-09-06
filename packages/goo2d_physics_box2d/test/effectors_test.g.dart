@@ -68,6 +68,8 @@ List<ScannableField> _collect$EffectorSystem(Object object) {
 List<ScannableField> _collect$GameState(Object object) {
   final owner = object as _GameState;
   return <ScannableField>[
+    owner.effectors,
+    owner.physics,
     owner.fixedTickEvent,
     owner.tickEvent,
     owner.gameMountedEvent,

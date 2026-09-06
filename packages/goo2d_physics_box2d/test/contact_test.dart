@@ -14,7 +14,7 @@ import 'package:goo2d_physics_box2d/goo2d_physics_box2d.dart';
 part 'contact_test.g.dart';
 
 late Game run;
-late Box2DPhysicsSystem physics;
+Box2DPhysicsSystem get physics => run.state.getSystem<Box2DPhysicsSystem>();
 
 /// Every dispatch, in order, as "phase:entity".
 final List<String> log = <String>[];
@@ -100,11 +100,8 @@ class _GameState extends GameState<_Game> {
   @override
   void onMounted() => loadScene(_Scene());
 
-  @override
-  void describeSystems(SystemDescriptor d) {
-    super.describeSystems(d);
-    physics = d.has(Box2DPhysicsSystem.new);
-  }
+  @system
+  final physics = Box2DPhysicsSystem();
 }
 
 class _Game extends Game {

@@ -213,6 +213,8 @@ List<ScannableField> _collect$Scene(Object object) {
 List<ScannableField> _collect$State(Object object) {
   final owner = object as _State;
   return <ScannableField>[
+    owner.worldTransform,
+    owner.renderer,
     owner.fixedTickEvent,
     owner.tickEvent,
     owner.gameMountedEvent,

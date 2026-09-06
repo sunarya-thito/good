@@ -97,11 +97,8 @@ class _PlayerSystem extends GameSystem
 }
 
 class _InputGameState extends GameState<_InputGame> {
-  @override
-  void describeSystems(SystemDescriptor descriptor) {
-    super.describeSystems(descriptor);
-    descriptor.has(_PlayerSystem.new);
-  }
+  @system
+  final playerSystem = _PlayerSystem();
 }
 
 class _InputGame extends Game {
@@ -175,12 +172,10 @@ class _ListenerSystemB extends GameSystem with GameSystemLifecycleListener {
 }
 
 class _ListenerState extends GameState<_ListenerGame> {
-  @override
-  void describeSystems(SystemDescriptor descriptor) {
-    super.describeSystems(descriptor);
-    descriptor.has(_ListenerSystemA.new);
-    descriptor.has(_ListenerSystemB.new);
-  }
+  @system
+  final listenerSystemA = _ListenerSystemA();
+  @system
+  final listenerSystemB = _ListenerSystemB();
 }
 
 class _ListenerGame extends Game {
@@ -230,11 +225,8 @@ class _ShorthandSystem extends GameSystem with GameSystemLifecycleListener {
 }
 
 class _ShorthandState extends GameState<_ShorthandGame> {
-  @override
-  void describeSystems(SystemDescriptor descriptor) {
-    super.describeSystems(descriptor);
-    descriptor.has(_ShorthandSystem.new);
-  }
+  @system
+  final shorthandSystem = _ShorthandSystem();
 }
 
 class _ShorthandGame extends Game {
@@ -283,12 +275,10 @@ class _CtorSubOldSpelling extends GameSystem {
 }
 
 class _CtorSubState extends GameState<_CtorSubGame> {
-  @override
-  void describeSystems(SystemDescriptor descriptor) {
-    super.describeSystems(descriptor);
-    descriptor.has(_CtorSubSystem.new);
-    descriptor.has(_CtorSubOldSpelling.new);
-  }
+  @system
+  final ctorSubSystem = _CtorSubSystem();
+  @system
+  final ctorSubOldSpelling = _CtorSubOldSpelling();
 }
 
 class _CtorSubGame extends Game {
@@ -370,11 +360,8 @@ class _SharedDescriptorGame extends Game {
 }
 
 class _SharedDescriptorState extends GameState<_SharedDescriptorGame> {
-  @override
-  void describeSystems(SystemDescriptor descriptor) {
-    super.describeSystems(descriptor);
-    descriptor.has(_LateDefaultSystem.new);
-  }
+  @system
+  final lateDefaultSystem = _LateDefaultSystem();
 }
 
 // --- pointer fixtures -----------------------------------------------------
@@ -395,11 +382,8 @@ class _CursorSystem extends GameSystem {
 }
 
 class _MouseGameState extends GameState<_MouseGame> {
-  @override
-  void describeSystems(SystemDescriptor descriptor) {
-    super.describeSystems(descriptor);
-    descriptor.has(_CursorSystem.new);
-  }
+  @system
+  final cursorSystem = _CursorSystem();
 }
 
 class _MouseGame extends Game {

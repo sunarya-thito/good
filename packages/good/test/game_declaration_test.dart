@@ -121,11 +121,8 @@ class _SystemHostState extends GameState<_SystemHostGame> {
   @override
   void onMounted() {}
 
-  @override
-  void describeSystems(SystemDescriptor descriptor) {
-    super.describeSystems(descriptor);
-    descriptor.has(_GameBuildingSystem.new);
-  }
+  @system
+  final gameBuildingSystem = _GameBuildingSystem();
 }
 
 /// The shape the boot check is for: this library's `main` installs a table and
@@ -178,11 +175,8 @@ class _CrossingState extends GameState<_CrossingGame> {
   @override
   void onMounted() {}
 
-  @override
-  void describeSystems(SystemDescriptor descriptor) {
-    super.describeSystems(descriptor);
-    descriptor.has(_CrossingSystem.new);
-  }
+  @system
+  final crossingSystem = _CrossingSystem();
 }
 
 class _CrossingSystem extends GameSystem with FixedTickable {

@@ -95,6 +95,15 @@ List<ScannableField> _collect$SwirlSystem(Object object) {
 List<ScannableField> _collect$ParticlesState(Object object) {
   final owner = object as ParticlesState;
   return <ScannableField>[
+    owner.fixedPhaseStart,
+    owner.presentPhaseStart,
+    owner.swirlSystem,
+    owner.fixedPhaseEnd,
+    owner.renderPhaseStart,
+    owner.renderPhaseEnd,
+    owner.demoStats,
+    owner.worldTransform,
+    owner.renderer,
     owner.fixedTickEvent,
     owner.tickEvent,
     owner.gameMountedEvent,

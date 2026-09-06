@@ -54,11 +54,8 @@ class _State extends GameState<_Game> {
   @override
   void onMounted() => loadScene(_Scene());
 
-  @override
-  void describeSystems(SystemDescriptor descriptor) {
-    super.describeSystems(descriptor);
-    descriptor.has(WorldTransformSystem.new);
-  }
+  @system
+  final worldTransformSystem = WorldTransformSystem();
 }
 
 class _Game extends Game {

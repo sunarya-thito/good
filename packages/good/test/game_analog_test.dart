@@ -101,11 +101,8 @@ class _AnalogSystem extends GameSystem with FixedTickable {
 }
 
 class _AnalogGameState extends GameState<_AnalogGame> {
-  @override
-  void describeSystems(SystemDescriptor descriptor) {
-    super.describeSystems(descriptor);
-    descriptor.has(_AnalogSystem.new);
-  }
+  @system
+  final analogSystem = _AnalogSystem();
 }
 
 class _AnalogGame extends Game {

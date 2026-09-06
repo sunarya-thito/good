@@ -57,6 +57,8 @@ List<ScannableField> _collect$Scene(Object object) {
 List<ScannableField> _collect$ViewState(Object object) {
   final owner = object as _ViewState;
   return <ScannableField>[
+    owner.worldTransform,
+    owner.renderer,
     owner.fixedTickEvent,
     owner.tickEvent,
     owner.gameMountedEvent,

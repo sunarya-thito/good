@@ -170,6 +170,8 @@ List<ScannableField> _collect$Spawner(Object object) {
 List<ScannableField> _collect$GameState(Object object) {
   final owner = object as _GameState;
   return <ScannableField>[
+    owner.worldTransform3DSystem,
+    owner.spawner2,
     owner.fixedTickEvent,
     owner.tickEvent,
     owner.gameMountedEvent,

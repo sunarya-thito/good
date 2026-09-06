@@ -18,10 +18,8 @@ import 'rigid_body.dart';
 /// Declared like any other system:
 ///
 /// ```dart
-/// @override
-/// void describeSystems(SystemDescriptor descriptor) {
-///   super.describeSystems(descriptor);
-///   physics = descriptor.has(Box2DPhysicsSystem.new);
+/// class MyState extends GameState2D<MyGame> {
+///   @system final physics = Box2DPhysicsSystem(gravityY: -10);
 /// }
 /// ```
 ///

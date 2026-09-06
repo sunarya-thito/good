@@ -205,6 +205,18 @@ List<ScannableField> _collect$SandboxSystem(Object object) {
 List<ScannableField> _collect$PhysicsState(Object object) {
   final owner = object as PhysicsState;
   return <ScannableField>[
+    owner.fixedPhaseStart,
+    owner.presentPhaseStart,
+    owner.physicsPhaseStart,
+    owner.physics,
+    owner.physicsPhaseEnd,
+    owner.sandboxSystem,
+    owner.fixedPhaseEnd,
+    owner.renderPhaseStart,
+    owner.renderPhaseEnd,
+    owner.demoStats,
+    owner.worldTransform,
+    owner.renderer,
     owner.fixedTickEvent,
     owner.tickEvent,
     owner.gameMountedEvent,

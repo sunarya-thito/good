@@ -67,6 +67,7 @@ List<ScannableField> _collect$CameraQuerySystem(Object object) {
 List<ScannableField> _collect$CamState(Object object) {
   final owner = object as _CamState;
   return <ScannableField>[
+    owner.cameraQuerySystem,
     owner.fixedTickEvent,
     owner.tickEvent,
     owner.gameMountedEvent,

@@ -261,6 +261,14 @@ class SwirlSystem extends GameSystem with FixedTickable {
 class ParticlesState extends DemoState<ParticlesGame> {
   final Galaxy galaxy = Galaxy();
 
+  // The two blanket probes, declared here rather than on `DemoState` because
+  // a subclass's fields are initialised first and a blanket claim only beats
+  // another blanket claim by being declared first - see `DemoState`.
+  @system
+  final fixedPhaseStart = FixedPhaseStart();
+  @system
+  final presentPhaseStart = PresentPhaseStart();
+
   /// The [SetAblations] bitmask currently in force. Zero - both off - is the
   /// only setting that renders this case correctly.
   int ablations = 0;
@@ -271,11 +279,8 @@ class ParticlesState extends DemoState<ParticlesGame> {
   @override
   void onMounted() => loadScene(galaxy);
 
-  @override
-  void describeSystems(SystemDescriptor descriptor) {
-    super.describeSystems(descriptor);
-    descriptor.has(SwirlSystem.new);
-  }
+  @system
+  final swirlSystem = SwirlSystem();
 
   @override
   void describeCommands(CommandDescriptor descriptor) {

@@ -49,6 +49,7 @@ List<ScannableField> _collect$Reporter(Object object) {
 List<ScannableField> _collect$BootLoadState(Object object) {
   final owner = object as _BootLoadState;
   return <ScannableField>[
+    owner.reporter,
     owner.fixedTickEvent,
     owner.tickEvent,
     owner.gameMountedEvent,

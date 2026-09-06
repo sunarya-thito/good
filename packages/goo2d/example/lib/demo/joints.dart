@@ -470,6 +470,14 @@ class JointSystem extends GameSystem with FixedTickable {
 class JointState extends DemoState<JointGame> {
   final JointScene sandbox = JointScene();
 
+  // The two blanket probes, declared here rather than on `DemoState` because
+  // a subclass's fields are initialised first and a blanket claim only beats
+  // another blanket claim by being declared first - see `DemoState`.
+  @system
+  final fixedPhaseStart = FixedPhaseStart();
+  @system
+  final presentPhaseStart = PresentPhaseStart();
+
   /// Joints in the loaded chain that are still holding, and how many have
   /// given way. Published so the overlay shows the breaking as a number and
   /// not only as a rope falling off the screen.
@@ -488,13 +496,12 @@ class JointState extends DemoState<JointGame> {
   @override
   void onMounted() => loadScene(sandbox);
 
-  @override
-  void describeSystems(SystemDescriptor descriptor) {
-    super.describeSystems(descriptor);
-    descriptor.has(Box2DPhysicsSystem.new);
-    descriptor.has(JointSystem.new);
-    descriptor.has(_JointStats.new);
-  }
+  @system
+  final box2DPhysicsSystem = Box2DPhysicsSystem();
+  @system
+  final jointSystem = JointSystem();
+  @system
+  final jointStats = _JointStats();
 }
 
 /// Publishes this case's own numbers, after the fixed step - the same shape

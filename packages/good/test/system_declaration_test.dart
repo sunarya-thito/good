@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart' hide EventDispatcher;
 
 import 'package:good/src/archetype.dart';
 import 'package:good/src/event.dart';
+import 'package:good/src/event/fixed_loop.dart';
 import 'package:good/src/game.dart';
 import 'package:good/src/game_state.dart';
 import 'package:good/src/input.dart';
@@ -17,17 +18,19 @@ import 'package:good/src/scannable.dart';
 
 part 'system_declaration_test.g.dart';
 
-// `SystemDescriptor.has` takes a constructor, so the framework builds the
-// system and reads its declarations off the constructed object. That read is
+// A system is an `@system` field of a `GameState`, and the boot pass reads it
+// off the constructed state through the generated collector. That read is
 // what rules the hook forms out for anything a system has to keep: it runs
-// before `describeEvents` and before `describeInputs`, so a field the hook
+// before `describeEvents` and before `describeInputs`, so a field a hook
 // assigns is unassigned when the collector reaches it. What is left for a
 // hook is a declaration nothing holds - `hasDefaultValue`, which hands
 // nothing back and has no field form at all.
 //
-// What this file pins is the field form on a system: its events reach the
-// system's own composition and not the state's, its actions declare in the
-// order they are written, and the one surviving hook composes with them.
+// What this file pins is the field form on a system: the marker is what makes
+// a field a declaration and an unmarked one is a legal spare, its events
+// reach the system's own composition and not the state's, its actions declare
+// in the order they are written, and the one surviving hook composes with
+// them.
 
 /// The listener half of the event tests. Writes into a shared log so *order*
 /// is observable and not just membership.
@@ -74,18 +77,15 @@ class _EventState<G extends Game> extends GameState<G> {
 
   final GameSystem Function() _source;
 
-  late final GameSystem source;
-
   @override
   void onMounted() {}
 
-  @override
-  void describeSystems(SystemDescriptor descriptor) {
-    super.describeSystems(descriptor);
-    source = descriptor.has(_source);
-    descriptor.has(_EarA.new);
-    descriptor.has(_EarB.new);
-  }
+  @system
+  late final source = _source();
+  @system
+  final earA = _EarA();
+  @system
+  final earB = _EarB();
 }
 
 class _FieldEventGame extends _BareGame {
@@ -122,16 +122,11 @@ class _InputState<G extends Game> extends GameState<G> {
 
   final GameSystem Function() _source;
 
-  late final GameSystem source;
-
   @override
   void onMounted() {}
 
-  @override
-  void describeSystems(SystemDescriptor descriptor) {
-    super.describeSystems(descriptor);
-    source = descriptor.has(_source);
-  }
+  @system
+  late final source = _source();
 }
 
 class _FieldInputGame extends _BareGame {
@@ -144,6 +139,58 @@ class _MixedInputGame extends _BareGame {
   @override
   GameState createState() =>
       _InputState<_MixedInputGame>(_MixedInputSystem.new);
+}
+
+// --- the marker ------------------------------------------------------------
+
+/// Counts its own fixed ticks, so "declared" and "not declared" are told
+/// apart by whether it ran rather than by asking a registry.
+class _Counting extends GameSystem with FixedTickable {
+  int ticks = 0;
+
+  @override
+  void onFixedUpdate() => ticks++;
+}
+
+class _MarkedSystem extends _Counting {}
+
+class _SpareSystem extends _Counting {}
+
+/// One marked field and one unmarked one, holding the same kind of thing.
+///
+/// The two lines are the whole point: they are the same shape and the same
+/// kind of value, and only the marker separates a declaration from a field
+/// that happens to hold a system.
+class _MarkerState extends GameState<_MarkerGame> {
+  @override
+  void onMounted() {}
+
+  @system
+  final marked = _MarkedSystem();
+
+  final spare = _SpareSystem();
+}
+
+class _MarkerGame extends _BareGame {
+  @override
+  GameState createState() => _MarkerState();
+}
+
+/// Two `@system` fields of one type, which is refused.
+class _TwinState extends GameState<_TwinGame> {
+  @override
+  void onMounted() {}
+
+  @system
+  final first = _MarkedSystem();
+
+  @system
+  final second = _MarkedSystem();
+}
+
+class _TwinGame extends _BareGame {
+  @override
+  GameState createState() => _TwinState();
 }
 
 abstract class _BareGame extends Game {
@@ -263,6 +310,67 @@ void main() {
             'it - and the seal applied it to an action the field initialiser '
             'had already declared, which is the composition that matters now '
             'the other hook forms are gone',
+      );
+    });
+  });
+
+  group('@system is what declares a system, in both directions', () {
+    test('a marked field is declared, bound and ticked', () async {
+      final run = await _boot(_MarkerGame.new);
+      final state = run.state as _MarkerState;
+
+      expect(
+        state.getSystem<_MarkedSystem>(),
+        same(state.marked),
+        reason:
+            'the object the run holds is the object the field holds - the '
+            'collector reads the field, it does not build a second one',
+      );
+      state.advance(const Duration(milliseconds: 40));
+      expect(state.marked.ticks, greaterThan(0));
+      expect(state.marked.state, same(state));
+    });
+
+    test('an unmarked field holding a system declares nothing', () async {
+      final run = await _boot(_MarkerGame.new);
+      final state = run.state as _MarkerState;
+
+      expect(
+        () => state.getSystem<_SpareSystem>(),
+        throwsArgumentError,
+        reason:
+            'holding a spare is ordinary code and stays legal, which is half '
+            'the reason the marker exists. `final spare = _SpareSystem();` is '
+            'spelled exactly like the marked line above it and the type says '
+            'nothing about the difference',
+      );
+      state.advance(const Duration(milliseconds: 40));
+      expect(
+        state.spare.ticks,
+        0,
+        reason: 'it is in no dispatcher, so nothing ever calls it',
+      );
+      expect(
+        state.declaredSystems,
+        isNot(contains(state.spare)),
+        reason: 'and it is not in the tick order at all',
+      );
+    });
+
+    test('two marked fields of one system type are refused', () {
+      expect(
+        Game.startInline(_TwinGame.new),
+        throwsA(
+          isA<StateError>().having(
+            (e) => e.message,
+            'message',
+            allOf(contains('_MarkedSystem'), contains('twice')),
+          ),
+        ),
+        reason:
+            'a system is reached by its type, so a second one of a type is '
+            'not reachable at all and sits at its own place in the tick order '
+            'while every compareTo naming its type applies to both',
       );
     });
   });

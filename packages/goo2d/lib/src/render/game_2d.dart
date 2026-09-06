@@ -24,10 +24,9 @@ import 'package:goo2d/src/render/texture.dart';
 /// }
 /// ```
 ///
-/// That is the whole opt-in - [Renderer2DState.describeSystems] brings
-/// `WorldTransformSystem` and `GameRenderer2D` with it, so there is no
-/// second thing to remember and no way to end up with a `Game2D` that
-/// silently paints nothing.
+/// That is the whole opt-in - [Renderer2DState] brings `WorldTransformSystem`
+/// and `GameRenderer2D` with it, so there is no second thing to remember and
+/// no way to end up with a `Game2D` that silently paints nothing.
 ///
 /// # Why a superclass and not a declared system
 ///
@@ -80,21 +79,29 @@ abstract class GameState2D<G extends Game2D> extends GameState<G>
 /// Declares [WorldTransformSystem] and the renderer, for a state whose base
 /// class is already something else.
 mixin Renderer2DState<G extends Game2D> on GameState<G> {
-  /// A game that declares its own systems overrides this and calls
-  /// `super.describeSystems(descriptor)`.
-  @override
-  @mustCallSuper
-  void describeSystems(SystemDescriptor descriptor) {
-    super.describeSystems(descriptor);
-    descriptor.has(WorldTransformSystem.new);
-    descriptor.has(createRenderer);
-  }
+  /// Composes every `WorldTransform2D` from its local transform and its
+  /// parent's, once per fixed tick.
+  @system
+  final worldTransform = WorldTransformSystem();
+
+  /// Fills the frame buffers [Renderer2D] drains.
+  ///
+  /// `late final` so that the initialiser can call [createRenderer], which is
+  /// an instance method and so needs `this`. A `late final` **with** an
+  /// initialiser is one declaration, deferred to first touch - and the boot
+  /// pass's collect *is* that first touch, so the object the game runs is the
+  /// object the field holds. It is not the banned shape, which is a `late
+  /// final` with no initialiser and a hook filling it in later.
+  @system
+  late final GameRenderer2D renderer = createRenderer();
 
   /// The renderer to declare. Override to return a `GameRenderer2D` subclass
-  /// without having to take over [describeSystems] to do it.
+  /// without having to take over the field to do it.
   ///
-  /// Note the *budget* is not here: `maxSpritesPerTick` sizes native memory,
-  /// so it lives on [Renderer2D], on the copy that allocates it.
+  /// A type-wide choice expressed as an overridable member, which is this
+  /// engine's shape for one. Note the *budget* is not here:
+  /// `maxSpritesPerTick` sizes native memory, so it lives on [Renderer2D], on
+  /// the copy that allocates it.
   GameRenderer2D createRenderer() => GameRenderer2D();
 }
 
@@ -113,8 +120,8 @@ mixin Renderer2D on Game {
   /// The view a 2D game draws into when it declares none of its own -
   /// `GameView(camera: game.defaultCamera)` is the zero-configuration path.
   ///
-  /// Declared for the same reason [Renderer2DState.describeSystems] declares
-  /// the renderer: `extends Game2D` is meant to be the whole opt-in, and a
+  /// Declared for the same reason [Renderer2DState] declares the renderer:
+  /// `extends Game2D` is meant to be the whole opt-in, and a
   /// game that had to remember a second declaration before anything appeared
   /// would hit exactly the black screen that arrangement exists to prevent.
   ///

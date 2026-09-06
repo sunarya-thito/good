@@ -103,12 +103,10 @@ class _BothPhases extends GameSystem with FixedTickable, Tickable {
 /// rather than [_TestState]. The *state* is what varies; the `Game` only has
 /// to say which one to build.
 class _PhaseState extends _FixtureState {
-  @override
-  void describeSystems(SystemDescriptor descriptor) {
-    super.describeSystems(descriptor);
-    descriptor.has(_PresentSystem.new);
-    descriptor.has(_BothPhases.new);
-  }
+  @system
+  final presentSystem = _PresentSystem();
+  @system
+  final bothPhases = _BothPhases();
 }
 
 class _PhaseGame extends _TestGame {
@@ -138,16 +136,19 @@ class _AfterThrowerSystem extends GameSystem with FixedTickable {
   void onFixedUpdate() => ran++;
 }
 
-late _ThrowingSystem _thrower;
-late _AfterThrowerSystem _afterThrower;
+// Read off the running state rather than stashed by a declaration pass.
+// A system is a field now, so the object a test wants is the one the state
+// that ticks holds - `run.state` - and not whichever copy some earlier
+// `createState` built.
+_ThrowingSystem get _thrower => run.state.getSystem<_ThrowingSystem>();
+_AfterThrowerSystem get _afterThrower =>
+    run.state.getSystem<_AfterThrowerSystem>();
 
 class _ThrowState extends _FixtureState {
-  @override
-  void describeSystems(SystemDescriptor descriptor) {
-    super.describeSystems(descriptor);
-    _thrower = descriptor.has(_ThrowingSystem.new);
-    _afterThrower = descriptor.has(_AfterThrowerSystem.new);
-  }
+  @system
+  final thrower = _ThrowingSystem();
+  @system
+  final afterThrower = _AfterThrowerSystem();
 }
 
 class _ThrowGame extends _TestGame {
@@ -196,14 +197,11 @@ class _VisibilitySystem extends GameSystem with AppVisibilityListener {
   void onAppShown(Duration gap) => shown.add(gap);
 }
 
-late _VisibilitySystem _visibility;
+_VisibilitySystem get _visibility => run.state.getSystem<_VisibilitySystem>();
 
 class _VisibilityState extends _FixtureState {
-  @override
-  void describeSystems(SystemDescriptor descriptor) {
-    super.describeSystems(descriptor);
-    _visibility = descriptor.has(_VisibilitySystem.new);
-  }
+  @system
+  final visibility = _VisibilitySystem();
 }
 
 class _VisibilityGame extends _TestGame {
@@ -297,22 +295,30 @@ class _Spawner extends GameSystem with FixedTickable {
   void onFixedUpdate() => log.add('spawn');
 }
 
-/// Extends the base fixture's set rather than replacing it - the `super` call
-/// is what makes declaration order (and therefore execution order) the thing
-/// under test.
+/// Extends the base fixture's set rather than replacing it, which is what
+/// makes declaration order (and therefore execution order) the thing under
+/// test.
+///
+/// **A subclass's systems are declared before its superclass's**, because
+/// declaration order is the order Dart would run the field initialisers in
+/// and a class's own run before its superclass constructor. So the order here
+/// is Indifferent1, Indifferent2, SortsFirst, AlsoSortsFirst, Composer,
+/// Spawner, then `_TestState`'s A, InertSystem, B, CensusSystem. It was the
+/// other way round while a hook declared them, because the hook called
+/// `super` first.
 class _OrderingState extends _TestState {
-  @override
-  void describeSystems(SystemDescriptor descriptor) {
-    // Declaration order: A, InertSystem, B, CensusSystem, Indifferent1,
-    // Indifferent2, SortsFirst, AlsoSortsFirst, Composer, Spawner.
-    super.describeSystems(descriptor);
-    descriptor.has(_Indifferent1.new);
-    descriptor.has(_Indifferent2.new);
-    descriptor.has(_SortsFirst.new);
-    descriptor.has(_AlsoSortsFirst.new);
-    descriptor.has(_Composer.new);
-    descriptor.has(_Spawner.new);
-  }
+  @system
+  final indifferent1 = _Indifferent1();
+  @system
+  final indifferent2 = _Indifferent2();
+  @system
+  final sortsFirst = _SortsFirst();
+  @system
+  final alsoSortsFirst = _AlsoSortsFirst();
+  @system
+  final composer = _Composer();
+  @system
+  final spawner = _Spawner();
 }
 
 /// Three systems whose stated positions genuinely cannot all hold.
@@ -341,13 +347,12 @@ class _CycleC extends GameSystem with FixedTickable {
 }
 
 class _CyclicState extends _FixtureState {
-  @override
-  void describeSystems(SystemDescriptor descriptor) {
-    super.describeSystems(descriptor);
-    descriptor.has(_CycleA.new);
-    descriptor.has(_CycleB.new);
-    descriptor.has(_CycleC.new);
-  }
+  @system
+  final cycleA = _CycleA();
+  @system
+  final cycleB = _CycleB();
+  @system
+  final cycleC = _CycleC();
 }
 
 class _CyclicGame extends _TestGame {
@@ -391,9 +396,8 @@ class _SpawnUnit extends ValueSupplier<Entity> {
 
 /// The scene, the spawn handler and nothing else. Split out from [_TestState]
 /// so a fixture wanting a different system set inherits the setup without
-/// inheriting systems it would then have to drop - dropping them means an
-/// override that skips `super.describeSystems`, which is the one thing
-/// `@mustCallSuper` is here to stop.
+/// inheriting systems it would then have to drop - and a field cannot be
+/// dropped by a subclass at all.
 class _FixtureState extends GameState<_TestGame> {
   /// Held rather than looked up: the handler needs the prefab, and this is the
   /// side that has it.
@@ -414,14 +418,14 @@ class _FixtureState extends GameState<_TestGame> {
 }
 
 class _TestState extends _FixtureState {
-  @override
-  void describeSystems(SystemDescriptor descriptor) {
-    super.describeSystems(descriptor);
-    descriptor.has(_SystemA.new);
-    descriptor.has(_InertSystem.new);
-    descriptor.has(_SystemB.new);
-    descriptor.has(_CensusSystem.new);
-  }
+  @system
+  final systemA = _SystemA();
+  @system
+  final inertSystem = _InertSystem();
+  @system
+  final systemB = _SystemB();
+  @system
+  final censusSystem = _CensusSystem();
 }
 
 class _TestGame extends Game {
@@ -681,13 +685,8 @@ class _WindowState extends _FixtureState {
   /// page has published is the whole of one of these cases.
   late Entity victim;
 
-  late final _MarkerSystem marker;
-
-  @override
-  void describeSystems(SystemDescriptor descriptor) {
-    super.describeSystems(descriptor);
-    marker = descriptor.has(() => _MarkerSystem(level));
-  }
+  @system
+  late final marker = _MarkerSystem(level);
 
   @override
   void describeCommands(CommandDescriptor descriptor) {
@@ -810,17 +809,15 @@ class _DrawsFromB extends GameSystem with FixedTickable {
   void onFixedUpdate() => drawn.add(_randomGame.b.nextInt(1000));
 }
 
-late _DrawsFromA _drawsA;
-late _DrawsFromB _drawsB;
+_DrawsFromA get _drawsA => run.state.getSystem<_DrawsFromA>();
+_DrawsFromB get _drawsB => run.state.getSystem<_DrawsFromB>();
 late _RandomGame _randomGame;
 
 class _RandomState extends _FixtureState {
-  @override
-  void describeSystems(SystemDescriptor descriptor) {
-    super.describeSystems(descriptor);
-    _drawsA = descriptor.has(_DrawsFromA.new);
-    _drawsB = descriptor.has(_DrawsFromB.new);
-  }
+  @system
+  final drawsA = _DrawsFromA();
+  @system
+  final drawsB = _DrawsFromB();
 }
 
 class _RandomGame extends _TestGame {
@@ -912,12 +909,9 @@ class _BadCommandGame extends _TestGame {
 }
 
 class _DuplicateSystemState extends _TestState {
-  @override
-  void describeSystems(SystemDescriptor descriptor) {
-    // `_TestState` already declared a `_SystemA`; this is the second.
-    super.describeSystems(descriptor);
-    descriptor.has(_SystemA.new);
-  }
+  // `_TestState` already declared a `_SystemA`; this is the second.
+  @system
+  final systemA2 = _SystemA();
 }
 
 class _DuplicateSystemGame extends _TestGame {
@@ -2350,14 +2344,14 @@ void main() {
         _state(game).advance(_step);
         expect(
           log,
-          ['C', 'D', 'A', 'B', '1', '2', 'spawn', 'compose'],
+          ['C', 'D', '1', '2', 'spawn', 'compose', 'A', 'B'],
           reason:
-              'declaration order was A, B, Indifferent1, Indifferent2, '
-              'SortsFirst, AlsoSortsFirst, Composer, Spawner '
-              '(InertSystem/CensusSystem are not FixedTickable and do not '
-              'log). C and D both claim to be first, so they take the front '
-              'in declaration order; Spawner crosses Composer; everything '
-              'else stays where it was declared',
+              'declaration order is Indifferent1, Indifferent2, SortsFirst, '
+              'AlsoSortsFirst, Composer, Spawner, then the superclass A, '
+              'InertSystem, B, CensusSystem (InertSystem/CensusSystem are '
+              'not FixedTickable and do not log). C and D both claim to be '
+              'first, so they take the front in declaration order; Spawner '
+              'crosses Composer; everything else stays where it was declared',
         );
       },
     );
@@ -2785,11 +2779,8 @@ class _UndeclaredSystem extends GameSystem {}
 
 /// The "no world yet" configuration: a GameState that declares no scene.
 class _ScenelessState extends GameState<_ScenelessGame> {
-  @override
-  void describeSystems(SystemDescriptor descriptor) {
-    super.describeSystems(descriptor);
-    descriptor.has(_SystemA.new);
-  }
+  @system
+  final systemA3 = _SystemA();
 }
 
 class _ScenelessGame extends Game {

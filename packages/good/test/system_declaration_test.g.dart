@@ -54,6 +54,9 @@ List<ScannableField> _collect$FieldSystem(Object object) {
 List<ScannableField> _collect$EventState(Object object) {
   final owner = object as _EventState;
   return <ScannableField>[
+    owner.source,
+    owner.earA,
+    owner.earB,
     owner.fixedTickEvent,
     owner.tickEvent,
     owner.gameMountedEvent,
@@ -96,6 +99,7 @@ List<ScannableField> _collect$MixedInputSystem(Object object) {
 List<ScannableField> _collect$InputState(Object object) {
   final owner = object as _InputState;
   return <ScannableField>[
+    owner.source,
     owner.fixedTickEvent,
     owner.tickEvent,
     owner.gameMountedEvent,
@@ -116,6 +120,75 @@ List<ScannableField> _collect$FieldInputGame(Object object) {
 
 List<ScannableField> _collect$MixedInputGame(Object object) {
   object as _MixedInputGame;
+  return const <ScannableField>[];
+}
+
+List<ScannableField> _collect$Counting(Object object) {
+  final owner = object as _Counting;
+  return <ScannableField>[
+    owner.mountEvent,
+    owner.unmountEvent,
+  ];
+}
+
+List<ScannableField> _collect$MarkedSystem(Object object) {
+  final owner = object as _MarkedSystem;
+  return <ScannableField>[
+    owner.mountEvent,
+    owner.unmountEvent,
+  ];
+}
+
+List<ScannableField> _collect$SpareSystem(Object object) {
+  final owner = object as _SpareSystem;
+  return <ScannableField>[
+    owner.mountEvent,
+    owner.unmountEvent,
+  ];
+}
+
+List<ScannableField> _collect$MarkerState(Object object) {
+  final owner = object as _MarkerState;
+  return <ScannableField>[
+    owner.marked,
+    owner.fixedTickEvent,
+    owner.tickEvent,
+    owner.gameMountedEvent,
+    owner.gameUnmountedEvent,
+    owner.appHiddenEvent,
+    owner.appShownEvent,
+    owner.entitySpawnedEvent,
+    owner.entityDespawnedEvent,
+    owner.sceneLoadedEvent,
+    owner.sceneUnloadedEvent,
+  ];
+}
+
+List<ScannableField> _collect$MarkerGame(Object object) {
+  object as _MarkerGame;
+  return const <ScannableField>[];
+}
+
+List<ScannableField> _collect$TwinState(Object object) {
+  final owner = object as _TwinState;
+  return <ScannableField>[
+    owner.first,
+    owner.second,
+    owner.fixedTickEvent,
+    owner.tickEvent,
+    owner.gameMountedEvent,
+    owner.gameUnmountedEvent,
+    owner.appHiddenEvent,
+    owner.appShownEvent,
+    owner.entitySpawnedEvent,
+    owner.entityDespawnedEvent,
+    owner.sceneLoadedEvent,
+    owner.sceneUnloadedEvent,
+  ];
+}
+
+List<ScannableField> _collect$TwinGame(Object object) {
+  object as _TwinGame;
   return const <ScannableField>[];
 }
 
@@ -152,6 +225,13 @@ const GeneratedDeclarations _systemDeclarationTestDeclarations =
         ),
         DeclarationCollector(_FieldInputGame, _collect$FieldInputGame),
         DeclarationCollector(_MixedInputGame, _collect$MixedInputGame),
+        DeclarationCollector(_Counting, _collect$Counting),
+        DeclarationCollector(_MarkedSystem, _collect$MarkedSystem),
+        DeclarationCollector(_SpareSystem, _collect$SpareSystem),
+        DeclarationCollector(_MarkerState, _collect$MarkerState),
+        DeclarationCollector(_MarkerGame, _collect$MarkerGame),
+        DeclarationCollector(_TwinState, _collect$TwinState),
+        DeclarationCollector(_TwinGame, _collect$TwinGame),
       ],
       dependencies: <GeneratedDeclarations>[
         goodDeclarations,

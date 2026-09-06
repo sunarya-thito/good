@@ -38,11 +38,8 @@ class _BareState extends GameState<Game> {
     loadScene(_BareScene());
   }
 
-  @override
-  void describeSystems(SystemDescriptor descriptor) {
-    super.describeSystems(descriptor);
-    descriptor.has(_TickingSystem.new);
-  }
+  @system
+  final tickingSystem = _TickingSystem();
 }
 
 class _BareScene extends SceneStruct {
@@ -102,10 +99,9 @@ class _VisibilitySystem extends GameSystem
   void onFixedUpdate() => steps++;
 }
 
-/// The system of the live run, bound the same way [run] is and for the same
-/// reason: the declaration pass owns the instance, so a test cannot hold one
-/// it made itself.
-late _VisibilitySystem _visibility;
+/// The system of the live run, read off [run] for the same reason it always
+/// was: the state that ticks owns the instance, so a test cannot hold one it
+/// made itself.
 
 class _VisibilityState extends GameState<Game> {
   @override
@@ -113,12 +109,11 @@ class _VisibilityState extends GameState<Game> {
     loadScene(_BareScene());
   }
 
-  @override
-  void describeSystems(SystemDescriptor descriptor) {
-    super.describeSystems(descriptor);
-    _visibility = descriptor.has(_VisibilitySystem.new);
-  }
+  @system
+  final visibility = _VisibilitySystem();
 }
+
+_VisibilitySystem get _visibility => run.state.getSystem<_VisibilitySystem>();
 
 class _VisibilityGame extends Game {
   @override
