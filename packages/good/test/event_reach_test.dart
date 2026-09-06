@@ -13,7 +13,7 @@ import 'package:good/src/system.dart';
 import 'package:good/src/declarations.g.dart';
 import 'package:good/src/scannable.dart';
 
-part 'event_scope_test.g.dart';
+part 'event_reach_test.g.dart';
 
 /// The live run under test. A file-level binding: the bring-up helper
 /// returns the `Game` (the description) while tests also need the run, and

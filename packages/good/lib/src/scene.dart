@@ -316,9 +316,9 @@ abstract class SceneStruct with Coroutines implements Scannable {
     // 'the lifecycle-listener route' cases): a struct's own override decides
     // whether and *when* `super.onEntityMounted` runs, so half the point -
     // children exist before anything hears about the parent - would be the
-    // user's to keep; and `unmountEntitiesOf` fires the same dispatcher for
-    // every row in an unloading scene, so the teardown half of that design
-    // destroys rows the unload is already freeing.
+    // user's to keep; and `unmountEntitiesOf` calls the same hook for every
+    // row in an unloading scene, so the teardown half of that design destroys
+    // rows the unload is already freeing.
     // Cast rather than promote: `is` does not promote a value whose static
     // type is unrelated to the tested mixin - `EntityStruct` is not a
     // supertype of `Parent` - so the analyzer leaves it alone and the cast is

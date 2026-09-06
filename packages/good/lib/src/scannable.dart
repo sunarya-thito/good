@@ -564,9 +564,10 @@ class Describes {
 /// is the kind of thing a scan reads; only the tool says a scan read it.
 ///
 /// An earlier version of this paragraph argued the other way, that no scanned
-/// class declares nothing because every `EntityStruct` inherits two
-/// dispatchers and every `SceneStruct` two more. That is true of structs and
-/// false of commands: `GameCommandBase` is scanned too, and
+/// class declares nothing because every `EntityStruct` inherited two
+/// dispatchers and every `SceneStruct` two more. Those are methods now, and it
+/// was false even while they were dispatchers: `GameCommandBase` is scanned
+/// too, and
 /// `final class StepOnceCommand extends SignalCommand {}` declares nothing at
 /// all. It reached a table with no line for it, and `_bootMain` threw on a
 /// class that had been scanned and had nothing to say.

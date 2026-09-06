@@ -1,6 +1,6 @@
 // flutter_test exports an unrelated EventDispatcher (its pointer-event test
 // harness), so the engine's has to win here by name - same reason as
-// event_scope_test.dart.
+// event_reach_test.dart.
 import 'package:flutter_test/flutter_test.dart' hide EventDispatcher;
 
 import 'package:good/src/archetype.dart';

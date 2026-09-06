@@ -8,16 +8,17 @@ import 'package:good/src/struct.dart';
 // can hear about them.
 //
 // An owner answering for *itself* is a plain virtual and needs none of this.
-// `GameState.onMounted()` is one; so are `SceneStruct.onSceneMounted(Scene)`
-// and `EntityStruct.onEntityMounted(Entity)`, and their two teardown halves.
-// One receiver, the framework the only caller, nothing to dispatch and nobody
-// to dispatch it to.
+// `GameState.onMounted()` is one; so are `GameSystem.onMounted()`,
+// `SceneStruct.onSceneMounted(Scene)` and
+// `EntityStruct.onEntityMounted(Entity)`, and every one of their teardown
+// halves. One receiver, the framework the only caller, nothing to dispatch and
+// nobody to dispatch it to.
 //
 // What a virtual cannot do, and what these events are for, is tell somebody
-// else. A `GameSystem` that wants to know the game has come up is not the
-// owner of anything and has no virtual to override, so `GameLifecycleListener`
-// below is how it asks. `SceneLoadListener` and `EntitySpawnListener`, further
-// down, are the same shape for the two levels under it.
+// else. A system that wants to know the *game* has come up is being told about
+// something it does not own, so `GameLifecycleListener` below is how it asks.
+// `SceneLoadListener` and `EntitySpawnListener`, further down, are the same
+// shape for the two levels under it.
 
 /// Hears the game itself coming up and going down.
 ///

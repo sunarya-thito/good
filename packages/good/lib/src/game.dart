@@ -535,10 +535,6 @@ abstract class Game implements RandomOwner, Scannable {
   /// open before the object exists. `descriptor.has(MainScene.new)` does not
   /// compile here, and `descriptor.has(Mote())` does not compile there.
   ///
-  /// What the instance form costs is that a scene has no declaration window
-  /// of its own: `Event.of` in a `SceneStruct` field initialiser throws, and
-  /// a scene declares its events in `describeEvents` instead. See [Event].
-  ///
   /// # What declaring buys, and what it does not
   ///
   /// Declaring a scene here **registers its archetypes and declares its

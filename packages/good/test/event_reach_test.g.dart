@@ -18,7 +18,7 @@
 // package's lib/ holds privately. That is another library,
 // so nothing here can read it - it keeps its place so that
 // what the row is missing, and where, is visible.
-part of 'event_scope_test.dart';
+part of 'event_reach_test.dart';
 
 List<ScannableField> _collect$PingSystem(Object object) {
   object as _PingSystem;
@@ -79,9 +79,9 @@ List<ScannableField> _collect$PingGame(Object object) {
 /// It carries the package's own generated table as a
 /// dependency, so installing this installs the collectors for
 /// the engine classes a fixture is built on as well.
-const GeneratedDeclarations _eventScopeTestDeclarations =
+const GeneratedDeclarations _eventReachTestDeclarations =
     GeneratedDeclarations(
-      package: 'good/test/event_scope_test.dart',
+      package: 'good/test/event_reach_test.dart',
       collectors: <DeclarationCollector>[
         DeclarationCollector(_PingSystem, _collect$PingSystem),
         DeclarationCollector(_DeafSystem, _collect$DeafSystem),
@@ -96,12 +96,12 @@ const GeneratedDeclarations _eventScopeTestDeclarations =
       ],
     );
 
-/// Installs [_eventScopeTestDeclarations].
+/// Installs [_eventReachTestDeclarations].
 ///
 /// Called first thing in this library's `main`. Nothing runs
 /// on import in Dart, so a table that is never installed is a
 /// table nothing has - and the first registration says so by
 /// naming the class it could not collect.
 void _installDeclarations() => DeclarationRegistry.installGenerated(
-  const <GeneratedDeclarations>[_eventScopeTestDeclarations],
+  const <GeneratedDeclarations>[_eventReachTestDeclarations],
 );
