@@ -69,9 +69,9 @@ class GoodConfig {
   /// Where canonical assets are written, and what `flutter: assets:` must
   /// list.
   ///
-  /// Generated: safe to gitignore, and rebuilt by `good assets compact`.
+  /// Generated: safe to gitignore, and rebuilt by `good generate`.
   /// Development and release load byte-identical files because both load
-  /// *this*, which is the whole reason compaction is not a release-only step -
+  /// *this*, which is the whole reason normalisation is not a release-only step -
   /// a format bug that only appears in release is the worst kind.
   final String assetOutput;
 

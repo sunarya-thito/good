@@ -1,40 +1,59 @@
 import 'dart:io';
 
+import 'package:good_cli/src/assets/pipeline.dart';
 import 'package:good_cli/src/command.dart';
 
 import 'package:good_cli/src/generate/run.dart';
 import 'package:good_cli/src/parsers.dart';
 import 'package:good_cli/src/verbosable.dart';
 
-/// `good generate` - writes the project's generated sibling package.
+/// `good generate` - the whole pipeline between the art and a project that
+/// builds.
 ///
-/// The command is a thin wrapper on purpose. Everything it does lives in
-/// [runGenerate] and `bundle.dart`, so what the entry point is *called* is a
-/// wiring detail: the CLI's command names are being reconsidered, and a rename
-/// should cost this file and nothing else.
+/// Three stages, in the one order that works, all of them here:
+///
+/// ```
+/// normalize -> chunk -> compress -> encrypt
+/// ```
+///
+/// with the bindings emitted between the first and the second, because they
+/// are a function of the normalised files and packing writes its mapping back
+/// into a file generation produced. [runAssetPipeline] holds the order and the
+/// reasons; this file is the command line for it.
+///
+/// # Why it is not three commands
+///
+/// It was: `good assets compact`, `good generate`, `good assets pack`, with
+/// nothing saying they had to be run in that order or at all. What that
+/// produced was art in `assets_src/`, a `good generate` that read only the
+/// output directory, and this:
+///
+/// ```
+/// No assets found in the declared directories.
+/// 0 texture(s), 0 audio file(s).
+/// ```
+///
+/// exiting 0, with the command that would have converted the art sitting in a
+/// separate group nothing mentioned. Folding them removes the ordering
+/// mistake by removing the ordering. (#238)
+///
+/// # What generation itself writes
 ///
 /// Four files, in `<bundle>/lib/`, and they are regenerated on very different
 /// schedules:
 ///
 ///  * `textures.dart` - one enum value per shipped image. Rewritten every run;
-///    it is a pure function of the pubspec.
+///    it is a pure function of the pubspec and the normalised files.
+///  * `audios.dart` - the same for audio.
 ///  * `good.dart` - the startup readiness check. Rewritten every run.
 ///  * `asset_key.dart` - the encryption keys. **Written once**, then left
 ///    alone, because rewriting the keys orphans every asset pack already built
-///    with the old ones. [rotateKeys] is the flag that replaces them. A
-///    project migrating off `lib/good.generated/` keeps the file it already
-///    had, byte for byte.
+///    with the old ones. [rotateKeys] is the flag that replaces them.
 ///
 /// It also writes the package itself - its pubspec and its ownership marker -
 /// records its name in the project's `good:` section, adds the path
-/// dependency, and resolves it. The last of those is [noPubGet]'s to skip.
-///
-/// The struct-layout half of codegen the README describes - scanning
-/// `Component`/`EntityStruct` with `package:analyzer` to hoist good's runtime
-/// `DataDescriptor` layout to build time - is not here. That is a separate and
-/// much larger piece of Phase 4, and pretending otherwise by emitting a stub
-/// would make it look done.
-class GenerateCommand extends Command with Verbose, Resolving {
+/// dependency, and resolves it. The last of those is `--no-pub-get`'s to skip.
+class GenerateCommand extends Command with Verbose, Resolving, Bundling {
   late final Arg<Directory> projectDir;
   late final Arg<bool> dryRun;
   late final Arg<bool> rotateKeys;
@@ -56,17 +75,28 @@ class GenerateCommand extends Command with Verbose, Resolving {
       name: 'rotate-keys',
       description:
           'Regenerate asset_key.dart. Every existing asset pack stops '
-          'decrypting - repack after using this.',
+          'decrypting - generate again after using this.',
     );
   }
 
   @override
   Future<void> execute() async {
-    await runGenerate(
+    await runAssetPipeline(
       projectDir: projectDir.value,
       command: _command,
       out: info,
+      err: err,
       verbose: debug,
+      steps: PipelineSteps(
+        pipelineStepCount(normalize: normalizeAssets, pack: packAssets),
+      ),
+      mode: assetMode.value,
+      encryption: assetEncryption.value,
+      compression: assetCompression.value,
+      normalizeAssets: normalizeAssets,
+      packAssets: packAssets,
+      force: force.value,
+      allowDownload: !noDownload.value,
       rotateKeys: rotateKeys.value,
       dryRun: dryRun.value,
       pubGet: pubGet,

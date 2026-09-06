@@ -78,7 +78,7 @@ class BundlePackage {
   File get marker => File(p.join(directory.path, bundleMarkerName));
 
   /// The per-project keys and the pack manifest. Written once and then edited
-  /// in place by `good assets pack`, never rewritten - see
+  /// in place by `good generate`'s packing stage, never rewritten - see
   /// `emitAssetKeys`.
   File get assetKeyFile => File(p.join(libDir.path, 'asset_key.dart'));
 

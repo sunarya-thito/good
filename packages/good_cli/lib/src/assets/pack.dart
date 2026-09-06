@@ -369,7 +369,7 @@ Future<PackResult> packAssets({
       if (!file.existsSync()) {
         throw ArgumentError(
           'Declared asset "$logical" is not at ${file.path}. Run '
-          '`good assets compact` first, or fix the pubspec.',
+          '`good generate` first, or fix the pubspec.',
         );
       }
       final bytes = file.readAsBytesSync();

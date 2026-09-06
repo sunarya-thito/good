@@ -256,7 +256,7 @@ Future<GenerateResult> runGenerate({
       if (keysExist) {
         out.println(
           'Rotating asset keys. Every pack built with the old keys stops '
-          'decrypting; run `good assets pack` again.',
+          'decrypting; this run repacks them.',
         );
       }
     }

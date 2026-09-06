@@ -361,7 +361,8 @@ ${line('_assetKey4')}
 /// Logical asset path -> the chunk that holds it, e.g.
 /// `assets/plane.png` -> `assets/chunk_0.dat`.
 ///
-/// Filled by `good assets pack`, not by codegen: which chunk an asset lands in
+/// Filled by `good generate`'s packing stage, not by codegen: which chunk an
+/// asset lands in
 /// is a property of a particular pack, and chunks are grouped by scene so that
 /// loading a scene reads as few of them as possible. Empty until a pack has
 /// run, which is the loose development build - there `BundleSource` resolves

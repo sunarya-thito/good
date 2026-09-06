@@ -19,8 +19,8 @@ import 'package:good/src/asset.dart';
 class AudioClip {
   AudioClip(this.bytes, this.format);
 
-  /// The file's bytes, in [format]. Whatever `good assets compact` produced -
-  /// Ogg Vorbis by default.
+  /// The file's bytes, in [format]. Whatever `good generate` normalised them
+  /// to - Ogg Vorbis by default.
   final Uint8List bytes;
 
   /// The container the bytes are in, from the source path's extension.
