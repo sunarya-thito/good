@@ -1,6 +1,7 @@
 // good create <project_name> [--2d | --3d]
 import 'dart:io';
 
+import 'package:good_cli/src/assets/pipeline.dart';
 import 'package:good_cli/src/command.dart';
 import 'package:good_cli/src/generate/bundle.dart';
 import 'package:good_cli/src/generate/run.dart';
@@ -149,7 +150,7 @@ class CreateCommand extends Command with Verbose, Resolving {
     // The three ways an existing project can already be using the name are a
     // real dependency of that name, a directory of that name somebody wrote,
     // and a `good: bundle:` naming something else; all three are refusals, and
-    // `resolveBundle` is where they live. Reaching them through `runGenerate`
+    // `resolveBundle` is where they live. Reaching them through the pipeline
     // at the end of the command instead means the same refusal after this has
     // put a `lib/game/` and a patched pubspec into a project it is about to
     // tell the person it will not touch.
@@ -192,16 +193,25 @@ class CreateCommand extends Command with Verbose, Resolving {
     // points at nothing and `flutter pub get` fails outright - which makes "it
     // does not build" a new project's first experience.
     //
+    // The whole pipeline, not generation alone. A fresh project has no art,
+    // so the other two stages do nothing - but `--no-flutter-create` writes
+    // into a project that already exists, and one of those can have art in
+    // `assets_src/` already. Reaching generation without the conversion is
+    // exactly the failure that folded the commands (#238), and it would be
+    // back here in a third entry point.
+    //
     // Driven directly rather than by re-entering the runner: `generate` is a
     // command, but it is also just this work, and spawning a second parse of a
     // synthetic command line to reach it would be indirection for its own
     // sake.
     info.println('');
-    final generated = await runGenerate(
+    final generated = await runAssetPipeline(
       projectDir: root,
       command: '${session.path.first} generate',
       out: info,
+      err: err,
       verbose: debug,
+      steps: PipelineSteps(pipelineStepCount(normalize: true, pack: true)),
       // The engine is named here and not worked out from the project. The
       // pubspec line declaring it went in a few statements ago and nothing has
       // resolved the project since, so it is in no package config yet - and a

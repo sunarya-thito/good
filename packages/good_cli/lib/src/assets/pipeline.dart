@@ -20,6 +20,22 @@ import 'package:meta/meta.dart';
 /// normalize -> generate -> pack
 /// ```
 ///
+/// # The stages are four, and folding the commands must not fold them
+///
+/// The full order is a project's declared `transformers:` first, then good's
+/// own bundling as the implicit last transformer in the chain:
+///
+/// ```
+/// transformers -> normalize -> chunk -> compress -> encrypt
+/// ```
+///
+/// Nothing runs usefully after a chunk (#358, `AssetEntry.transformers`).
+/// Running the declared transformers is not implemented yet; when it is, it is
+/// a stage in front of `_normalize` here and not a step inside it - which is
+/// the distinction this whole issue turns on. Normalisation converts a
+/// container; packing chunks, compresses and seals. They are two stages of one
+/// pipeline and one command is not one stage.
+///
 /// # Why it is one command and not three
 ///
 /// Because the order is not optional and nothing said it. Normalisation
