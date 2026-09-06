@@ -143,9 +143,9 @@ Three more hooks look like they belong in that table and do not.
 `GameSystem.onMounted`, `SceneStruct.onSceneMounted` and
 `EntityStruct.onEntityMounted` are methods, not events: one receiver, the
 framework the only caller, and the receiver is the thing the call is about.
-`SceneLoadListener` on a system is the other question
-— "**a** scene mounted, tell me which" — and it is an event because the
-audience is open. The entity pair splits the same way.
+`SceneLoadListener` on a system is the other question — "**a** scene mounted,
+tell me which" — and it is an event because the audience is open. The entity
+pair splits the same way.
 
 ## How listeners are collected
 
