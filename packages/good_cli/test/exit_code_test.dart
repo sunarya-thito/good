@@ -201,20 +201,40 @@ void main() {
     });
   });
 
-  group('good assets pack', () {
-    test('exits 70 when the key material is missing', () {
-      // Release plus AES needs the bundle package's asset_key.dart, and
-      // nothing has generated one.
+  // One command now runs all three stages, so every code below is
+  // `good generate`'s. `--no-pub-get` on each: these fixtures are the
+  // smallest thing the command will accept and not resolvable Flutter apps,
+  // so a real `flutter pub get` fails on its own terms and says nothing about
+  // what is being asked. (#238)
+  group('good generate, packing', () {
+    test('exits 70 when the key material will not read', () {
+      // Release plus AES needs the bundle package's asset_key.dart. Absent is
+      // no longer a case anyone can reach - generation writes that file
+      // earlier in the same run - so what is left is a file that is there and
+      // says nothing, which is what a hand-edit or a half-written disk gives.
       final dir = _project();
       File('${dir.path}/assets/player.webp').writeAsStringSync('bytes');
       expect(
+        _run(<String>['generate', '--project-dir', dir.path, '--no-pub-get']),
+        ok,
+        reason: 'the fixture has to generate once before it can be broken',
+      );
+
+      final keys = File('${dir.path}/exit_probe_bundle/lib/asset_key.dart');
+      // Seven of the eight bytes out of each of the four parts, so the file
+      // still parses and still has an `assetMapping` to rewrite. What it no
+      // longer has is 32 bytes of key.
+      keys.writeAsStringSync(
+        keys.readAsStringSync().replaceAll(RegExp(r'0x[0-9a-fA-F]{2}, '), ''),
+      );
+      expect(
         _run(<String>[
-          'assets',
-          'pack',
+          'generate',
           '--project-dir',
           dir.path,
-          '--mode=release',
-          '--encryption=aes',
+          '--no-pub-get',
+          '--assets=release',
+          '--asset-encryption=aes',
         ]),
         exSoftware,
       );
@@ -222,7 +242,10 @@ void main() {
 
     test('exits 0 when there is nothing to pack', () {
       final dir = _project();
-      expect(_run(<String>['assets', 'pack', '--project-dir', dir.path]), ok);
+      expect(
+        _run(<String>['generate', '--project-dir', dir.path, '--no-pub-get']),
+        ok,
+      );
     });
 
     test('exits 0 for --dry-run', () {
@@ -230,10 +253,10 @@ void main() {
       File('${dir.path}/assets/player.webp').writeAsStringSync('bytes');
       expect(
         _run(<String>[
-          'assets',
-          'pack',
+          'generate',
           '--project-dir',
           dir.path,
+          '--no-pub-get',
           '--dry-run',
         ]),
         ok,
@@ -241,12 +264,12 @@ void main() {
     });
   });
 
-  group('good assets compact', () {
+  group('good generate, normalizing', () {
     test('exits 70 when a file will not convert', () {
       final dir = _project();
       _notAnImage('${dir.path}/assets_src/broken.png');
       expect(
-        _run(<String>['assets', 'compact', '--project-dir', dir.path]),
+        _run(<String>['generate', '--project-dir', dir.path, '--no-pub-get']),
         exSoftware,
       );
     }, skip: needsFfmpeg);
@@ -259,21 +282,36 @@ void main() {
       _notAnImage('${dir.path}/assets_src/art.png');
       expect(
         _run(<String>[
-          'assets',
-          'compact',
+          'generate',
           '--project-dir',
           dir.path,
+          '--no-pub-get',
           '--no-download',
         ]),
         exSoftware,
       );
     });
 
-    test('exits 0 when there is no source directory', () {
-      final dir = _tempDir();
-      File('${dir.path}/pubspec.yaml').writeAsStringSync('name: exit_probe\n');
+    test('a conversion failure stops the run before it binds anything', () {
+      // The order is why the stages are one command rather than three: an
+      // enum value bound for art that did not convert names a file that is
+      // not there, and packing refuses it three steps later with the
+      // conversion error long since scrolled off.
+      final dir = _project();
+      _notAnImage('${dir.path}/assets_src/broken.png');
+      _run(<String>['generate', '--project-dir', dir.path, '--no-pub-get']);
       expect(
-        _run(<String>['assets', 'compact', '--project-dir', dir.path]),
+        Directory('${dir.path}/exit_probe_bundle').existsSync(),
+        isFalse,
+        reason: 'generation ran anyway, over art that failed to convert',
+      );
+    }, skip: needsFfmpeg);
+
+    test('exits 0 when there is no source directory', () {
+      final dir = _project();
+      Directory('${dir.path}/assets_src').deleteSync();
+      expect(
+        _run(<String>['generate', '--project-dir', dir.path, '--no-pub-get']),
         ok,
       );
     });
@@ -283,10 +321,10 @@ void main() {
       _notAnImage('${dir.path}/assets_src/art.png');
       expect(
         _run(<String>[
-          'assets',
-          'compact',
+          'generate',
           '--project-dir',
           dir.path,
+          '--no-pub-get',
           '--dry-run',
         ]),
         ok,

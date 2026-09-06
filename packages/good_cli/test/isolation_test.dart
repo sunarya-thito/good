@@ -86,13 +86,7 @@ good:
         ..writeAsStringSync('not really a png');
 
       final result = cli.run(
-        <String>[
-          'assets',
-          'compact',
-          '--project-dir',
-          dir.path,
-          '--no-download',
-        ],
+        <String>['generate', '--project-dir', dir.path, '--no-download'],
         environment: <String, String>{'PATH': cli.build.stubs},
       );
 

@@ -408,7 +408,7 @@ void main() {
           isA<ArgumentError>().having(
             (e) => e.message,
             'message',
-            contains('good assets compact'),
+            contains('good generate'),
           ),
         ),
       );

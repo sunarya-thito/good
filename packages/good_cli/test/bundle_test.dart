@@ -1,8 +1,8 @@
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:good_cli/src/commands/assets/pack.dart';
 import 'package:good_cli/src/commands/build/windows.dart';
+import 'package:good_cli/src/commands/generate.dart';
 import 'package:good_cli/src/generate/bundle.dart';
 import 'package:good_cli/src/generate/run.dart';
 import 'package:good_cli/src/runner.dart';
@@ -828,14 +828,14 @@ void main() {
       }
     });
 
-    test('packing refuses before it makes the chunk directory', () async {
+    test('good generate refuses before it makes the chunk directory', () async {
       final project = _project();
       File('${project.path}/assets/a.png').writeAsBytesSync(<int>[1, 2, 3]);
       Directory('${project.path}/demo_bundle').createSync();
 
-      final runner = CommandRunner(PackCommand(), out: StringBuffer());
+      final runner = CommandRunner(GenerateCommand(), out: StringBuffer());
       await expectLater(
-        runner.run(<String>['--project-dir=${project.path}']),
+        runner.run(<String>['--project-dir=${project.path}', '--no-pub-get']),
         _refusesWith(contains(bundleMarkerName)),
       );
 

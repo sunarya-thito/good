@@ -362,11 +362,10 @@ ${line('_assetKey4')}
 /// `assets/plane.png` -> `assets/chunk_0.dat`.
 ///
 /// Filled by `good generate`'s packing stage, not by codegen: which chunk an
-/// asset lands in
-/// is a property of a particular pack, and chunks are grouped by scene so that
-/// loading a scene reads as few of them as possible. Empty until a pack has
-/// run, which is the loose development build - there `BundleSource` resolves
-/// its path straight through `rootBundle`.
+/// asset lands in is a property of a particular pack, and chunks are grouped
+/// by scene so that loading a scene reads as few of them as possible. Empty
+/// until a pack has run, which is the loose development build - there
+/// `BundleSource` resolves its path straight through `rootBundle`.
 final Map<String, String> assetMapping = <String, String>{};
 
 /// The four key parts, combined. Named so the runtime has one place to reach
