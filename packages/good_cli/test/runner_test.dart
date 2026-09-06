@@ -188,6 +188,33 @@ class _Root extends _Spy {
   }
 }
 
+/// A summary and a description long enough that help has to wrap them.
+class _Wordy extends _Spy {
+  late final Arg<bool> wordy;
+  late final Arg<String> wide;
+
+  @override
+  String get summary => 'What this one is for.';
+
+  @override
+  void describeCommand(CommandDescriptor descriptor) {
+    super.describeCommand(descriptor);
+    wordy = descriptor.describeFlag(
+      name: 'wordy',
+      description:
+          'Twenty-odd words about what this flag does, which is what a '
+          'description is for and is longer than the eighty columns a '
+          'terminal gives it.',
+    );
+    wide = descriptor.describeArg<String>(
+      name: 'a-label-wider-than-the-column',
+      description: 'Under its own label, not beside it.',
+      parser: _identity,
+      defaultValue: 'x',
+    );
+  }
+}
+
 /// Builds a fresh tree per test - a `Command` holds one run's binding, so
 /// sharing one across tests would let an earlier run answer a later one.
 ({_Root root, CommandRunner runner, StringBuffer help}) _tree() {
@@ -604,6 +631,91 @@ void main() {
       final usage = t.runner.usageFor(['good', 'args']);
       expect(usage, contains('--colour=<red|green|blue>'));
       expect(usage, contains('[red]'));
+    });
+
+    test('the usage line calls the root what the caller called it', () async {
+      // `good_tool` is run as `dart run good_tool`, so a usage line saying
+      // anything else is one nobody can copy off the screen (#373).
+      final help = StringBuffer();
+      final runner = CommandRunner(
+        _Root(),
+        name: 'dart run good_tool',
+        out: help,
+      );
+      expect(
+        runner.usageFor(const <String>[]),
+        startsWith('Usage: dart run good_tool'),
+      );
+    });
+
+    test('a long description wraps under its own column', () async {
+      final help = StringBuffer();
+      final usage = CommandRunner(
+        _Wordy(),
+        out: help,
+      ).usageFor(const <String>[]);
+      final lines = usage.split('\n');
+      expect(
+        lines.map((line) => line.length),
+        everyElement(lessThanOrEqualTo(80)),
+        reason: 'what runs off the right of a terminal is not read',
+      );
+      final first = lines.indexWhere((line) => line.contains('--wordy'));
+      final column = lines[first].indexOf('Twenty');
+      expect(
+        lines[first + 1].indexOf(RegExp(r'\S')),
+        column,
+        reason: 'the second line of a description is not a second option',
+      );
+    });
+
+    test('a label too wide for the column keeps its own line', () async {
+      // Aligning on the widest label would leave every description a column
+      // narrower than the labels above it - `good generate` has one fifty-one
+      // characters long.
+      final help = StringBuffer();
+      final usage = CommandRunner(
+        _Wordy(),
+        out: help,
+      ).usageFor(const <String>[]);
+      final lines = usage.split('\n');
+      final at = lines.indexWhere((line) => line.contains('--a-label-wider'));
+      expect(
+        lines[at].trim(),
+        startsWith('--a-label-wider-than-the-column'),
+      );
+      expect(
+        lines[at],
+        isNot(contains('Under its own label')),
+        reason: 'the description is on the next line, not off the screen',
+      );
+      expect(lines[at + 1], contains('Under its own label'));
+    });
+
+    test('summary says what the command does, above its options', () async {
+      final help = StringBuffer();
+      final usage = CommandRunner(
+        _Wordy(),
+        out: help,
+      ).usageFor(const <String>[]);
+      expect(
+        usage.indexOf('What this one is for.'),
+        greaterThan(usage.indexOf('Usage:')),
+      );
+      expect(
+        usage.indexOf('What this one is for.'),
+        lessThan(usage.indexOf('Options:')),
+      );
+    });
+
+    test('a command with no summary prints none', () async {
+      final t = _tree();
+      final usage = t.runner.usageFor(['good']);
+      expect(
+        usage.split('\n')[1],
+        isEmpty,
+        reason: 'the blank line under the usage, and then the commands',
+      );
     });
   });
 

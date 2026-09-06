@@ -13,13 +13,17 @@ import 'package:good_cli/src/command.dart';
 /// `Platform.executableArguments`: those are the Dart VM's own arguments
 /// (`--enable-asserts` and friends), never the script's, so a fallback to
 /// them parses the wrong list without saying so.
+///
+/// [name] is what the usage line calls the root, and it defaults to `good`
+/// because that is what this package's own executable is called.
 Future<int> runCommand(
   Command command,
   List<String> args, {
+  String name = 'good',
   StringSink? out,
 }) async {
   final sink = out ?? stdout;
-  final runner = CommandRunner(command, out: sink);
+  final runner = CommandRunner(command, name: name, out: sink);
   try {
     await runner.run(args);
     return 0;
@@ -62,10 +66,17 @@ Future<int> runCommand(
 /// describe `windows`, and it is the same reason the engine's `describeStruct`
 /// pass is total: a declaration that only runs when it is used is a
 /// declaration you cannot inspect, print, or check for collisions.
+///
+/// # What [name] is
+///
+/// The invocation, which is not always the executable. `good_tool` is run as
+/// `dart run good_tool`, and its usage line has to be a line somebody can copy
+/// off the screen and type - so the caller says what to call the root instead
+/// of this deciding from the package it happens to live in.
 class CommandRunner {
-  CommandRunner(Command root, {StringSink? out})
+  CommandRunner(Command root, {String name = 'good', StringSink? out})
     : _out = out ?? stdout,
-      _root = _Node.declare(root, 'good', null, out ?? stdout);
+      _root = _Node.declare(root, name, null, out ?? stdout);
 
   final _Node _root;
   final StringSink _out;
@@ -415,17 +426,23 @@ class _Node implements CommandBinding, CommandSession {
     }
     buffer.writeln(line);
 
+    final summary = command.summary;
+    if (summary.isNotEmpty) {
+      buffer.writeln();
+      for (final wrapped in _wrap(summary, _helpWidth)) {
+        buffer.writeln(wrapped);
+      }
+    }
+
     if (children.isNotEmpty) {
       buffer.writeln();
       buffer.writeln('Commands:');
-      final width = children.keys
-          .map((k) => k.length)
-          .fold<int>(0, (a, b) => a > b ? a : b);
-      for (final entry in children.entries) {
-        buffer.writeln(
-          '  ${entry.key.padRight(width)}  ${childDescriptions[entry.key]}',
-        );
-      }
+      buffer.write(
+        _table(<String, String>{
+          for (final entry in children.entries)
+            entry.key: childDescriptions[entry.key] ?? '',
+        }),
+      );
     }
 
     final options = specs.where((s) => s.kind != _Kind.consumer).toList();
@@ -434,32 +451,95 @@ class _Node implements CommandBinding, CommandSession {
     // `--help` is listed even though no command declares it: it is handled by
     // the runner for every command, and an option that works but is not
     // documented is one nobody finds.
-    final rows = <String, String>{
-      '--help': 'Show this help and exit.',
-      for (final spec in options) spec.optionLabel: spec.description,
-    };
-    final width = rows.keys
-        .map((k) => k.length)
-        .fold<int>(0, (a, b) => a > b ? a : b);
-    for (final row in rows.entries) {
-      buffer.writeln('  ${row.key.padRight(width)}  ${row.value}');
-    }
+    buffer.write(
+      _table(<String, String>{
+        '--help': 'Show this help and exit.',
+        for (final spec in options) spec.optionLabel: spec.description,
+      }),
+    );
 
     final consumers = specs.where((s) => s.kind == _Kind.consumer).toList();
     if (consumers.isNotEmpty) {
       buffer.writeln();
       buffer.writeln('Arguments:');
-      final width = consumers
-          .map((s) => s.display.length)
-          .fold<int>(0, (a, b) => a > b ? a : b);
-      for (final spec in consumers) {
-        buffer.writeln(
-          '  ${spec.display.padRight(width)}  ${spec.description}',
-        );
-      }
+      buffer.write(
+        _table(<String, String>{
+          for (final spec in consumers) spec.display: spec.description,
+        }),
+      );
     }
     return buffer.toString().trimRight();
   }
+}
+
+/// How wide a help block is allowed to get.
+///
+/// 80, which is what a terminal is until somebody widens it. A description
+/// long enough to say what a flag does - which is the point of writing one -
+/// runs off the right of the screen without this, and what wraps there lands
+/// under the option column where it reads as another option.
+const int _helpWidth = 80;
+
+/// How much of a row the label column may take before the description stops
+/// sitting beside it.
+///
+/// `--asset-compression=<none|fast|normal|best> [normal]` is fifty-one
+/// characters, and a table aligned on it would leave every description a
+/// column narrower than the labels. Rows wider than this get a line to
+/// themselves and their description under it, and the ones that fit still
+/// line up with each other.
+const int _helpLabelWidth = 30;
+
+/// Two columns: the label, then its description wrapped under itself.
+String _table(Map<String, String> rows) {
+  final width = rows.keys
+      .map((key) => key.length)
+      .where((length) => length <= _helpLabelWidth)
+      .fold<int>(0, (a, b) => a > b ? a : b);
+  final indent = ' ' * (width + 4);
+  final room = _helpWidth - indent.length;
+  final buffer = StringBuffer();
+  for (final row in rows.entries) {
+    final lines = _wrap(row.value, room);
+    if (row.key.length > width) {
+      buffer.writeln('  ${row.key}');
+      for (final line in lines) {
+        buffer.writeln('$indent$line');
+      }
+      continue;
+    }
+    var at = '  ${row.key.padRight(width)}  ';
+    for (final line in lines) {
+      buffer.writeln('$at$line');
+      at = indent;
+    }
+  }
+  return buffer.toString();
+}
+
+/// [text] broken into lines of at most [room] characters, on spaces.
+///
+/// A word longer than [room] - a path, a URL - gets a line of its own and
+/// overruns it, because breaking one in the middle makes it uncopyable.
+List<String> _wrap(String text, int room) {
+  final lines = <String>[];
+  final line = StringBuffer();
+  for (final word in text.split(' ')) {
+    if (line.isEmpty) {
+      line.write(word);
+      continue;
+    }
+    if (line.length + 1 + word.length > room) {
+      lines.add(line.toString());
+      line
+        ..clear()
+        ..write(word);
+      continue;
+    }
+    line.write(' $word');
+  }
+  if (line.isNotEmpty) lines.add(line.toString());
+  return lines.isEmpty ? <String>[''] : lines;
 }
 
 enum _Kind { arg, flag, consumer, remaining }

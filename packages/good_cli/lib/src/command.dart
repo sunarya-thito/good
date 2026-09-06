@@ -97,6 +97,14 @@ abstract class Command {
   /// This run's parsed arguments. Every [Arg] reads through it.
   CommandSession get session => _bound.session;
 
+  /// What this command does, printed under its usage line by `--help`.
+  ///
+  /// A getter and not a declaration, because it is a fact about the command
+  /// type and not about a run - the same reason `describeStruct` does not
+  /// carry one either. Empty leaves the help as it was: a command whose name
+  /// and options say the whole of it needs no sentence above them.
+  String get summary => '';
+
   /// Declares this command's arguments and subcommands. Runs once, before
   /// parsing.
   @mustCallSuper
