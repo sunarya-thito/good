@@ -8,6 +8,7 @@ versus everyone else (#305).
 
 ```bash
 cd packages/good_tool
+dart run good_tool --help                          # the flags, on screen
 dart run good_tool --dir ../../packages            # write
 dart run good_tool --dir ../../packages --check    # fail if committed is stale
 dart run good_tool --dir ../../packages --verbose  # say what got nothing, why
@@ -33,9 +34,10 @@ never names `good`. A run that matches no package says what it looked at and
 what it turned down, and exits 65.
 
 Two codes, the ones `good_cli`'s runner already uses. **64** is the command
-line being wrong — an argument it does not know, a `--dir` with nothing after
-it, no `--dir` at all, or a `--dir` naming a directory that is not there — and
-every one of them reprints the usage. **65** is the command line being right and
+line being wrong — an option it does not know, a `--dir` with nothing after
+it, no `--dir` at all, a `--dir` naming a directory that is not there, or a
+flag the mode being run does not read — and every one of them reprints the
+usage. **65** is the command line being right and
 the source not: no package qualifies, two are called one thing, a column would
 shadow a member of `Accessor`, `Entity` or `int`, the bit table would not fit a
 signature, `--check` found a stale file, or `--doc-references` found a doc

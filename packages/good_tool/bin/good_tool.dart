@@ -6,6 +6,13 @@ import 'dart:io';
 // about the same trees and none has a reason to parse them a second time.
 // ignore: implementation_imports
 import 'package:good_cli/src/generate/scan.dart';
+// The command line, from the same place. `good` declares its arguments and
+// reads its exit codes here, and a second answer to either would be a second
+// vocabulary for anybody who runs both (#373).
+// ignore: implementation_imports
+import 'package:good_cli/src/command.dart';
+// ignore: implementation_imports
+import 'package:good_cli/src/runner.dart';
 import 'package:good_tool/src/accessor_emit.dart';
 import 'package:good_tool/src/component_emit.dart';
 // ignore: implementation_imports
@@ -22,10 +29,25 @@ import 'package:good_cli/src/generate/engine_package.dart';
 // ignore: implementation_imports
 import 'package:good_cli/src/generate/declaration_collectors.dart';
 
+/// Parses [arguments] and exits with what the run says.
+///
+/// `dart run good_tool`, and not `good_tool`, because this is never activated
+/// on a PATH - it is `publish_to: none` and is run from a checkout. The usage
+/// line has to be a line somebody can copy off the screen, so the runner is
+/// told what to call the root.
+Future<void> main(List<String> arguments) async {
+  exitCode = await runCommand(
+    GoodToolCommand(),
+    arguments,
+    name: 'dart run good_tool',
+  );
+}
+
 /// The code generator for a package built on this engine.
 ///
 /// ```console
 /// $ cd packages/good_tool
+/// $ dart run good_tool --help                          # the flags, on screen
 /// $ dart run good_tool --dir ../../packages            # write
 /// $ dart run good_tool --dir ../../packages --check    # fail if stale
 /// $ dart run good_tool --dir ../../packages --verbose  # say what got nothing
@@ -103,11 +125,12 @@ import 'package:good_cli/src/generate/declaration_collectors.dart';
 /// letter of `sysexits.h`, and a vocabulary of three where the rest of the
 /// repository speaks two is a distinction nobody downstream would read.
 ///
-/// **64, `EX_USAGE` - the command line is wrong.** An argument this does not
-/// know, a `--dir` with nothing after it, no `--dir` at all, or a `--dir`
-/// naming a directory that is not there. Nothing has been read in any of them;
-/// what is wrong is what was typed, and the fix is to type something else. All
-/// four reprint the usage, which is the point of the code.
+/// **64, `EX_USAGE` - the command line is wrong.** An option this does not
+/// know, a `--dir` with nothing after it, no `--dir` at all, a `--dir` naming
+/// a directory that is not there, or a flag the mode being run does not read.
+/// Nothing has been read in any of them; what is wrong is what was typed, and
+/// the fix is to type something else. All five reprint the usage, which is the
+/// point of the code.
 ///
 /// **65, `EX_DATAERR` - the command line was fine and the source is not.** No
 /// package under those directories qualifies, two of them are called one thing,
@@ -121,295 +144,371 @@ import 'package:good_cli/src/generate/declaration_collectors.dart';
 /// The seam between the two runs through the pair that look alike. A `--dir`
 /// that does not exist is 64 and a `--dir` holding no engine package is 65,
 /// because the first was never read and the second was read and rejected.
-Future<void> main(List<String> arguments) async {
-  final check = arguments.contains('--check');
-  final docReferences = arguments.contains('--doc-references');
-  final declarations = arguments.contains('--declarations');
-  final tests = arguments.contains('--tests');
-  final verbose = arguments.contains('--verbose') || arguments.contains('-v');
-  final directories = <String>[];
-  final unknown = <String>[];
-  var wantsDirectory = false;
-  for (final argument in arguments) {
-    if (wantsDirectory) {
-      directories.add(argument);
-      wantsDirectory = false;
-      continue;
-    }
-    if (argument == '--dir') {
-      wantsDirectory = true;
-      continue;
-    }
-    if (argument.startsWith('--dir=')) {
-      directories.add(argument.substring('--dir='.length));
-      continue;
-    }
-    if (argument == '--check' ||
-        argument == '--doc-references' ||
-        argument == '--declarations' ||
-        argument == '--tests' ||
-        argument == '--verbose' ||
-        argument == '-v') {
-      continue;
-    }
-    unknown.add(argument);
+class GoodToolCommand extends Command {
+  /// Where to look. Repeatable, and with no default - see above for why.
+  late final MultiArg<Directory> dir;
+  late final Arg<bool> check;
+  late final Arg<bool> docReferences;
+  late final Arg<bool> declarations;
+  late final Arg<bool> tests;
+  late final Arg<bool> verbose;
+
+  @override
+  String get summary =>
+      'Writes the generated files that ship inside the engine packages under '
+      '--dir: the accessor properties, the component-bit tables and the '
+      'declaration collectors. With no mode flag it writes them; the flags '
+      'below either check what is committed or ask a question about the '
+      'source instead.';
+
+  @override
+  void describeCommand(CommandDescriptor descriptor) {
+    super.describeCommand(descriptor);
+    dir = descriptor.describeOptionalMultiArg<Directory>(
+      name: 'dir',
+      description:
+          'Where to look: the package itself (--dir .), or a directory whose '
+          'immediate children are packages (--dir packages). Required, and '
+          'may be given more than once.',
+      parser: _searchDirectory,
+    );
+    check = descriptor.describeFlag(
+      name: 'check',
+      description:
+          'Write nothing, and exit 65 naming every committed file that is not '
+          'what the generator would write now.',
+    );
+    docReferences = descriptor.describeFlag(
+      name: 'doc-references',
+      description:
+          'Generate nothing. Exit 65 on a doc comment naming something that '
+          'is written nowhere in the packages read.',
+    );
+    declarations = descriptor.describeFlag(
+      name: 'declarations',
+      description:
+          'Generate nothing. Exit 65 on a declaration held by a late field, a '
+          'static field or a top-level variable.',
+    );
+    tests = descriptor.describeFlag(
+      name: 'tests',
+      description:
+          'The fixture collectors beside the tests and examples, instead of '
+          'the files that ship in a lib/. With --declarations, judge those '
+          'trees instead.',
+    );
+    verbose = descriptor.describeFlag(
+      name: 'verbose',
+      description:
+          'Name what got no accessor property, no component bit and no '
+          'collector entry, and say why for each.',
+    );
   }
-  if (unknown.isNotEmpty || wantsDirectory || directories.isEmpty) {
-    if (unknown.isNotEmpty) {
-      stderr.writeln('Unknown argument(s): ${unknown.join(', ')}');
+
+  /// Which of the four jobs this run is, and the refusal of anything the
+  /// answer does not read.
+  ///
+  /// The order is the one `main` used to have as three early returns, so
+  /// `--declarations --tests` still judges the fixture trees. What is new is
+  /// that a flag the mode never reads is an error: `--doc-references --check`
+  /// used to run the doc-reference check and say nothing at all about the
+  /// `--check` it dropped, which is somebody asking for a run this cannot do
+  /// and being handed a different one.
+  _Mode _mode() {
+    if (docReferences.value) {
+      _refuseIgnoredFlags('--doc-references', const <String>{});
+      return _Mode.docReferences;
     }
-    if (wantsDirectory) stderr.writeln('--dir takes a directory.');
-    if (directories.isEmpty && !wantsDirectory) {
-      stderr.writeln(
+    if (declarations.value) {
+      _refuseIgnoredFlags(
+        '--declarations',
+        const <String>{'--tests', '--verbose'},
+      );
+      return _Mode.declarations;
+    }
+    if (tests.value) {
+      _refuseIgnoredFlags('--tests', const <String>{'--check'});
+      return _Mode.tests;
+    }
+    // Reads both of the flags that are left, so there is nothing to refuse.
+    return _Mode.generate;
+  }
+
+  /// Refuses a flag the selected mode never reads.
+  ///
+  /// [reads] is what [mode] does take, which is why `--declarations --tests`
+  /// and `--tests --check` are still one run each.
+  void _refuseIgnoredFlags(String mode, Set<String> reads) {
+    final ignored = <String>[
+      for (final flag in <String, Arg<bool>>{
+        '--check': check,
+        '--doc-references': docReferences,
+        '--declarations': declarations,
+        '--tests': tests,
+        '--verbose': verbose,
+      }.entries)
+        if (flag.key != mode && flag.value.value && !reads.contains(flag.key))
+          flag.key,
+    ];
+    if (ignored.isEmpty) return;
+    throw UsageException(
+      '$mode does not read ${ignored.join(' or ')}. Each mode is its own run '
+      'over the same directories, so run them one at a time.',
+      session.path,
+    );
+  }
+
+  @override
+  Future<void> execute() async {
+    final directories = <Directory>[
+      for (var i = 0; i < dir.length; i++) dir[i],
+    ];
+    if (directories.isEmpty) {
+      throw UsageException(
         'Nothing to look in. --dir names a directory holding the packages to '
         'generate into, and may be given more than once.',
+        session.path,
       );
     }
-    _usage();
-    exitCode = 64;
-    return;
-  }
+    final paths = <String>[
+      for (final directory in directories) directory.path,
+    ];
+    // Before the scan, because a refused command line is a 64 and nothing has
+    // been read yet.
+    final mode = _mode();
 
-  // Also usage, and not the data error below it. Nothing here has been read:
-  // what is wrong is the value of an argument, and the fix is to edit the
-  // command line - which is what separates the two codes, and why this one
-  // reprints the usage and `--check`'s stale-file report does not.
-  final missing = directories.where(
-    (directory) => !Directory(directory).existsSync(),
-  );
-  if (missing.isNotEmpty) {
-    stderr.writeln('No such directory: ${missing.join(', ')}');
-    _usage();
-    exitCode = 64;
-    return;
-  }
+    final scan = enginePackages(directories);
+    final packages = scan.packages;
 
-  final scan = enginePackages(<Directory>[
-    for (final directory in directories) Directory(directory),
-  ]);
-  final packages = scan.packages;
-
-  // The failure #305 is named for. A run that generated nothing used to exit 0
-  // saying nothing at all, and the report it read as was "my components produce
-  // no accessors" with no thread to pull.
-  if (packages.isEmpty) {
-    stderr.writeln(_nothingMatched(scan));
-    exitCode = 65;
-    return;
-  }
-  final duplicates = scan.duplicates;
-  if (duplicates.isNotEmpty) {
-    duplicates.forEach((name, roots) {
-      stderr.writeln('Two packages are called $name: ${roots.join(', ')}');
-    });
-    stderr.writeln(
-      '\nOne generated component-bit table is written per package name, so a '
-      'run holding two of a name would write one table over the other and no '
-      'reader of a query signature could tell which numbering it came from.',
-    );
-    exitCode = 65;
-    return;
-  }
-
-  if (docReferences) {
-    _docReferences(packages, scan.dependencies);
-    return;
-  }
-
-  if (declarations) {
-    await _declarations(
-      packages,
-      scan.dependencies,
-      verbose: verbose,
-      tests: tests,
-    );
-    return;
-  }
-
-  if (tests) {
-    await _tests(packages, scan.dependencies, directories, check: check);
-    return;
-  }
-
-  // Every package read, which is the packages being written into plus the
-  // engine packages they depend on. In this repository those are the same set;
-  // a standalone package's engine dependencies come from a pub cache, and
-  // without them `Component` and `Field` are undeclared names and the run
-  // produces nothing (#305).
-  final readable = <EnginePackage>[...packages, ...scan.dependencies];
-  final sources = await readSources(
-    Directory.current,
-    rootOverride: <String>[for (final package in readable) package.libDir],
-    // A generator must not read its own output. What this writes is an
-    // `extension ... on Accessor<Transform2D>` inside `packages/goo2d/lib/`,
-    // which on the next run is an ordinary hand-written extension declaring
-    // `offsetX` - so the second run reported every one of its own properties
-    // as colliding with itself. The guard was right and the input was wrong.
-    //
-    // Its own output, and only its own: an upstream package's committed
-    // `accessors.g.dart` is input like any other hand-written extension, and a
-    // property this run would generate under a name that file already declares
-    // on the same component is a real collision.
-    exclude: <String>{
-      for (final package in packages) package.accessorFile.path,
-      for (final package in packages) package.componentBitsFile.path,
-      for (final package in packages) package.declarationsFile.path,
-    },
-  );
-  if (_unparsed(sources.unparsed)) return;
-  if (_unresolved(sources, packages)) return;
-  final accessors = scanAccessors(packages: readable, sources: sources);
-  final bits = scanComponentBits(packages: readable, sources: sources);
-  final collectors = scanDeclarationCollectors(
-    packages: readable,
-    sources: sources,
-  );
-
-  if (verbose) {
-    final skipped = accessors.skipped.keys.toList()..sort();
-    for (final key in skipped) {
-      stdout.writeln('No accessor property: $key - ${accessors.skipped[key]}');
-    }
-    final unbitted = bits.skipped.keys.toList()..sort();
-    for (final key in unbitted) {
-      stdout.writeln('No generated bit: $key - ${bits.skipped[key]}');
-    }
-    final uncollected = collectors.skipped.keys.toList()..sort();
-    for (final key in uncollected) {
-      stdout.writeln(
-        'No collector entry: $key - ${collectors.skipped[key]}',
+    // The failure #305 is named for. A run that generated nothing used to exit
+    // 0 saying nothing at all, and the report it read as was "my components
+    // produce no accessors" with no thread to pull.
+    if (packages.isEmpty) throw ArgumentError(_nothingMatched(scan));
+    final duplicates = scan.duplicates;
+    if (duplicates.isNotEmpty) {
+      final message = StringBuffer();
+      duplicates.forEach((name, roots) {
+        message.writeln('Two packages are called $name: ${roots.join(', ')}');
+      });
+      message.write(
+        '\nOne generated component-bit table is written per package name, so '
+        'a run holding two of a name would write one table over the other and '
+        'no reader of a query signature could tell which numbering it came '
+        'from.',
       );
+      throw ArgumentError(message.toString());
     }
-  }
 
-  // The second thing that refuses, and the reason #18 wanted the assignment
-  // moved here at all. A registry that fills up at run time throws naming
-  // whichever type happened to arrive last, which is whichever scene was
-  // declared last; this names every type competing for the last bit, before
-  // anything is built. It counts the packages alone, so a table that exactly
-  // fills the word has already taken every slot a game had.
-  if (bits.bits.length > maxComponentTypes) {
-    stderr.writeln(componentBitCeilingMessage(bits, maxComponentTypes));
-    exitCode = 65;
-    return;
-  }
+    switch (mode) {
+      case _Mode.docReferences:
+        _docReferences(packages, scan.dependencies);
+        return;
+      case _Mode.declarations:
+        await _declarations(
+          packages,
+          scan.dependencies,
+          verbose: verbose.value,
+          tests: tests.value,
+        );
+        return;
+      case _Mode.tests:
+        await _tests(packages, scan.dependencies, paths, check: check.value);
+        return;
+      case _Mode.generate:
+        break;
+    }
 
-  // Before anything is written, and it is the only thing here that refuses. A
-  // column whose property name is already a member of Accessor, Entity or int
-  // generates a property that compiles and is never reached, because an
-  // extension member loses to one the receiver's own type has. Every read of it
-  // would answer about the entity handle instead of the column, with nothing
-  // said anywhere - and this file is committed and shipped, so nothing
-  // downstream would ever say it either.
-  if (accessors.collisions.isNotEmpty) {
-    stderr.writeln(accessorCollisionMessage(accessors));
-    exitCode = 65;
-    return;
-  }
+    // Every package read, which is the packages being written into plus the
+    // engine packages they depend on. In this repository those are the same
+    // set; a standalone package's engine dependencies come from a pub cache,
+    // and without them `Component` and `Field` are undeclared names and the
+    // run produces nothing (#305).
+    final readable = <EnginePackage>[...packages, ...scan.dependencies];
+    final sources = await readSources(
+      Directory.current,
+      rootOverride: <String>[for (final package in readable) package.libDir],
+      // A generator must not read its own output. What this writes is an
+      // `extension ... on Accessor<Transform2D>` inside `packages/goo2d/lib/`,
+      // which on the next run is an ordinary hand-written extension declaring
+      // `offsetX` - so the second run reported every one of its own properties
+      // as colliding with itself. The guard was right and the input was wrong.
+      //
+      // Its own output, and only its own: an upstream package's committed
+      // `accessors.g.dart` is input like any other hand-written extension,
+      // and a property this run would generate under a name that file already
+      // declares on the same component is a real collision.
+      exclude: <String>{
+        for (final package in packages) package.accessorFile.path,
+        for (final package in packages) package.componentBitsFile.path,
+        for (final package in packages) package.declarationsFile.path,
+      },
+    );
+    _unparsed(sources.unparsed);
+    _unresolved(sources, packages);
+    final accessors = scanAccessors(packages: readable, sources: sources);
+    final bits = scanComponentBits(packages: readable, sources: sources);
+    final collectors = scanDeclarationCollectors(
+      packages: readable,
+      sources: sources,
+    );
 
-  final imports = Imports(
-    declaredIn: declaredIn(sources),
-    byLibDir: <String, EnginePackage>{
-      for (final package in readable) package.libDir: package,
-    },
-    units: sources.units,
-    packages: readable,
-  );
-  // Written into [packages] alone, resolved against everything read: an
-  // upstream package generates its own files in its own run.
-  final files = <GeneratedFile>[
-    ...accessorFiles(accessors, packages),
-    ...componentBitsFiles(bits, packages, imports, known: readable),
-    ...declarationFiles(
-      collectors,
-      packages,
-      imports,
-      known: readable,
-      regenerate: _regenerateWithGoodTool,
-    ),
-  ];
-  final absent = <EnginePackage, String>{
-    for (final package in missingExports(
-      accessorFiles(accessors, packages),
-      packages,
-    ))
-      package: package.accessorExport,
-    for (final package in missingComponentBitsExports(
-      componentBitsFiles(bits, packages, imports, known: readable),
-      packages,
-    ))
-      package: package.componentBitsExport,
-    for (final package in missingDeclarationExports(
-      declarationFiles(
+    if (verbose.value) {
+      final skipped = accessors.skipped.keys.toList()..sort();
+      for (final key in skipped) {
+        stdout.writeln(
+          'No accessor property: $key - ${accessors.skipped[key]}',
+        );
+      }
+      final unbitted = bits.skipped.keys.toList()..sort();
+      for (final key in unbitted) {
+        stdout.writeln('No generated bit: $key - ${bits.skipped[key]}');
+      }
+      final uncollected = collectors.skipped.keys.toList()..sort();
+      for (final key in uncollected) {
+        stdout.writeln(
+          'No collector entry: $key - ${collectors.skipped[key]}',
+        );
+      }
+    }
+
+    // The second thing that refuses, and the reason #18 wanted the assignment
+    // moved here at all. A registry that fills up at run time throws naming
+    // whichever type happened to arrive last, which is whichever scene was
+    // declared last; this names every type competing for the last bit, before
+    // anything is built. It counts the packages alone, so a table that exactly
+    // fills the word has already taken every slot a game had.
+    if (bits.bits.length > maxComponentTypes) {
+      throw ArgumentError(componentBitCeilingMessage(bits, maxComponentTypes));
+    }
+
+    // Before anything is written, and it is the only thing here that refuses. A
+    // column whose property name is already a member of Accessor, Entity or int
+    // generates a property that compiles and is never reached, because an
+    // extension member loses to one the receiver's own type has. Every read
+    // of it would answer about the entity handle instead of the column, with
+    // nothing said anywhere - and this file is committed and shipped, so
+    // nothing downstream would ever say it either.
+    if (accessors.collisions.isNotEmpty) {
+      throw ArgumentError(accessorCollisionMessage(accessors));
+    }
+
+    final imports = Imports(
+      declaredIn: declaredIn(sources),
+      byLibDir: <String, EnginePackage>{
+        for (final package in readable) package.libDir: package,
+      },
+      units: sources.units,
+      packages: readable,
+    );
+    // Written into [packages] alone, resolved against everything read: an
+    // upstream package generates its own files in its own run.
+    final files = <GeneratedFile>[
+      ...accessorFiles(accessors, packages),
+      ...componentBitsFiles(bits, packages, imports, known: readable),
+      ...declarationFiles(
         collectors,
         packages,
         imports,
         known: readable,
         regenerate: _regenerateWithGoodTool,
       ),
+    ];
+    final absent = <EnginePackage, String>{
+      for (final package in missingExports(
+        accessorFiles(accessors, packages),
+        packages,
+      ))
+        package: package.accessorExport,
+      for (final package in missingComponentBitsExports(
+        componentBitsFiles(bits, packages, imports, known: readable),
+        packages,
+      ))
+        package: package.componentBitsExport,
+      for (final package in missingDeclarationExports(
+        declarationFiles(
+          collectors,
+          packages,
+          imports,
+          known: readable,
+          regenerate: _regenerateWithGoodTool,
+        ),
+        packages,
+      ))
+        package: package.declarationsExport,
+    };
+
+    // A package whose accessor file the scan no longer fills - see
+    // [orphanedAccessorFiles]. Not folded into `absent`: that map is about a
+    // barrel missing an export, and this is about a file nothing writes.
+    final orphaned = orphanedAccessorFiles(
+      accessorFiles(accessors, packages),
       packages,
-    ))
-      package: package.declarationsExport,
-  };
+    );
 
-  // A package whose accessor file the scan no longer fills - see
-  // [orphanedAccessorFiles]. Not folded into `absent`: that map is about a
-  // barrel missing an export, and this is about a file nothing writes.
-  final orphaned = orphanedAccessorFiles(
-    accessorFiles(accessors, packages),
-    packages,
-  );
-
-  if (check) {
-    _check(packages, files, absent, orphaned, directories);
-    return;
-  }
-
-  for (final file in files) {
-    if (file.isCurrent) {
-      stdout.writeln('Unchanged ${_display(packages, file.file)}');
-      continue;
+    if (check.value) {
+      _check(packages, files, absent, orphaned, paths);
+      return;
     }
-    file.file.parent.createSync(recursive: true);
-    file.file.writeAsStringSync(file.contents);
-    stdout.writeln('Wrote ${_display(packages, file.file)}');
-  }
-  absent.forEach((package, export) {
+
+    for (final file in files) {
+      if (file.isCurrent) {
+        stdout.writeln('Unchanged ${_display(packages, file.file)}');
+        continue;
+      }
+      file.file.parent.createSync(recursive: true);
+      file.file.writeAsStringSync(file.contents);
+      stdout.writeln('Wrote ${_display(packages, file.file)}');
+    }
+    absent.forEach((package, export) {
+      stdout.writeln(
+        'Add `$export` to ${_display(packages, package.barrel)} - the '
+        'generated file is not exported, so nothing outside that package can '
+        'reach anything in it.',
+      );
+    });
+    for (final package in orphaned) {
+      stdout.writeln(
+        'No longer written: ${_display(packages, package.accessorFile)} - the '
+        'scan found no property in ${package.name}. Check that is intended '
+        'before removing it.',
+      );
+    }
     stdout.writeln(
-      'Add `$export` to ${_display(packages, package.barrel)} - the generated '
-      'file is not exported, so nothing outside that package can reach '
-      'anything in it.',
-    );
-  });
-  for (final package in orphaned) {
-    stdout.writeln(
-      'No longer written: ${_display(packages, package.accessorFile)} - the '
-      'scan found no property in ${package.name}. Check that is intended '
-      'before removing it.',
+      '${accessors.propertyCount} propert(ies) over '
+      '${accessors.extensions.length} component(s), ${bits.bits.length} '
+      'component bit(s), and ${collectors.entries.length} declaration '
+      'collector(s), in ${files.length} file(s) across '
+      '${packages.length} package(s).',
     );
   }
-  stdout.writeln(
-    '${accessors.propertyCount} propert(ies) over '
-    '${accessors.extensions.length} component(s), ${bits.bits.length} '
-    'component bit(s), and ${collectors.entries.length} declaration '
-    'collector(s), in ${files.length} file(s) across '
-    '${packages.length} package(s).',
-  );
 }
 
-/// The invocation, on stderr, under whichever message named the problem.
+/// The four jobs, which are one command because they are one scan: the same
+/// `--dir` walk answers all of them, and three of the four generate nothing.
+enum _Mode { generate, docReferences, declarations, tests }
+
+/// A `--dir` value, which has to be a directory that is already there.
 ///
-/// Written by every 64 and by nothing else - see [main] for why that is the
-/// line, and not a matter of how long the message already is.
-void _usage() {
-  stderr.writeln(
-    'Usage: dart run good_tool --dir <directory> [--dir <directory>] '
-    '[--check] [--doc-references] [--declarations] [--tests] [--verbose]',
-  );
-  stderr.writeln(
-    '  --dir .              the package in this directory\n'
-    '  --dir packages       every package directly under packages/',
-  );
+/// The empty string is what the parser hands over for a `--dir` with an option
+/// after it or with nothing after it at all, and it gets its own sentence: the
+/// directory-not-found one would name nothing, under a heading saying a value
+/// was invalid.
+Directory _searchDirectory(String path) {
+  if (path.isEmpty) {
+    throw ArgumentError(
+      '--dir takes a directory, and the next thing on the command line was '
+      'not one.',
+    );
+  }
+  final directory = Directory(path);
+  if (!directory.existsSync()) {
+    // Usage, and not the data error the modes below exit with. Nothing has
+    // been read: what is wrong is the value of an argument, and the fix is to
+    // edit the command line - which is what separates the two codes, and why
+    // this one reprints the usage and `--check`'s stale-file report does not.
+    throw ArgumentError('No such directory: $path');
+  }
+  return directory;
 }
 
 /// What a run that matched no package says instead of exiting quietly (#305).
@@ -464,21 +563,22 @@ void _check(
     stdout.writeln('${files.length} generated file(s) are up to date.');
     return;
   }
+  final report = StringBuffer();
   for (final file in stale) {
-    stderr.writeln(
+    report.writeln(
       file.file.existsSync()
           ? 'Stale: ${_display(packages, file.file)}'
           : 'Missing: ${_display(packages, file.file)}',
     );
   }
   absent.forEach((package, export) {
-    stderr.writeln(
+    report.writeln(
       'Not exported: ${_display(packages, package.barrel)} does not carry '
       '`$export`',
     );
   });
   for (final package in orphaned) {
-    stderr.writeln(
+    report.writeln(
       'No longer written: ${_display(packages, package.accessorFile)} is '
       'committed and the scan found no property in ${package.name}',
     );
@@ -486,8 +586,8 @@ void _check(
   final where = <String>[
     for (final directory in directories) '--dir $directory',
   ].join(' ');
-  stderr.writeln('\nRun `dart run good_tool $where` and commit the result.');
-  exitCode = 65;
+  report.write('\nRun `dart run good_tool $where` and commit the result.');
+  throw ArgumentError(report.toString());
 }
 
 /// Writes a collector part beside every test or example library that
@@ -513,8 +613,8 @@ Future<void> _tests(
 }) async {
   final readable = <EnginePackage>[...packages, ...dependencies];
   final sources = await readFixtureSources(packages, readable);
-  if (_unparsed(sources.unparsed)) return;
-  if (_unresolved(sources, packages)) return;
+  _unparsed(sources.unparsed);
+  _unresolved(sources, packages);
   // Which packages have a `lib/` table at all, asked of the sources rather
   // than of the disk: a package declaring no scanned class gets no
   // `declarations.g.dart`, and a part naming one would name something the
@@ -535,14 +635,12 @@ Future<void> _tests(
   // out wrong, and writing it is what makes the next narrow `--check` call it
   // current - see [UnreachableSupertype].
   if (scan.unreachable.isNotEmpty) {
-    stderr.writeln(
+    throw ArgumentError(
       unreachableSupertypeMessage(
         scan,
         (path) => _displayPath(packages, path),
       ),
     );
-    exitCode = 65;
-    return;
   }
 
   final files = fixtureFiles(scan);
@@ -554,15 +652,16 @@ Future<void> _tests(
       stdout.writeln('${files.length} generated part(s) are up to date.');
       return;
     }
+    final report = StringBuffer();
     for (final file in stale) {
-      stderr.writeln(
+      report.writeln(
         file.file.existsSync()
             ? 'Stale: ${_display(packages, file.file)}'
             : 'Missing: ${_display(packages, file.file)}',
       );
     }
     for (final library in absent) {
-      stderr.writeln(
+      report.writeln(
         'No part directive: ${_display(packages, library.file)} does not '
         'carry `${library.partDirective}`',
       );
@@ -570,11 +669,10 @@ Future<void> _tests(
     final where = <String>[
       for (final directory in directories) '--dir $directory',
     ].join(' ');
-    stderr.writeln(
+    report.write(
       '\nRun `dart run good_tool $where --tests` and commit the result.',
     );
-    exitCode = 65;
-    return;
+    throw ArgumentError(report.toString());
   }
 
   for (final file in files) {
@@ -619,8 +717,8 @@ Future<void> _declarations(
   final sources = tests
       ? await readFixtureSources(packages, readable)
       : await readPackageSources(readable);
-  if (_unparsed(sources.unparsed)) return;
-  if (_unresolved(sources, packages)) return;
+  _unparsed(sources.unparsed);
+  _unresolved(sources, packages);
   // With `--tests` the judged trees are the fixture roots and not the `lib/`
   // beside them, because a `lib/` was judged by the run without it and
   // reporting the same refusal under two invocations makes neither of them
@@ -713,25 +811,22 @@ Future<void> _declarations(
   // rewrite a declaration, name a type the walk could not, break a ring - and
   // a run that showed one and hid the others would be asked to run again to
   // find out about them.
-  if (refusals.isNotEmpty) {
-    stderr.writeln(
-      declarationRefusalMessage(judged, (path) => _displayPath(packages, path)),
-    );
-  }
-  if (unresolved.isNotEmpty) {
-    stderr.writeln(
-      unresolvedInitializerMessage(
-        judged,
-        (path) => _displayPath(packages, path),
-      ),
-    );
-  }
-  if (cycles.isNotEmpty) {
-    stderr.writeln(
-      declarationCycleMessage(judged, (path) => _displayPath(packages, path)),
-    );
-  }
-  exitCode = 65;
+  throw ArgumentError(
+    <String>[
+      if (refusals.isNotEmpty)
+        declarationRefusalMessage(
+          judged,
+          (path) => _displayPath(packages, path),
+        ),
+      if (unresolved.isNotEmpty)
+        unresolvedInitializerMessage(
+          judged,
+          (path) => _displayPath(packages, path),
+        ),
+      if (cycles.isNotEmpty)
+        declarationCycleMessage(judged, (path) => _displayPath(packages, path)),
+    ].join('\n'),
+  );
 }
 
 /// Fails when a doc comment names something that is written nowhere.
@@ -753,7 +848,7 @@ void _docReferences(
     packages: packages,
     known: <EnginePackage>[...packages, ...dependencies],
   );
-  if (_unparsed(scan.unparsed)) return;
+  _unparsed(scan.unparsed);
   if (scan.dangling.isEmpty) {
     stdout.writeln(
       '${scan.checked} of ${scan.references} doc reference(s) in '
@@ -761,11 +856,12 @@ void _docReferences(
     );
     return;
   }
+  final report = StringBuffer();
   for (final reference in scan.dangling) {
-    stderr.writeln(danglingReferenceLine(reference));
+    report.writeln(danglingReferenceLine(reference));
   }
-  stderr.writeln(danglingReferenceSummary(scan));
-  exitCode = 65;
+  report.write(danglingReferenceSummary(scan));
+  throw ArgumentError(report.toString());
 }
 
 /// Fails the run over source the analyzer could not resolve, and says which
@@ -782,19 +878,18 @@ void _docReferences(
 /// So it is checked before any mode prints a count, and the message names the
 /// URIs rather than the count, because the count is the thing that would be a
 /// lie.
-bool _unresolved(ScanSources sources, List<EnginePackage> packages) {
-  if (sources.resolves) return false;
-  stderr.writeln(
+void _unresolved(ScanSources sources, List<EnginePackage> packages) {
+  if (sources.resolves) return;
+  throw ArgumentError(
     unresolvedUriMessage(sources, (path) => _displayPath(packages, path)),
   );
-  exitCode = 65;
-  return true;
 }
 
 /// Fails the run over files the parser could not read, and says which.
 ///
-/// Answers whether the caller is done, so the mode that has one ends on the
-/// line `if (_unparsed(scan.unparsed)) return;`, before it prints a count.
+/// Throws the 65 rather than reporting it back, so a mode that forgets to ask
+/// cannot go on to print a count over a tree it read a fraction of. Every mode
+/// calls it on the line after its sources are read.
 ///
 /// **It is an exit code and not a warning, and that is the whole of #348.**
 /// The parser recovers, so a file that fails to parse still hands back a tree
@@ -810,22 +905,23 @@ bool _unresolved(ScanSources sources, List<EnginePackage> packages) {
 /// constraint no longer covers the language the repository is written in, and
 /// somebody has to raise it. Failing is what makes that a task rather than a
 /// line in a log.
-bool _unparsed(List<String> files) {
-  if (files.isEmpty) return false;
+void _unparsed(List<String> files) {
+  if (files.isEmpty) return;
+  final report = StringBuffer();
   for (final file in files) {
-    stderr.writeln('$file: not parsed, and so not checked');
+    report.writeln('$file: not parsed, and so not checked');
   }
-  stderr.writeln();
-  stderr.writeln(
-    '${files.length} file(s) did not parse, so this run checked less than it '
-    'was pointed at and cannot say the tree is clean. The parser recovers, '
-    'which is why the counts above a failure like this used to look normal. '
-    'The cause is the `analyzer` constraint in good_tool/pubspec.yaml against '
-    'the language these files use - raise it, or stop using the syntax they '
-    'use.',
-  );
-  exitCode = 65;
-  return true;
+  report
+    ..writeln()
+    ..write(
+      '${files.length} file(s) did not parse, so this run checked less than '
+      'it was pointed at and cannot say the tree is clean. The parser '
+      'recovers, which is why the counts above a failure like this used to '
+      'look normal. The cause is the `analyzer` constraint in '
+      'good_tool/pubspec.yaml against the language these files use - raise '
+      'it, or stop using the syntax they use.',
+    );
+  throw ArgumentError(report.toString());
 }
 
 /// A generated file named as `<package>/lib/src/<file>`.
