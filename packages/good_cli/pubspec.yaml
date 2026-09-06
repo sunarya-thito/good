@@ -30,7 +30,6 @@ dependencies:
   archive: ^3.6.1
   crypto: ^3.0.6
   cryptography: ^2.7.0
-  args: ^2.6.0
   pub_semver: ^2.1.4
   good: ^0.3.0-dev
 
