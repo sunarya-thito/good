@@ -123,36 +123,6 @@ mixin MultiplayerState<G extends Game> on GameState<G> {
     return system;
   }
 
-  /// A peer joined the session. See [NetPeerListener].
-  final peerJoinedEvent = Event.of<NetPeerListener, NetPeerId>(
-    (listener, peer) => listener.onPeerJoined(peer),
-  );
-
-  /// A peer left. See [NetPeerListener].
-  ///
-  /// The payload is a record because the event genuinely carries two facts,
-  /// and a peer leaving happens at human rate - a handful of times a session
-  /// - so the one allocation is not on any path the no-allocation rule is about.
-  /// Reverse, matching every other teardown event in the engine: a listener
-  /// told late can still read what the earlier ones have been warned about.
-  final peerLeftEvent =
-      Event.of<NetPeerListener, ({NetPeerId peer, NetDisconnectReason reason})>(
-        (listener, left) => listener.onPeerLeft(left.peer, left.reason),
-        reverse: true,
-      );
-
-  /// A session opened - hosted or joined. See [NetSessionListener].
-  final sessionOpenedEvent = Event.of<NetSessionListener, NetSession>(
-    (listener, session) => listener.onSessionOpened(session),
-  );
-
-  /// The session ended. See [NetSessionListener].
-  final sessionClosedEvent =
-      Event.of<NetSessionListener, NetDisconnectReason>(
-        (listener, reason) => listener.onSessionClosed(reason),
-        reverse: true,
-      );
-
 }
 
 /// Carries a game's network messages: drains what arrived at the top of each
@@ -192,6 +162,41 @@ class NetworkSystem extends GameSystem
   /// The messages and backend `describeNetwork` declared.
   @internal
   final NetRegistry registry = NetRegistry();
+
+  /// A peer joined the session. See [NetPeerListener].
+  ///
+  /// Declared here and not on [MultiplayerState], which is where all four of
+  /// these used to live. A dispatcher reaches every listener in the game
+  /// whoever holds it, so the state gained nothing by holding one it never
+  /// fired - this system fires all four, and the five call sites below used to
+  /// spell `getState<MultiplayerState>()` first.
+  final peerJoinedEvent = Event.of<NetPeerListener, NetPeerId>(
+    (listener, peer) => listener.onPeerJoined(peer),
+  );
+
+  /// A peer left. See [NetPeerListener].
+  ///
+  /// The payload is a record because the event genuinely carries two facts,
+  /// and a peer leaving happens at human rate - a handful of times a session
+  /// - so the one allocation is not on any path the no-allocation rule is about.
+  /// Reverse, matching every other teardown event in the engine: a listener
+  /// told late can still read what the earlier ones have been warned about.
+  final peerLeftEvent =
+      Event.of<NetPeerListener, ({NetPeerId peer, NetDisconnectReason reason})>(
+        (listener, left) => listener.onPeerLeft(left.peer, left.reason),
+        reverse: true,
+      );
+
+  /// A session opened - hosted or joined. See [NetSessionListener].
+  final sessionOpenedEvent = Event.of<NetSessionListener, NetSession>(
+    (listener, session) => listener.onSessionOpened(session),
+  );
+
+  /// The session ended. See [NetSessionListener].
+  final sessionClosedEvent = Event.of<NetSessionListener, NetDisconnectReason>(
+    (listener, reason) => listener.onSessionClosed(reason),
+    reverse: true,
+  );
 
   /// The declared backend.
   ///
@@ -330,11 +335,11 @@ class NetworkSystem extends GameSystem
 
   void _onSessionOpened(NetSession session) {
     _resetOutbound();
-    getState<MultiplayerState>().sessionOpenedEvent.call(session);
+    sessionOpenedEvent.call(session);
     // Peers already present when this one joined are reported as joins, so a
     // listener that only handles onPeerJoined still sees the whole roster.
     for (var i = 0; i < session.peerCount; i++) {
-      getState<MultiplayerState>().peerJoinedEvent.call(session.peerAt(i));
+      peerJoinedEvent.call(session.peerAt(i));
     }
   }
 
@@ -529,8 +534,7 @@ class NetworkSystem extends GameSystem
   // --- NetListener -------------------------------------------------------
 
   @override
-  void onPeerJoined(NetPeerId peer) =>
-      getState<MultiplayerState>().peerJoinedEvent.call(peer);
+  void onPeerJoined(NetPeerId peer) => peerJoinedEvent.call(peer);
 
   @override
   void onPeerLeft(NetPeerId peer, NetDisconnectReason reason) {
@@ -541,16 +545,13 @@ class NetworkSystem extends GameSystem
         batches[i].reset();
       }
     }
-    getState<MultiplayerState>().peerLeftEvent.call((
-      peer: peer,
-      reason: reason,
-    ));
+    peerLeftEvent.call((peer: peer, reason: reason));
   }
 
   @override
   void onSessionClosed(NetDisconnectReason reason) {
     _resetOutbound();
-    getState<MultiplayerState>().sessionClosedEvent.call(reason);
+    sessionClosedEvent.call(reason);
   }
 
   /// Reads the records in one received datagram and runs their handlers.

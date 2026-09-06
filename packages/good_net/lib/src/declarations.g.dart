@@ -27,8 +27,13 @@ import 'package:good/good.dart';
 import 'package:good_net/src/system.dart';
 
 List<ScannableField> _networkSystem(Object object) {
-  object as NetworkSystem;
-  return const <ScannableField>[];
+  final owner = object as NetworkSystem;
+  return <ScannableField>[
+    owner.peerJoinedEvent,
+    owner.peerLeftEvent,
+    owner.sessionOpenedEvent,
+    owner.sessionClosedEvent,
+  ];
 }
 
 /// Every class `package:good_net` can instantiate that holds a
