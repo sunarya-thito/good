@@ -145,7 +145,8 @@ Future<void> main(List<String> arguments) async {
 /// that does not exist is 64 and a `--dir` holding no engine package is 65,
 /// because the first was never read and the second was read and rejected.
 class GoodToolCommand extends Command {
-  /// Where to look. Repeatable, and with no default - see above for why.
+  /// Where to look. Repeatable, and with no default - see the comment above
+  /// this class for why.
   late final MultiArg<Directory> dir;
   late final Arg<bool> check;
   late final Arg<bool> docReferences;
