@@ -645,6 +645,20 @@ Future<void> _declarations(
     for (final refusal in scan.cycles)
       if (own.any((lib) => p.isWithin(lib, refusal.path))) refusal,
   ];
+  // Judged the way the three refusal lists are, and for their reason: a
+  // declaration on the wrong owner in an upstream package is that package's
+  // to move, and a run over one package is not the place to raise it. The
+  // three reports above it are not filtered, which is a difference this list
+  // does not follow - those name shapes that are legal and this one names a
+  // defect, so it has to be attributable to somebody.
+  final ownDeclarers = <String>{
+    for (final declarer in scan.declarers)
+      if (own.any((lib) => p.isWithin(lib, declarer.path))) declarer.type,
+  };
+  final misplaced = <String, String>{
+    for (final entry in scan.misplaced.entries)
+      if (ownDeclarers.contains(entry.key.split('.').first)) entry.key: entry.value,
+  };
   final judged = DeclarationScan(
     declarers: scan.declarers,
     refusals: refusals,
@@ -653,6 +667,7 @@ Future<void> _declarations(
     uncollectable: scan.uncollectable,
     unmarked: scan.unmarked,
     deferred: scan.deferred,
+    misplaced: misplaced,
   );
 
   if (verbose) {
@@ -676,6 +691,15 @@ Future<void> _declarations(
     for (final key in deferred) {
       stdout.writeln('Assigned elsewhere: $key - ${scan.deferred[key]}');
     }
+  }
+
+  // Before the summary and outside `verbose`, unlike the three reports above.
+  // Those name shapes a correct program contains; this one names a
+  // declaration that lands nowhere, and there is no run in which it is what
+  // somebody meant. It does not set an exit code yet - see
+  // [DeclarationScan.misplaced].
+  if (misplaced.isNotEmpty) {
+    stderr.writeln(misplacedDeclarationMessage(judged));
   }
 
   if (refusals.isEmpty && unresolved.isEmpty && cycles.isEmpty) {

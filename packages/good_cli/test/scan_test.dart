@@ -86,6 +86,12 @@ class TimelineAnimation implements ScannableField {
   void key() {}
 }
 
+class Describes {
+  const Describes(this.declaration, [this.required = false]);
+  final Type declaration;
+  final bool required;
+}
+
 class DataPointer<T> implements ScannableField {}
 class InitialPointer<T> extends DataPointer<T> {}
 class DataArrayPointer<T> implements ScannableField {}
@@ -110,6 +116,10 @@ class Sub implements ScannableAnnotation {
 }
 
 const Sub sub = Sub._();
+
+abstract class Input<T> implements ScannableField {
+  static Input<V> of<V>() => throw UnimplementedError();
+}
 
 abstract final class Field {
   static InitialPointer<double> float64([double initialValue = 0.0]) =>
@@ -848,6 +858,126 @@ class Movement extends GameSystem {
         <String>['Player', 'Movement'],
       );
       expect(scan.declarationCount, 2);
+    });
+
+    test('a declaration on an owner that describes nothing of the kind is '
+        'reported, naming the owner and the type', () async {
+      // #290. Until the hooks were deleted the signature carried this:
+      // `describeStruct(DataDescriptor)` was declared only on something with a
+      // row to put a column in, so a column on a class with no row did not
+      // compile. Nothing carries it now, and the field below is collected,
+      // offered to descriptors that cannot act on it, and dropped.
+      final scan = await _declarations('''
+@Describes(DataPointer)
+class Body extends EntityStruct {
+  final hp = Field.float64();
+  final near = Query.all(Body);
+}
+''');
+
+      expect(scan.refusals, isEmpty);
+      expect(scan.misplaced.keys, <String>['Body.near']);
+      // Both halves of the pairing, because either alone is unactionable: the
+      // owner says where to look and the type says what to move.
+      expect(scan.misplaced['Body.near'], contains('Body'));
+      expect(scan.misplaced['Body.near'], contains('Query'));
+      // And still collected. What is wrong is where it is written, not
+      // whether the walk understood it - a field dropped from the collector
+      // here would be the silence the report exists to break.
+      expect(
+        <String>[for (final d in scan.declarers.single.declarations) d.name],
+        <String>['hp', 'near'],
+      );
+    });
+
+    test('an owner nothing describes is left alone', () async {
+      // Null is not the empty set. A package that has not adopted the
+      // annotation gets no report, which is what lets a third-party root take
+      // it up when it has something to say rather than the rule arriving as a
+      // wall - and it is why every other test in this group, written against
+      // an unannotated kernel, is unaffected.
+      final scan = await _declarations('''
+class Body extends EntityStruct {
+  final hp = Field.float64();
+  final near = Query.all(Body);
+}
+''');
+
+      expect(scan.misplaced, isEmpty);
+      expect(scan.declarationCount, 2);
+    });
+
+    test('a subtype of the described root counts', () async {
+      // `@Describes(DataPointer)` has to cover the InitialPointer<double> a
+      // Field.float64() hands back, or the annotation would have to list every
+      // handle the engine ever adds. The question is what kind of declaration
+      // this is, and InitialPointer is that kind.
+      final scan = await _declarations('''
+@Describes(DataPointer)
+class Body extends EntityStruct {
+  final hp = Field.float64();
+}
+''');
+
+      expect(scan.misplaced, isEmpty);
+    });
+
+    test('a permission is inherited, from all four clauses', () async {
+      // A permission is a fact about what the class *is*, so `extends`, `on`,
+      // `with` and `implements` all carry it downwards. `Player extends
+      // EntityStruct with Transform2D` holds columns because Component
+      // describes them and dispatchers because EventBus does; a rule reading
+      // only the class's own annotations would report every one of them.
+      final scan = await _declarations('''
+@Describes(DataPointer)
+mixin Columns on Component {}
+
+@Describes(Query)
+abstract class Rig extends EntityStruct with Columns {}
+
+class Body extends Rig {
+  final hp = Field.float64();
+  final near = Query.all(Body);
+  final letters = Field.array(1, 32);
+}
+''');
+
+      expect(scan.misplaced.keys, <String>['Body.letters']);
+      expect(scan.misplaced['Body.letters'], contains('DataArrayPointer'));
+    });
+
+    test('the annotation is read raw, arguments and all', () async {
+      // `@Describes(Input<bool>)` is legal Dart and must not be written - the
+      // question is what *kind* of declaration may appear, and Input<bool> and
+      // Input<Vector2> are one kind. Reading past the arguments is what keeps
+      // writing them a mistake rather than a silent one, and the permitted
+      // list in the message is what proves the split did not cut inside the
+      // angle brackets and read `bool>` as a `required` flag.
+      final scan = await _declarations('''
+@Describes(Input<bool>)
+class Rig extends GameSystem {
+  final fire = Input.of<String>();
+  final near = Query.all(Rig);
+}
+''');
+
+      expect(scan.misplaced.keys, <String>['Rig.near']);
+      expect(scan.misplaced['Rig.near'], contains('Input (Rig)'));
+    });
+
+    test('an unmarked spare is not reported as misplaced as well', () async {
+      // Two reports about one field would be two things to do about it, and
+      // only one of them is available: a spare is not a declaration, so where
+      // it may live is not a question that has been asked yet.
+      final scan = await _declarations('''
+@Describes(DataPointer)
+class Turret extends EntityStruct {
+  final spare = Turret();
+}
+''');
+
+      expect(scan.unmarked.keys, <String>['Turret.spare']);
+      expect(scan.misplaced, isEmpty);
     });
 
     test('a class that is not Scannable declares nothing', () async {

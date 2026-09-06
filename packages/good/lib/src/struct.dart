@@ -11,6 +11,10 @@ import 'package:good/src/scannable.dart';
 import 'package:good/src/scene.dart';
 import 'package:good/src/system.dart';
 
+@Describes(DataPointer)
+@Describes(DataArrayPointer)
+@Describes(CompositeDeclaration)
+@Describes(Asset)
 abstract interface class Component implements Scannable {
   void describeType(ComponentDescriptor component);
 
@@ -75,6 +79,7 @@ abstract interface class MultiComponent implements Component {}
 // NOTE: No longer carries <T>
 // <T> was used to describe the type of the prefab, but it is no longer needed
 // because .has on the describeType now accepts direct Type as parameter.
+@Describes(EntityStruct)
 abstract class EntityStruct extends GameListenerBase
     with EventBus, Coroutines, Animations
     implements MultiComponent, ScannableField {

@@ -266,6 +266,8 @@ enum _ControlMessage {
 /// time - so put the tick on the [GameState], a `SceneStruct` or a
 /// `GameSystem`. What `Game` does for Flutter it does through a plain method,
 /// [buildView]. See [EventDispatcher].
+@Describes(StateChannel)
+@Describes(Input)
 abstract class Game implements RandomOwner, Scannable {
   // --- configuration ----------------------------------------------------
 

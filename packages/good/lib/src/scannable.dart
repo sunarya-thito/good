@@ -1,4 +1,5 @@
 import 'package:meta/meta.dart';
+import 'package:meta/meta_meta.dart';
 
 // The three things a scan is allowed to look at, each one opt-in and each one
 // a compile error to get wrong.
@@ -381,6 +382,121 @@ class Hide {
 /// one named `child` did before [sub] was renamed; `good_lint` carries that
 /// diagnostic.
 const Hide hide = Hide._();
+
+// ---------------------------------------------------------------------------
+// Where a declaration may live
+// ---------------------------------------------------------------------------
+
+/// Says a class may hold a declaration of [declaration], and everything under
+/// it.
+///
+/// ```dart
+/// @Describes(EventDispatcher)
+/// @Describes(SignalDispatcher)
+/// mixin EventBus on GameListener implements Scannable { }
+/// ```
+///
+/// [ScannableField] says a value **is** a declaration. Nothing said where one
+/// may live until this, and until the hooks were deleted nothing had to: a
+/// column could only be written inside `describeStruct(DataDescriptor)`, and
+/// that signature existed only on something with a row to put one in. With
+/// the hooks gone the language objects to none of this:
+///
+/// ```dart
+/// class NotAComponent {
+///   final hp = Field.float64();   // a column on a class with no row
+/// }
+/// class Player extends EntityStruct {
+///   final scale = Track.of(1.0);  // a track on something that is not a
+///                                 // timeline
+/// }
+/// ```
+///
+/// Each of those is collected by whichever pass reads the owner, offered to
+/// the descriptors that pass runs, matched by none of them, and dropped. The
+/// field is written, it reads as a declaration, and it lands nowhere.
+///
+/// # It is read at the field, never at the value
+///
+/// The rule is the field's own resolved type against the owner's list, so
+/// every way of producing a declaration is covered by one annotation on the
+/// owner:
+///
+/// ```dart
+/// final myScene = Scene.of(MyScene());
+/// //    ^^^^^^^ the resolved type is what is checked
+/// ```
+///
+/// Marking the *producers* instead - a `@Descriptor` on every factory - only
+/// ever reaches factories, and a declaration arrives through a cascade, a
+/// chained builder, a bare constructor and a typedef as well. A third-party
+/// root is checkable here with no cooperation, because what is read is the
+/// type of the field holding it.
+///
+/// # Inherited, and a union
+///
+/// A class may hold what it describes and what anything above it describes -
+/// `extends`, `with`, `on` and `implements` alike. `Player extends
+/// EntityStruct with Transform2D` holds columns because `Component`
+/// describes them, dispatchers because `EventBus` does, and child prefabs
+/// because `EntityStruct` does.
+///
+/// A class with nothing above it carrying one is **unconstrained**, and
+/// nothing is reported for it. That is what lets a package define a root of
+/// its own and adopt this when it has something to say, rather than the rule
+/// arriving as a wall.
+///
+/// # Raw, always
+///
+/// `@Describes(Input<bool>)` is legal Dart and must not be written.
+/// [declaration] answers *may this kind of declaration appear here*, and
+/// `Input<bool>` and `Input<Vector2>` are one kind. Parameterising it grows
+/// the list with every payload type a game invents, on classes like
+/// `EntityStruct` that cannot know what those will be. A requirement for a
+/// particular payload is an abstract getter's job. `Input<Vector2> get move;`
+/// is a compile error when it is unmet, and needs nothing here.
+///
+/// # What [required] is for
+///
+/// The one case the type system cannot express. An abstract getter forces
+/// *exactly one, named*; `@Describes(ColliderBody, true)` means *at least
+/// one, any number*, and Dart cannot require a non-empty list.
+///
+/// # It is read at build time and never at run time
+///
+/// `good_tool --declarations` and `good generate` read this off the source.
+/// Nothing looks it up while a game runs, and it reaches no generated table -
+/// which is why it does not implement [ScannableAnnotation], for [Hide]'s
+/// reason: that bound's one reader is the set a bare-constructor field is
+/// tested against, so implementing it would make `@Describes(Sprite) final
+/// spare = Turret();` quietly register a child prefab.
+@Target(<TargetKind>{TargetKind.classType, TargetKind.mixinType})
+class Describes {
+  const Describes(this.declaration, [this.required = false]);
+
+  /// The [ScannableField] root a field of this class may hold - `DataPointer`,
+  /// `Query`, `EntityStruct`.
+  ///
+  /// A subtype of it counts: `@Describes(DataPointer)` covers the
+  /// `InitialPointer<double>` a `Field.float64()` hands back, because the
+  /// question is what kind of declaration this is and `InitialPointer` is
+  /// that kind.
+  final Type declaration;
+
+  /// Whether a concrete class reaching this must hold at least one.
+  ///
+  /// For the few roots that are meaningless empty - a `Collider2D` with no
+  /// shape is a body with no geometry, and Dart cannot require a non-empty
+  /// list.
+  ///
+  /// **Nothing reads it yet and nothing in this repository writes `true`.**
+  /// The scan checks where a declaration may live, which is a fact about one
+  /// field; this is a fact about a whole concrete class, and needs the class's
+  /// declarations flattened across every mixin it applies. Said outright
+  /// because a flag that is carried and not read reads as one that is
+  /// enforced.
+  final bool required;
+}
 
 // ---------------------------------------------------------------------------
 // The collectors

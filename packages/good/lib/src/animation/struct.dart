@@ -459,6 +459,8 @@ final class TrackAnimator<T> {
 /// shared by every entity of that archetype - exactly like the struct itself.
 /// Per-entity progress is one `double` of start time in the entity's own row;
 /// see [TimelineAnimation.animate].
+@Describes(Track)
+@Describes(TimelineAnimation)
 abstract class TimelineStruct implements Scannable {
   SceneStruct? _scene;
 

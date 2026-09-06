@@ -17,6 +17,8 @@ import 'package:good/src/scannable.dart';
 import 'package:good/src/scene_handle.dart';
 import 'package:good/src/struct.dart';
 
+@Describes(EntityStruct)
+@Describes(Asset)
 abstract class SceneStruct extends GameListenerBase
     with EventBus, SceneLifecycleListener, Coroutines
     implements Scannable {

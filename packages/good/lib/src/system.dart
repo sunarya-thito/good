@@ -87,6 +87,8 @@ mixin GameSystemLifecycleListener on GameListener {
 /// object builds widgets and it is `Game.buildView` - a method, not a dispatch
 /// mechanism built for several contributors to a problem that has one. See
 /// [EventDispatcher].
+@Describes(Query)
+@Describes(Input)
 abstract class GameSystem extends GameListenerBase
     with EventBus, Coroutines
     implements Comparable<GameSystem>, Scannable, ScannableField {
