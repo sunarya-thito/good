@@ -1,7 +1,7 @@
 /// How assets are prepared for a build.
 ///
-/// Shared by `good build` and `good assets pack`, and owned by neither:
-/// the build passes them through to the pack, and a value that lives in one
+/// Shared by `good generate` and `good build`, and owned by neither: the
+/// build passes them through to the pipeline, and a value that lives in one
 /// command's file is one the other has to import across the tree.
 library;
 
@@ -12,10 +12,10 @@ library;
 /// decryption, and a file you can replace on disk. Release wants the pack -
 /// fewer files, smaller, and not trivially extractable.
 enum AssetMode {
-  /// Loose files, exactly as `good assets compact` wrote them.
+  /// Loose files, exactly as normalisation wrote them.
   development,
 
-  /// Compressed, encrypted and chunked - see `good assets pack`.
+  /// Compressed, encrypted and chunked - see `runAssetPipeline`.
   release,
 }
 

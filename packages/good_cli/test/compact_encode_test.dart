@@ -12,7 +12,8 @@ import 'package:test/test.dart';
 
 import '_temp.dart';
 
-// What `good assets compact` produces, read back out of the file it wrote.
+// What `good generate` normalises art into, read back out of the file it
+// wrote.
 //
 // compact_test.dart asserts the ffmpeg argument list and runs nothing. That is
 // how #189 shipped: one test pinned `-pix_fmt yuva420p`, another pinned

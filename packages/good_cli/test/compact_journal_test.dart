@@ -78,7 +78,7 @@ void main() {
     });
   });
 
-  group('good assets compact (needs ffmpeg)', () {
+  group('good generate normalizes (needs ffmpeg)', () {
     Directory project() {
       final dir = _tempDir();
       Directory('${dir.path}/assets_src').createSync(recursive: true);
@@ -110,11 +110,16 @@ good:
       return dir;
     }
 
+    // `--no-pack`, because the fixture declares no `flutter: assets:` and
+    // packing would refuse it before saying anything about the journal. That
+    // flag is the whole reason folding the commands did not fold the stages:
+    // a run can still be about one of them.
     ProcessResult compact(Directory dir) => GoodCli.instance.run(<String>[
-      'assets',
-      'compact',
+      'generate',
       '--project-dir',
       dir.path,
+      '--no-pack',
+      '--no-pub-get',
     ]);
 
     test('writes nothing of its own into the shipped directory', () {

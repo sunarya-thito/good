@@ -9,7 +9,7 @@ import 'package:good/src/asset.dart';
 ///
 /// # What this is for
 ///
-/// A release build does not ship its assets as files. `good assets pack`
+/// A release build does not ship its assets as files. `good generate`
 /// compresses them, seals them into a handful of encrypted chunks, and records
 /// which chunk holds what. This is the half that reads that back, and it is
 /// mounted *once*, at startup, by the generated `ensureGameReady()`.
@@ -42,7 +42,7 @@ class AssetPack extends AssetMount {
   }) : _mapping = Map<String, String>.unmodifiable(mapping),
        _key = key,
        chunkSource = chunkSource ?? const BundleMount() {
-    // Empty is legitimate: `good assets pack --encryption=none` produces a
+    // Empty is legitimate: `good generate --asset-encryption=none` produces a
     // packed but unsealed build, and whether a given chunk is encrypted is a
     // flag on that chunk, not a property of the pack. So the only thing worth
     // rejecting here is a key that is neither absent nor the right size -
@@ -65,7 +65,7 @@ class AssetPack extends AssetMount {
   ///
   /// A mount and not an `AssetBundle`, so a downloaded patch can keep
   /// its chunks in a directory while the shipped pack keeps its own in the app
-  /// bundle. Defaults to the app bundle, which is where `good assets pack`
+  /// bundle. Defaults to the app bundle, which is where `good generate`
   /// puts them.
   final AssetMount chunkSource;
 
@@ -147,8 +147,7 @@ class AssetPack extends AssetMount {
       throw StateError(
         '"$logicalPath" is not in this asset pack. Either the pack was built '
         'from a different set of declared assets, or the generated '
-        'asset_key.dart is out of date - re-run `good generate` and '
-        '`good assets pack`.',
+        'asset_key.dart is out of date - re-run `good generate`.',
       );
     }
     return bytes;
@@ -258,7 +257,7 @@ class AssetPack extends AssetMount {
 
 // --- the chunk format ------------------------------------------------------
 //
-// Written by `good assets pack`; see `good_cli/lib/src/assets/pack.dart` for
+// Written by `good generate`; see `good_cli/lib/src/assets/pack.dart` for
 // the producing half and the reasoning behind each choice. Two copies of a wire
 // format is one too many, but the alternative is good depending on the build
 // tool - which would put `package:analyzer` and an ffmpeg downloader into every

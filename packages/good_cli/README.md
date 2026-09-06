@@ -20,9 +20,13 @@ flutter run
 Drop source art in `assets_src/`, then:
 
 ```bash
-good assets compact   # one canonical format per kind, via ffmpeg
-good generate         # writes the generated bundle package beside the project
+good generate         # normalize -> bindings -> chunk, compress, encrypt
 ```
+
+One command, because the stages have one order and running them out of it
+produces a build that succeeds and is quietly stale. `--no-normalize` and
+`--no-pack` turn a stage off when you are iterating on the other half;
+normalisation is incremental anyway, so an unchanged file is never re-encoded.
 
 `good generate` is what lets you write `Textures.spritesPlayer` instead of a
 string path, so a renamed file is a compile error, not a black square at
@@ -31,12 +35,12 @@ runtime.
 ## Shipping
 
 ```bash
-good assets pack              # compress, encrypt, group into chunks
 good build windows            # also: linux, android, ios
 ```
 
-`good build` runs the pipeline first, so the release bundle carries the packed
-chunks. What else it carries is what `flutter: assets:` says: that list and
+`good build` runs `good generate` first - the way `flutter build` runs
+`flutter pub get` - so the release bundle carries current chunks;
+`--no-generate` builds what is already on disk. What else it carries is what `flutter: assets:` says: that list and
 `good: assets:` are read separately, so a file good packs is not thereby handed
 to Flutter's bundler.
 
