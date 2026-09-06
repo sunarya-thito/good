@@ -73,6 +73,7 @@ import 'package:good/src/time.dart';
 /// an isolate with no Flutter engine attached. So it can be `FixedTickable`
 /// and `LifecycleListener`, and it builds no widgets: the whole Flutter-facing
 /// surface is `Game.buildView`, on the other copy. See `GameEvent`'s doc.
+@Describes(GameSystem)
 abstract class GameState<T extends Game> extends GameListenerBase
     with EventBus, Coroutines
     implements Scannable {

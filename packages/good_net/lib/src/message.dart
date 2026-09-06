@@ -60,6 +60,7 @@ enum NetTarget {
 /// network result needs a timeout, a cancellation and a "peer left" path
 /// before it means anything. Write a reply as a second message going the other
 /// way, which is also what shipped netcode overwhelmingly does.
+@Describes(ParamPointer)
 abstract class NetMessageBase implements Scannable {
   /// Declares this message's fields. Identical in shape and vocabulary to
   /// `GameCommandBase.describeParams` - same descriptor, same packing rule,

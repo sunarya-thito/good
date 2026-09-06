@@ -345,6 +345,7 @@ class ScannedType {
     required this.name,
     required this.path,
     required this.typeParameters,
+    required this.annotations,
     required this.supertypes,
     required this.superclass,
     required this.mixins,
@@ -357,6 +358,14 @@ class ScannedType {
   });
 
   final String name;
+
+  /// The annotations written on the declaration itself, in source order, each
+  /// as it was written - `Describes(DataPointer)`, `immutable`.
+  ///
+  /// Whole source and not just the name, for [ScannedField.annotations]'
+  /// reason: `Describes(ColliderBody, true)` and `Describes(ColliderBody)` are
+  /// two different statements and a head alone tells them apart from neither.
+  final List<String> annotations;
 
   /// Its own type parameter names, in order, and empty when it has none.
   ///
@@ -1302,6 +1311,10 @@ ScannedType? _readType(
     name: name,
     path: path,
     typeParameters: typeParameters,
+    annotations: <String>[
+      for (final annotation in declaration.metadata)
+        annotation.toSource().substring(1),
+    ],
     supertypes: supertypes,
     superclass: superclass,
     mixins: mixins,
@@ -2004,6 +2017,150 @@ bool isScannedValue(ScannedField field, Map<String, ScannedType> typesByName) {
   return isSubtypeOf(parsed.name, scannableRoot, typesByName);
 }
 
+/// The annotation a class carries to say which declarations may live on it -
+/// see `Describes` in `good/lib/src/scannable.dart`.
+const String describesRoot = 'Describes';
+
+/// One `@Describes` written somewhere above a class.
+@immutable
+class DescribedDeclaration {
+  const DescribedDeclaration({
+    required this.type,
+    required this.declaredBy,
+    required this.isRequired,
+  });
+
+  /// The declaration root named in the annotation - `DataPointer`, `Query`,
+  /// `EntityStruct`.
+  ///
+  /// The head alone, so `@Describes(Input<bool>)` and `@Describes(Input)` say
+  /// the same thing here. Parameterising the annotation is a mistake the
+  /// annotation's own doc names; reading past the arguments is what stops it
+  /// being a *silent* one.
+  final String type;
+
+  /// The class or mixin that wrote it - `Component`, `EventBus`.
+  ///
+  /// Carried so a report can say where the permission came from. A class
+  /// holds what everything above it describes, and a reader looking at
+  /// `Player` has no way to see that its columns are `Component`'s doing.
+  final String declaredBy;
+
+  /// Whether a concrete class reaching this must hold at least one.
+  ///
+  /// **Read by nothing yet, and written nowhere yet.** It is parsed and
+  /// carried so that the check it is for costs no annotation churn when it
+  /// lands, and it is said here because a flag that is stored and not read
+  /// looks exactly like a flag that is enforced.
+  ///
+  /// That check is a different question from the one this walk answers. A
+  /// misplaced declaration is a fact about one field, decided where the field
+  /// is written. "At least one, any number" is a fact about a whole concrete
+  /// class - it has to flatten the class's declarations across every mixin it
+  /// applies, and it has nothing to say about an abstract one, where holding
+  /// none is what being abstract is for.
+  final bool isRequired;
+}
+
+/// Every declaration root [type] may hold, or null where nothing says.
+///
+/// The union over `extends`, `on`, `with` and `implements`, by the same walk
+/// [isSubtypeOf] makes - a permission is a fact about what the class *is*, and
+/// all four clauses carry that downwards. `Player extends EntityStruct with
+/// Transform2D` holds columns because `Component` describes them, dispatchers
+/// because `EventBus` does, and child prefabs because `EntityStruct` does.
+///
+/// **Null is not the empty set.** Null means nothing above this class carries
+/// the annotation at all, and the answer to "may it hold this" is then that
+/// nothing said - which is what leaves a package that has not adopted the
+/// annotation alone, and what lets a third-party root take it up when it has
+/// something to say. The empty set would mean *may hold nothing*, which is a
+/// claim no class in this repository makes.
+List<DescribedDeclaration>? describedDeclarations(
+  ScannedType type,
+  Map<String, ScannedType> typesByName, {
+  Set<String>? seen,
+}) {
+  final visited = seen ?? <String>{};
+  if (!visited.add(type.name)) return null;
+  List<DescribedDeclaration>? described;
+  for (final annotation in type.annotations) {
+    if (annotationName(annotation) != describesRoot) continue;
+    final arguments = _annotationArguments(annotation);
+    if (arguments.isEmpty) continue;
+    final parsed = TypeSource.parse(arguments.first);
+    if (parsed == null) continue;
+    (described ??= <DescribedDeclaration>[]).add(
+      DescribedDeclaration(
+        type: parsed.name,
+        declaredBy: type.name,
+        isRequired: arguments.length > 1 && arguments[1] == 'true',
+      ),
+    );
+  }
+  for (final supertype in type.supertypes) {
+    final above = typesByName[supertype];
+    if (above == null) continue;
+    final inherited = describedDeclarations(above, typesByName, seen: visited);
+    if (inherited == null) continue;
+    (described ??= <DescribedDeclaration>[]).addAll(inherited);
+  }
+  return described;
+}
+
+/// `an` before a type name that starts with a vowel, `a` before the rest.
+///
+/// The names this reads are written by whoever declared the root, so the
+/// message has to work for `InitialPointer` and `Query` alike without a table
+/// of them anywhere.
+String _article(String name) =>
+    name.isNotEmpty && 'AEIOUaeiou'.contains(name[0]) ? 'an' : 'a';
+
+/// The arguments of [annotation] as they were written, or none.
+///
+/// A split on top-level commas rather than a re-parse: the arguments this
+/// reads are a type literal and `true`, and both are written flat. A nested
+/// generic - `Describes(Map<int, String>)` - is what the depth counter is
+/// for, and it is there because getting it wrong turns one argument into two
+/// and the second into a `required` flag nobody wrote.
+List<String> _annotationArguments(String annotation) {
+  final open = annotation.indexOf('(');
+  if (open < 0 || !annotation.endsWith(')')) return const <String>[];
+  final inside = annotation.substring(open + 1, annotation.length - 1).trim();
+  if (inside.isEmpty) return const <String>[];
+  final arguments = <String>[];
+  final buffer = StringBuffer();
+  var depth = 0;
+  for (final rune in inside.runes) {
+    final character = String.fromCharCode(rune);
+    if (character == '<' || character == '(' || character == '[') depth++;
+    if (character == '>' || character == ')' || character == ']') depth--;
+    if (character == ',' && depth == 0) {
+      arguments.add(buffer.toString().trim());
+      buffer.clear();
+      continue;
+    }
+    buffer.write(character);
+  }
+  arguments.add(buffer.toString().trim());
+  return arguments;
+}
+
+/// Whether [valueType] is one of the declarations [described] permits.
+///
+/// A subtype counts, which is what makes `@Describes(DataPointer)` cover the
+/// `InitialPointer<double>` a `Field.float64()` hands back: the question is
+/// what kind of declaration this is, and the arguments are no part of the
+/// answer - `DataPointer<CameraView?>` and `InitialPointer<double>` are one
+/// kind of thing to permit.
+bool isDescribedDeclaration(
+  TypeSource valueType,
+  List<DescribedDeclaration> described,
+  Map<String, ScannedType> typesByName,
+) => described.any(
+  (permitted) => isSubtypeOf(valueType.name, permitted.type, typesByName),
+);
+
 /// One declaration a scanned class holds, as codegen and a collector need it.
 ///
 /// Both halves of "two artifacts, not one" are here: [name] and [valueType]
@@ -2106,6 +2263,7 @@ class DeclarationScan {
     required this.uncollectable,
     required this.unmarked,
     this.deferred = const <String, String>{},
+    this.misplaced = const <String, String>{},
   });
 
   /// Classes holding at least one declaration, in path order.
@@ -2203,6 +2361,39 @@ class DeclarationScan {
   /// it was being paid for in correct code.
   final Map<String, String> deferred;
 
+  /// Declarations held by an owner that describes nothing of the kind, keyed
+  /// `Class.field`, to why.
+  ///
+  /// The fourth thing a field can end up being, and the only one of the four
+  /// that no correct program contains. A private field is an engine column
+  /// somebody chose to keep internal; a spare is ordinary code; a field
+  /// assigned in a constructor body is read fine. This is none of those: the
+  /// value is a declaration, the owner is scanned, and the pass that reads
+  /// that owner has no descriptor to hand it to. It is collected, offered,
+  /// matched by nothing, and dropped.
+  ///
+  /// ```dart
+  /// class Player extends EntityStruct {
+  ///   final scale = Track.of(1.0);   // read by registerObject, dropped
+  /// }
+  /// ```
+  ///
+  /// Nothing said so until `Describes` existed, and until the hooks were
+  /// deleted nothing had to: `describeStruct(DataDescriptor)` was declared
+  /// only on something with a row to put a column in, and `describeTrack`
+  /// only on a timeline, so a signature carried the constraint. Deleting the
+  /// hooks deleted it, and nothing noticed because nothing checked.
+  ///
+  /// **Reported and not refused, for now.** The report is what a refusal
+  /// would be built on and the annotations arrive with it, so there is no run
+  /// anywhere that has been read against them - and a rule that refuses in
+  /// the same change that invents it has no evidence behind it. One
+  /// `exitCode = 65` in `good_tool`'s `_declarations` turns it into a
+  /// refusal once the tree has been green through a release with the report
+  /// on. Unlike the three lists above it, it prints without `--verbose`:
+  /// those name shapes that are legal, and this one does not.
+  final Map<String, String> misplaced;
+
   int get declarationCount {
     var count = 0;
     for (final declarer in declarers) {
@@ -2285,6 +2476,7 @@ DeclarationScan scanDeclarations(ScanSources sources) {
   final uncollectable = <String, String>{};
   final unmarked = <String, String>{};
   final deferred = <String, String>{};
+  final misplaced = <String, String>{};
   final markers = scannableAnnotationNames(sources);
 
   final lateRings = <DeclarationRefusal>[];
@@ -2317,6 +2509,11 @@ DeclarationScan scanDeclarations(ScanSources sources) {
     for (final type in unit.types) {
       if (!isSubtypeOf(type.name, scannableRoot, scope)) continue;
       lateRings.addAll(_lateInitializerRings(type, path, scope));
+      // Null and not empty where nothing above this class carries
+      // `@Describes` - see [describedDeclarations]. A package that has not
+      // adopted the annotation is left alone rather than told every
+      // declaration it holds is in the wrong place.
+      final described = describedDeclarations(type, scope);
       final declarations = <ScannedDeclaration>[];
       for (final field in type.fields) {
         // Before the declaration test, because the declaration test is what
@@ -2370,6 +2567,22 @@ DeclarationScan scanDeclarations(ScanSources sources) {
               'or leave it as it is if it is a spare';
           continue;
         }
+        final parsedValue = TypeSource.parse(valueType);
+        if (described != null &&
+            parsedValue != null &&
+            !isDescribedDeclaration(parsedValue, described, scope)) {
+          final permitted = <String>{
+            for (final entry in described) '${entry.type} (${entry.declaredBy})',
+          }.toList()..sort();
+          misplaced['${type.name}.${field.name}'] =
+              'it holds ${_article(valueType)} $valueType, and nothing above '
+              '${type.name} says ${_article(parsedValue.name)} '
+              '${parsedValue.name} may live there. What ${type.name} may hold '
+              'is ${permitted.join(', ')}. The pass that reads a '
+              '${type.name} collects this field, offers it to the descriptors '
+              'that pass runs, matches it against none of them and drops it - '
+              'so the declaration is written, reads as one, and lands nowhere';
+        }
         if (field.isPrivate) {
           uncollectable['${type.name}.${field.name}'] =
               'it is private, and a collector is generated into another '
@@ -2412,6 +2625,7 @@ DeclarationScan scanDeclarations(ScanSources sources) {
     uncollectable: uncollectable,
     unmarked: unmarked,
     deferred: deferred,
+    misplaced: misplaced,
   );
 }
 
@@ -2800,6 +3014,35 @@ String declarationCycleMessage(
       'initialisers is a LateInitializationError naming one field and nothing '
       'about the ring, thrown at the first touch - which is the collector. '
       'Each ring is a fact about the source, so it is named here instead.',
+    );
+  return lines.toString();
+}
+
+/// What a run reporting a declaration on the wrong owner says.
+///
+/// Not a refusal, and it does not name files the way the three refusal
+/// messages do: this is keyed `Class.field` like the other reports, because
+/// what is wrong is the pairing of an owner with a declaration and both names
+/// are in the key.
+String misplacedDeclarationMessage(DeclarationScan scan) {
+  final lines = StringBuffer()
+    ..writeln('A declaration is held by an owner that describes nothing of '
+        'the kind:')
+    ..writeln();
+  final keys = scan.misplaced.keys.toList()..sort();
+  for (final key in keys) {
+    lines.writeln('  $key - ${scan.misplaced[key]}');
+  }
+  lines
+    ..writeln()
+    ..writeln(
+      'Each of these is collected. The pass that reads the owner offers it to '
+      'every descriptor that pass runs, none of them can act on it, and it is '
+      'dropped without a word - which is what a hook signature used to stop, '
+      'back when a column could only be written inside '
+      'describeStruct(DataDescriptor). Either move the declaration to a class '
+      'that describes it, or write @Describes on the owner if it is meant to '
+      'hold one.',
     );
   return lines.toString();
 }

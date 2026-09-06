@@ -48,6 +48,7 @@ import 'package:good/src/scannable.dart';
 /// the typed call site but left the *handler* reading pointers; that is the
 /// same mistake in miniature, since a handler that has to know the wire
 /// format is a handler that cannot be tested as the function it is.
+@Describes(ParamPointer)
 abstract class GameCommandBase implements Scannable {
   /// Declares this command's fields - the parameters *and* the results, in
   /// one record, since they are the same bytes travelling in both directions.
