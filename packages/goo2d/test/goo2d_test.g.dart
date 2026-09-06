@@ -31,8 +31,6 @@ List<ScannableField> _collect$Player(Object object) {
     owner.transformScaleX,
     owner.transformScaleY,
     owner.transformRotation,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -47,8 +45,6 @@ List<ScannableField> _collect$Enemy(Object object) {
     owner.transformScaleX,
     owner.transformScaleY,
     owner.transformRotation,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -60,8 +56,6 @@ List<ScannableField> _collect$Rock(Object object) {
     owner.transformScaleX,
     owner.transformScaleY,
     owner.transformRotation,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -71,8 +65,6 @@ List<ScannableField> _collect$MainScene(Object object) {
     owner.playerPrefab,
     owner.enemyPrefab,
     owner.rockPrefab,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 

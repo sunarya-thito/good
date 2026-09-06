@@ -40,24 +40,20 @@ class _NotedSystem extends GameSystem with _Noted {
   String get noted => 'system';
 }
 
-class _UnitA extends EntityStruct with _Noted {
+/// A system that declares a dispatcher of its own, which is what a package
+/// ships an event as.
+class _PublisherSystem extends GameSystem with _Noted {
   @override
-  String get noted => 'unitA';
-}
+  String get noted => 'publisher';
 
-class _UnitB extends EntityStruct with _Noted {
-  @override
-  String get noted => 'unitB';
-
-  /// A prefab declaring on its own field, which works because the scene below
-  /// registers it with a constructor the framework calls.
   final own = Event.signal<_Noted>((listener) => listener.onNoted('own'));
 }
 
-class _NotedScene extends SceneStruct with _Noted {
-  @override
-  String get noted => 'scene';
+class _UnitA extends EntityStruct {}
 
+class _UnitB extends EntityStruct {}
+
+class _NotedScene extends SceneStruct {
   @sub
   final a = _UnitA();
   @sub
@@ -80,6 +76,9 @@ class _FieldState extends GameState<_FieldGame> with _Noted {
 
   @system
   final notedSystem = _NotedSystem();
+
+  @system
+  final publisher = _PublisherSystem();
 }
 
 abstract class _NotedGame extends Game {
@@ -100,7 +99,7 @@ class _FieldGame extends _NotedGame {
   GameState createState() => _FieldState();
 }
 
-/// An owner outside the engine's four hosts, so the binder can be driven by
+/// An owner outside the engine's two hosts, so the binder can be driven by
 /// hand and the collect pass observed without a boot.
 class _Pair extends GameListenerBase with EventBus, _Noted {
   @override
@@ -129,17 +128,17 @@ void main() {
   });
 
   group('a dispatcher declared on a field', () {
-    test('reaches the owner composition and nothing wider', () async {
+    test('reaches every listener in the game', () async {
       final run = await _boot(_FieldGame.new);
       final state = run.state as _FieldState;
 
       expect(
         state.alpha.listenerCount,
-        5,
+        3,
         reason:
-            'the state, the one system, the scene and its two prefabs - the '
-            'composition walk `collectListeners` offered, reached through a '
-            'binder filled from the constructed object',
+            'the state and its two systems. The scene and its prefabs are '
+            'not listeners at all - they hear their own bring-up through a '
+            'virtual, and there is nothing for a dispatcher to collect',
       );
       expect(state.beta.listenerCount, state.alpha.listenerCount);
     });
@@ -160,7 +159,7 @@ void main() {
             'and the log is not empty, which would make the comparison below '
             'hold for the wrong reason',
       );
-      expect(forward.length, 5);
+      expect(forward.length, 3);
       expect(
         _Noted.log,
         forward.reversed.map((entry) => entry.replaceFirst('alpha:', 'beta:')),
@@ -169,19 +168,45 @@ void main() {
             'order around, and it turns around the whole of it',
       );
     });
+  });
 
-    test('a prefab declares on its own field too', () async {
-      final game = await _boot(_FieldGame.new);
+  group('a system declares an event', () {
+    test('and it reaches the same listeners the state\'s does', () async {
+      final run = await _boot(_FieldGame.new);
+      final state = run.state as _FieldState;
 
       expect(
-        game.level.b.own.listenerCount,
-        1,
+        state.publisher.own.listenerCount,
+        state.alpha.listenerCount,
         reason:
-            "a prefab's dispatcher reaches that prefab and nothing else, "
-            'whichever way it was declared',
+            'one binder holds every dispatcher in the game and offers each '
+            'collected listener to all of them. Bound per owner, this list '
+            'would hold the publisher alone',
       );
-      game.level.b.own.call();
-      expect(_Noted.log, <String>['own:unitB']);
+
+      state.publisher.own.call();
+
+      expect(_Noted.log, <String>[
+        'own:state',
+        'own:system',
+        'own:publisher',
+      ], reason: 'the state, then the systems in declaration order');
+    });
+
+    test('and a listener on a sibling system is in it', () async {
+      final run = await _boot(_FieldGame.new);
+      final state = run.state as _FieldState;
+
+      state.publisher.own.call();
+
+      expect(
+        _Noted.log,
+        contains('own:system'),
+        reason:
+            '_NotedSystem declares no dispatcher and knows nothing about '
+            '_PublisherSystem. Being in its list is what makes shipping an '
+            'event from a package work at all',
+      );
     });
   });
 
@@ -196,7 +221,7 @@ void main() {
     // `good_cli/test/scan_test.dart`'s 'a late declaration is refused'.
     test('an owner the framework did not construct declares the same', () {
       final pair = _Pair();
-      EventBinder.bind(pair);
+      EventBinder.bind(<EventBus>[pair]);
 
       expect(
         pair.eager.listenerCount,
@@ -214,10 +239,10 @@ void main() {
   group('binding is once', () {
     test('a second collect pass is refused rather than doubling a list', () {
       final pair = _Pair();
-      EventBinder.bind(pair);
+      EventBinder.bind(<EventBus>[pair]);
 
       expect(
-        () => EventBinder.bind(pair),
+        () => EventBinder.bind(<EventBus>[pair]),
         throwsStateError,
         reason:
             'the late final dispatchers this replaced threw when assigned '
@@ -225,6 +250,29 @@ void main() {
             'then receive every event twice',
       );
       expect(pair.eager.listenerCount, 1);
+    });
+
+    test('and one already-bound owner refuses the whole pass', () {
+      final first = _Pair();
+      final second = _Pair();
+      EventBinder.bind(<EventBus>[first]);
+
+      expect(
+        () => EventBinder.bind(<EventBus>[second, first]),
+        throwsStateError,
+        reason:
+            'the flag is per owner, so a pass that mixes a fresh owner in '
+            'with one that has already been through is still the doubling '
+            'the guard exists to stop',
+      );
+      expect(first.eager.listenerCount, 1);
+      expect(
+        second.eager.listenerCount,
+        0,
+        reason:
+            'and the refusal came before anything was touched, so the fresh '
+            'owner in the same list was not half-bound',
+      );
     });
   });
 }

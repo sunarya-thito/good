@@ -29,8 +29,6 @@ List<ScannableField> _collect$Player(Object object) {
     owner.offsetX,
     owner.offsetY,
     owner.rotation,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -42,17 +40,12 @@ List<ScannableField> _collect$Enemy(Object object) {
     owner.offsetX,
     owner.offsetY,
     owner.rotation,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
 List<ScannableField> _collect$Rock(Object object) {
-  final owner = object as _Rock;
-  return <ScannableField>[
-    owner.mountedEvent,
-    owner.unmountedEvent,
-  ];
+  object as _Rock;
+  return const <ScannableField>[];
 }
 
 List<ScannableField> _collect$ChildOnly(Object object) {
@@ -61,8 +54,6 @@ List<ScannableField> _collect$ChildOnly(Object object) {
     owner.childParent,
     owner.childNextSibling,
     owner.childPrevSibling,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -71,8 +62,6 @@ List<ScannableField> _collect$Level(Object object) {
   return <ScannableField>[
     owner.player,
     owner.enemy,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 

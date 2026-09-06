@@ -59,8 +59,6 @@ List<ScannableField> _collect$Node(Object object) {
     owner.transformRotationY,
     owner.transformRotationZ,
     owner.transformRotationW,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -101,8 +99,6 @@ List<ScannableField> _collect$Leaf(Object object) {
     owner.transformRotationY,
     owner.transformRotationZ,
     owner.transformRotationW,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -124,8 +120,6 @@ List<ScannableField> _collect$Group(Object object) {
     owner.transformRotationY,
     owner.transformRotationZ,
     owner.transformRotationW,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -142,8 +136,6 @@ List<ScannableField> _collect$Prop(Object object) {
     owner.transformRotationY,
     owner.transformRotationZ,
     owner.transformRotationW,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -154,17 +146,12 @@ List<ScannableField> _collect$Scene(Object object) {
     owner.leaf,
     owner.group,
     owner.prop,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
 List<ScannableField> _collect$Spawner(Object object) {
-  final owner = object as _Spawner;
-  return <ScannableField>[
-    owner.mountEvent,
-    owner.unmountEvent,
-  ];
+  object as _Spawner;
+  return const <ScannableField>[];
 }
 
 List<ScannableField> _collect$GameState(Object object) {

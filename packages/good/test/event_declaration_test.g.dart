@@ -21,28 +21,25 @@
 part of 'event_declaration_test.dart';
 
 List<ScannableField> _collect$NotedSystem(Object object) {
-  final owner = object as _NotedSystem;
+  object as _NotedSystem;
+  return const <ScannableField>[];
+}
+
+List<ScannableField> _collect$PublisherSystem(Object object) {
+  final owner = object as _PublisherSystem;
   return <ScannableField>[
-    owner.mountEvent,
-    owner.unmountEvent,
+    owner.own,
   ];
 }
 
 List<ScannableField> _collect$UnitA(Object object) {
-  final owner = object as _UnitA;
-  return <ScannableField>[
-    owner.mountedEvent,
-    owner.unmountedEvent,
-  ];
+  object as _UnitA;
+  return const <ScannableField>[];
 }
 
 List<ScannableField> _collect$UnitB(Object object) {
-  final owner = object as _UnitB;
-  return <ScannableField>[
-    owner.own,
-    owner.mountedEvent,
-    owner.unmountedEvent,
-  ];
+  object as _UnitB;
+  return const <ScannableField>[];
 }
 
 List<ScannableField> _collect$NotedScene(Object object) {
@@ -50,8 +47,6 @@ List<ScannableField> _collect$NotedScene(Object object) {
   return <ScannableField>[
     owner.a,
     owner.b,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -61,6 +56,7 @@ List<ScannableField> _collect$FieldState(Object object) {
     owner.alpha,
     owner.beta,
     owner.notedSystem,
+    owner.publisher,
     owner.fixedTickEvent,
     owner.tickEvent,
     owner.gameMountedEvent,
@@ -96,6 +92,7 @@ const GeneratedDeclarations _eventDeclarationTestDeclarations =
       package: 'good/test/event_declaration_test.dart',
       collectors: <DeclarationCollector>[
         DeclarationCollector(_NotedSystem, _collect$NotedSystem),
+        DeclarationCollector(_PublisherSystem, _collect$PublisherSystem),
         DeclarationCollector(_UnitA, _collect$UnitA),
         DeclarationCollector(_UnitB, _collect$UnitB),
         DeclarationCollector(_NotedScene, _collect$NotedScene),

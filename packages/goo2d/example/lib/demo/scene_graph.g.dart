@@ -49,8 +49,6 @@ List<ScannableField> _collect$Critter(Object object) {
     owner.transformScaleX,
     owner.transformScaleY,
     owner.transformRotation,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -77,8 +75,6 @@ List<ScannableField> _collect$Limb(Object object) {
     owner.transformScaleX,
     owner.transformScaleY,
     owner.transformRotation,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -103,8 +99,6 @@ List<ScannableField> _collect$Hub(Object object) {
     owner.transformScaleX,
     owner.transformScaleY,
     owner.transformRotation,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -129,8 +123,6 @@ List<ScannableField> _collect$Eye(Object object) {
     owner.transformScaleX,
     owner.transformScaleY,
     owner.transformRotation,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -141,8 +133,6 @@ List<ScannableField> _collect$Swarm(Object object) {
     owner.limb,
     owner.hub,
     owner.eye,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -151,8 +141,6 @@ List<ScannableField> _collect$CritterSystem(Object object) {
   return <ScannableField>[
     owner.critters,
     owner.hubs,
-    owner.mountEvent,
-    owner.unmountEvent,
   ];
 }
 

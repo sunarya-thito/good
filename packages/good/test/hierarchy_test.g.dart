@@ -34,8 +34,6 @@ List<ScannableField> _collect$Node(Object object) {
     owner.childNextSibling,
     owner.childPrevSibling,
     owner.tag,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -46,8 +44,6 @@ List<ScannableField> _collect$Leaf(Object object) {
     owner.childNextSibling,
     owner.childPrevSibling,
     owner.tag,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -55,8 +51,6 @@ List<ScannableField> _collect$NoChild(Object object) {
   final owner = object as _NoChild;
   return <ScannableField>[
     owner.tag,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -68,8 +62,6 @@ List<ScannableField> _collect$BareNode(Object object) {
     owner.childParent,
     owner.childNextSibling,
     owner.childPrevSibling,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -80,8 +72,6 @@ List<ScannableField> _collect$Barrel(Object object) {
     owner.childNextSibling,
     owner.childPrevSibling,
     owner.tag,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -92,8 +82,6 @@ List<ScannableField> _collect$Tip(Object object) {
     owner.childNextSibling,
     owner.childPrevSibling,
     owner.tag,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -107,8 +95,6 @@ List<ScannableField> _collect$Turret(Object object) {
     owner.childNextSibling,
     owner.childPrevSibling,
     owner.tag,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -121,8 +107,6 @@ List<ScannableField> _collect$Rig(Object object) {
     owner.parentFirstChild,
     owner.parentLastChild,
     owner.tag,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -136,8 +120,6 @@ List<ScannableField> _collect$DeepBarrel(Object object) {
     owner.childNextSibling,
     owner.childPrevSibling,
     owner.tag,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -148,8 +130,6 @@ List<ScannableField> _collect$DeepTurret(Object object) {
     owner.parentFirstChild,
     owner.parentLastChild,
     owner.tag,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -160,8 +140,6 @@ List<ScannableField> _collect$DeclaresANonChild(Object object) {
     owner.parentFirstChild,
     owner.parentLastChild,
     owner.tag,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -173,33 +151,22 @@ List<ScannableField> _collect$DeclaresWithoutParent(Object object) {
     owner.childNextSibling,
     owner.childPrevSibling,
     owner.tag,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
 List<ScannableField> _collect$Probed(Object object) {
-  final owner = object as _Probed;
-  return <ScannableField>[
-    owner.mountedEvent,
-    owner.unmountedEvent,
-  ];
+  object as _Probed;
+  return const <ScannableField>[];
 }
 
 List<ScannableField> _collect$ProbedSuperLast(Object object) {
-  final owner = object as _ProbedSuperLast;
-  return <ScannableField>[
-    owner.mountedEvent,
-    owner.unmountedEvent,
-  ];
+  object as _ProbedSuperLast;
+  return const <ScannableField>[];
 }
 
 List<ScannableField> _collect$ProbedNoSuper(Object object) {
-  final owner = object as _ProbedNoSuper;
-  return <ScannableField>[
-    owner.mountedEvent,
-    owner.unmountedEvent,
-  ];
+  object as _ProbedNoSuper;
+  return const <ScannableField>[];
 }
 
 List<ScannableField> _collect$Level(Object object) {
@@ -215,17 +182,12 @@ List<ScannableField> _collect$Level(Object object) {
     owner.probed,
     owner.probedSuperLast,
     owner.probedNoSuper,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
 List<ScannableField> _collect$OneOff(Object object) {
-  final owner = object as _OneOff;
-  return <ScannableField>[
-    owner.mountedEvent,
-    owner.unmountedEvent,
-  ];
+  object as _OneOff;
+  return const <ScannableField>[];
 }
 
 /// Whether an object is a _OneOff, whatever its type arguments are.

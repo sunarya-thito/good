@@ -199,9 +199,8 @@ abstract class Input<T> implements ScannableField {
   ///
   /// Subscribe from a constructor body or from `onMounted`, **not from a
   /// tick** - `+=` in `onFixedUpdate` adds a subscriber sixty times a second.
-  /// A `GameSystem` gets `onMounted` by mixing in
-  /// `GameSystemLifecycleListener`; `GameState.mount` fires every system's
-  /// `mountEvent` after the game's own `onMounted` has run.
+  /// Every `GameSystem` has `onMounted`; `GameState.mount` calls it on each of
+  /// them after the game's own `onMounted` has run.
   ///
   /// Those two are the only sites where the listener can be an ordinary
   /// instance method - see this class's doc for why the declaration itself

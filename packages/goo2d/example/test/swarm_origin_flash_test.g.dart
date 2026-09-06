@@ -24,8 +24,6 @@ List<ScannableField> _collect$OriginProbe(Object object) {
   final owner = object as _OriginProbe;
   return <ScannableField>[
     owner._renderables,
-    owner.mountEvent,
-    owner.unmountEvent,
   ];
 }
 

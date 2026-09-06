@@ -28,8 +28,6 @@ List<ScannableField> _collect$AnalogSystem(Object object) {
     owner.touch,
     owner.throttle,
     owner.pull,
-    owner.mountEvent,
-    owner.unmountEvent,
   ];
 }
 

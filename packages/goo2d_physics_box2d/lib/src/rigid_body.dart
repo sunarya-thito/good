@@ -88,10 +88,9 @@ enum BodyType2D {
 /// Nothing here - `Box2DPhysicsSystem` mixes in `EntitySpawnListener` and
 /// creates the body itself. This mixin is pure data.
 ///
-/// `EntityLifecycleListener` cannot do this job. Lifecycle events are scoped
-/// to their own prefab's composition, and a `GameSystem` mixing one in is
-/// never offered to any prefab's dispatcher: it compiles and silently never
-/// fires. `EntitySpawnListener` is the world-observation counterpart, and it
+/// `EntityStruct.onEntityMounted` cannot do this job. It is a method on the
+/// prefab, called about that prefab's own entities, so a system has nothing to
+/// override. `EntitySpawnListener` is the world-observation counterpart, and it
 /// is the one a system mixes in.
 mixin RigidBody2D on Component {
   /// The packed Box2D body handle, or `0` before the system has created one.

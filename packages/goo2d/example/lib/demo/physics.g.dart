@@ -45,8 +45,6 @@ List<ScannableField> _collect$Crate(Object object) {
     owner.transformScaleX,
     owner.transformScaleY,
     owner.transformRotation,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -75,8 +73,6 @@ List<ScannableField> _collect$Ball(Object object) {
     owner.transformScaleX,
     owner.transformScaleY,
     owner.transformRotation,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -104,8 +100,6 @@ List<ScannableField> _collect$Ground(Object object) {
     owner.transformScaleX,
     owner.transformScaleY,
     owner.transformRotation,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -133,8 +127,6 @@ List<ScannableField> _collect$Wall(Object object) {
     owner.transformScaleX,
     owner.transformScaleY,
     owner.transformRotation,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -159,8 +151,6 @@ List<ScannableField> _collect$Eye(Object object) {
     owner.transformScaleX,
     owner.transformScaleY,
     owner.transformRotation,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -172,33 +162,23 @@ List<ScannableField> _collect$Sandbox(Object object) {
     owner.ground,
     owner.wall,
     owner.eye,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
 List<ScannableField> _collect$PhysicsPhaseStart(Object object) {
-  final owner = object as _PhysicsPhaseStart;
-  return <ScannableField>[
-    owner.mountEvent,
-    owner.unmountEvent,
-  ];
+  object as _PhysicsPhaseStart;
+  return const <ScannableField>[];
 }
 
 List<ScannableField> _collect$PhysicsPhaseEnd(Object object) {
-  final owner = object as _PhysicsPhaseEnd;
-  return <ScannableField>[
-    owner.mountEvent,
-    owner.unmountEvent,
-  ];
+  object as _PhysicsPhaseEnd;
+  return const <ScannableField>[];
 }
 
 List<ScannableField> _collect$SandboxSystem(Object object) {
   final owner = object as SandboxSystem;
   return <ScannableField>[
     owner.bodies,
-    owner.mountEvent,
-    owner.unmountEvent,
   ];
 }
 

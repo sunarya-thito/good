@@ -63,8 +63,7 @@ class Box2DPhysicsSystem extends GameSystem
     with
         FixedTickable,
         EntitySpawnListener,
-        SceneLoadListener,
-        GameSystemLifecycleListener {
+        SceneLoadListener {
   Box2DPhysicsSystem({
     this.gravityX = 0,
     this.gravityY = -10,
@@ -1884,8 +1883,8 @@ class Box2DPhysicsSystem extends GameSystem
   /// Releases the Box2D world, its worker threads and the scratch buffers,
   /// when the game stops.
   ///
-  /// **You do not have to call it.** `GameState.unmount` fires
-  /// `GameSystem.unmountEvent` after the scenes are down, which is the only
+  /// **You do not have to call it.** `GameState.unmount` calls
+  /// `GameSystem.onUnmounted` after the scenes are down, which is the only
   /// safe moment: releasing the world while entities still hold bodies in it
   /// is a use-after-free, and that one is a native crash with no Dart
   /// exception. Left to a game to call, it goes uncalled, and a run leaks a

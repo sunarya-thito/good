@@ -44,8 +44,6 @@ List<ScannableField> _collect$Anchor(Object object) {
     owner.transformScaleX,
     owner.transformScaleY,
     owner.transformRotation,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -73,8 +71,6 @@ List<ScannableField> _collect$Link(Object object) {
     owner.transformScaleX,
     owner.transformScaleY,
     owner.transformRotation,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -102,8 +98,6 @@ List<ScannableField> _collect$Weight(Object object) {
     owner.transformScaleX,
     owner.transformScaleY,
     owner.transformRotation,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -132,8 +126,6 @@ List<ScannableField> _collect$Wheel(Object object) {
     owner.transformScaleX,
     owner.transformScaleY,
     owner.transformRotation,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -158,8 +150,6 @@ List<ScannableField> _collect$Eye(Object object) {
     owner.transformScaleX,
     owner.transformScaleY,
     owner.transformRotation,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -171,17 +161,12 @@ List<ScannableField> _collect$JointScene(Object object) {
     owner.weight,
     owner.wheel,
     owner.eye,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
 List<ScannableField> _collect$JointSystem(Object object) {
-  final owner = object as JointSystem;
-  return <ScannableField>[
-    owner.mountEvent,
-    owner.unmountEvent,
-  ];
+  object as JointSystem;
+  return const <ScannableField>[];
 }
 
 List<ScannableField> _collect$JointState(Object object) {
@@ -212,11 +197,8 @@ List<ScannableField> _collect$JointState(Object object) {
 }
 
 List<ScannableField> _collect$JointStats(Object object) {
-  final owner = object as _JointStats;
-  return <ScannableField>[
-    owner.mountEvent,
-    owner.unmountEvent,
-  ];
+  object as _JointStats;
+  return const <ScannableField>[];
 }
 
 List<ScannableField> _collect$JointGame(Object object) {

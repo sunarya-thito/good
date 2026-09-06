@@ -31,7 +31,7 @@ part 'system_input_declaration_test.g.dart';
 /// read in `onFixedUpdate`, and the stream that fires from the resolution
 /// itself. They come apart under a duplicate, which is why both are here.
 class _OneActionSystem extends GameSystem
-    with FixedTickable, GameSystemLifecycleListener {
+    with FixedTickable {
   final fire = Input.of(const TriggerBinding(InputKey.spacebar));
 
   int ticks = 0;

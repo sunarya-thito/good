@@ -18,8 +18,8 @@ class _Tree extends EntityStruct {}
 /// rather than only on a lone entity.
 class _Node extends EntityStruct with Child, Parent {}
 
-/// Hears only its own entities, through the narrow lifecycle event.
-class _Watched extends EntityStruct with EntityLifecycleListener {
+/// Hears only its own entities, through the struct's own virtual.
+class _Watched extends EntityStruct {
   static int mounted = 0;
 
   @override
@@ -226,8 +226,8 @@ void main() {
   });
 
   test('destroying one entity reports it, like unloading its scene', () async {
-    // **The gap that leaked.** `Entity.destroy` fired only the prefab's narrow
-    // `unmountedEvent`; the broad `entityDespawnedEvent` went in on the scene
+    // **The gap that leaked.** `Entity.destroy` reached only the prefab's own
+    // hook; the broad `entityDespawnedEvent` went in on the scene
     // unload path alone. So an observer that allocates a resource per entity -
     // a Box2D body, a native handle, a slot in a side table - heard every
     // spawn and only some of the releases, and leaked one per destroyed

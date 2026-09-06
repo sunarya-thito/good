@@ -113,19 +113,15 @@ abstract class GameState<T extends Game> extends GameListenerBase
     (listener, gap) => listener.onAppShown(gap),
   );
 
-  // Scene and entity *lifecycle* are **not** declared here. They belong to the
-  // scene and the prefab respectively (`SceneStruct.mountedEvent`,
-  // `EntityStruct.mountedEvent`), because a dispatcher's audience is its
-  // declaring owner's composition. Declared here they would be one list per
-  // level holding everything in the game, so unloading scene A would call
-  // `onSceneUnmounted(A)` on scene B and every prefab B owns. The game level
-  // is different and stays here: `GameState` genuinely is the only object at
-  // that level, so "everything below" is the right audience.
+  // Scene and entity *lifecycle* are not events at all. A scene answering for
+  // its own bring-up has one receiver and the framework is the only caller, so
+  // it is `SceneStruct.onSceneMounted` and `EntityStruct.onEntityMounted` -
+  // methods the engine calls at the point these four are dispatched.
   //
-  // The four *observation* events below are the deliberate other half of that.
-  // They are not the lifecycle events at a wider scope - they are a different
-  // question, with different names, for a listener that wants to watch the
-  // whole world and expects to filter. See `event/lifecycle.dart`'s note.
+  // The four *observation* events below are the other half of that, not the
+  // same thing widened. They are a different question, with different names,
+  // for a listener that wants to watch the whole world and expects to filter.
+  // See `event/lifecycle.dart`'s note.
 
   /// Any entity, anywhere, has spawned.
   final entitySpawnedEvent = Event.of<EntitySpawnListener, Entity>(
@@ -143,33 +139,30 @@ abstract class GameState<T extends Game> extends GameListenerBase
   );
 
   /// Any scene is about to unload. Its entities are still readable.
-  // Reverse, matching SceneStruct.unmountedEvent: a listener told late can
-  // still read what earlier ones have been warned about.
+  // Reverse, like every other teardown event: a listener told late can still
+  // read what earlier ones have been warned about.
   final sceneUnloadedEvent = Event.of<SceneLoadListener, Scene>(
     (listener, scene) => listener.onSceneUnloaded(scene),
     reverse: true,
   );
 
-  /// Offers every declared system to this state's dispatchers.
+  /// Offers every declared system to the collector.
   ///
   /// The explicit composition walk: the event API does not know a `GameState`
   /// has systems, so this says so. A system that is a `FixedTickable` lands in
   /// [fixedTickEvent]; one that is a `Tickable` lands in [tickEvent]; one that
   /// is neither lands nowhere and is never visited again.
+  ///
+  /// The walk stops here. It used to carry on into `game.declaredScenes` and
+  /// each scene's prefabs, because those declared dispatchers of their own;
+  /// they do not any more, and a struct that wants to hear about the world is
+  /// a system.
   @override
   void collectListeners(ListenerCollector collector) {
     super.collectListeners(collector);
     final systems = declaredSystems;
     for (var i = 0; i < systems.length; i++) {
       collector.offer(systems[i]);
-    }
-    // And down the composition: each declared scene offers itself and its own
-    // prefabs, so an event declared here reaches every entity struct in every
-    // scene. This is what `fireEvent` used to do by walking at *dispatch*
-    // time, once per event - doing it here means it is walked once, ever.
-    final scenes = game.declaredScenes;
-    for (var i = 0; i < scenes.length; i++) {
-      scenes[i].collectListeners(collector);
     }
   }
 
@@ -483,25 +476,15 @@ abstract class GameState<T extends Game> extends GameListenerBase
         cameraViews: game.cameraViews,
       );
     }
-    // Idempotent, and a no-op for a scene declared in `describeScenes` (the
-    // boot pass already bound it). It matters for one loaded at runtime that
-    // nothing declared: its prefabs' dispatchers have to exist before the
-    // first `addEntity` fires one.
-    next.bindEvents();
-
     // A slot, a generation, and a page group. **Loading no longer replaces
     // anything**: several instances of one `SceneStruct` can be resident at
     // once, each owning its own pages, and each individually unloadable.
     final handle = SceneRegistry.register(next);
     _loaded.add(handle);
 
-    // One dispatch, not a virtual followed by a dispatch. The scene is
-    // offered into its own dispatcher first (see `collectListeners`), so
-    // its `onSceneMounted` still runs before any of its prefabs' - which
-    // is what makes "a listener hearing a mount finds the starting
-    // entities already spawned" true. Fired on the scene's own dispatcher,
-    // so it reaches that scene's composition and no other scene's.
-    next.mountedEvent.call(handle);
+    // The scene answers for itself first, so an observer hearing the load
+    // below finds the starting entities already spawned.
+    next.onSceneMounted(handle);
     // And the world-observation half: same call site as the scene's own
     // mount, so the two can never disagree about when a load happened.
     sceneLoadedEvent.call(handle);
@@ -536,13 +519,12 @@ abstract class GameState<T extends Game> extends GameListenerBase
     if (struct == null) return;
 
     // Before anything is released, so a listener can still read the scene's
-    // entities - after this method they are gone for good. On the struct's own
-    // dispatcher: only this scene and its prefabs are told.
-    // Dispatched in reverse collection order, so the scene itself is told
-    // last and can still read what its prefabs have already been warned
-    // about - see `SceneStruct.describeEvents`.
+    // entities - after this method they are gone for good. Observers first and
+    // the scene itself second, mirroring the mount order: the struct that owns
+    // the entities is told last and can still read a world everything else has
+    // already been warned about.
     sceneUnloadedEvent.call(scene);
-    struct.unmountedEvent.call(scene);
+    struct.onSceneUnmounted(scene);
     // Innermost last: the scene has said its piece, now each entity in it
     // gets its own teardown while its row is still readable.
     struct.unmountEntitiesOf(scene.slot);
@@ -877,13 +859,11 @@ abstract class GameState<T extends Game> extends GameListenerBase
   ///
   /// A plain virtual call, not an event: there is exactly one receiver and
   /// the framework is the only caller, so a dispatch mechanism was ceremony
-  /// around a method call. The scene and entity levels went the other way -
-  /// their virtuals became `SceneLifecycleListener`/`EntityLifecycleListener`,
-  /// because there the owner is genuinely one listener among several. Here it
-  /// is not: nothing else can be a `GameState`. Something
-  /// *else* wanting to hear the game come up is a different question, and
-  /// [GameLifecycleListener] is its answer - note that it fires after this
-  /// does, once every scene loaded here is standing.
+  /// around a method call, and the scene and entity levels answer for
+  /// themselves the same way. Something *else* wanting to hear the game come
+  /// up is a different question, and [GameLifecycleListener] is its answer -
+  /// note that it fires after this does, once every scene loaded here is
+  /// standing.
   void onMounted() {}
 
   /// The game is going down. The pool is disposed immediately afterwards.
@@ -903,9 +883,9 @@ abstract class GameState<T extends Game> extends GameListenerBase
     // standing. Unconditional now - only the simulating copy ever reaches
     // here, because main stopped mounting its state at all.
     gameMountedEvent.call();
-    // Then each system's own lifecycle signal, in declaration order.
+    // Then each system's own bring-up, in declaration order.
     for (var i = 0; i < _systems.length; i++) {
-      _systems[i].mountEvent.call();
+      _systems[i].onMounted();
     }
   }
 
@@ -927,7 +907,7 @@ abstract class GameState<T extends Game> extends GameListenerBase
       final handle = doomed[i];
       final struct = SceneRegistry.tryResolve(handle);
       sceneUnloadedEvent.call(handle);
-      struct?.unmountedEvent.call(handle);
+      struct?.onSceneUnmounted(handle);
       // Same order as unloadScene: scene first, then its entities, all
       // while the pool is still alive. `Game` disposes the pool wholesale
       // on stop, so this is the last moment a row is readable.
@@ -949,10 +929,9 @@ abstract class GameState<T extends Game> extends GameListenerBase
 
     // **Last, and in reverse declaration order.**
     //
-    // `GameSystem.unmountEvent` was declared from the start and *never fired
-    // by anything* - a teardown hook that existed in name only, like
-    // `EntityLifecycleListener`'s broadcast half did. So a system holding a
-    // native resource had nowhere to release it, and
+    // `GameSystem.onUnmounted` was declared from the start and *never called
+    // by anything* - a teardown hook that existed in name only. So a system
+    // holding a native resource had nowhere to release it, and
     // `Box2DPhysicsSystem.dispose` had to document "call this yourself after
     // stopping" - which nothing ever did. The Box2D world and, once the demo
     // started threading, its worker threads were leaked by every run.
@@ -963,7 +942,7 @@ abstract class GameState<T extends Game> extends GameListenerBase
     // on top of another comes down first: a system declared later may depend
     // on an earlier one and should let go before it does.
     for (var i = _systems.length - 1; i >= 0; i--) {
-      _systems[i].unmountEvent.call();
+      _systems[i].onUnmounted();
     }
 
     // After the systems, because a system's own teardown may well be where a

@@ -219,24 +219,24 @@ void main() {
   tearDown(_reset);
 
   group('an event on a system field', () {
-    test('collects the system composition and not the state one', () async {
+    test('collects every listener in the game, not just its owner', () async {
       final run = await _boot(_FieldEventGame.new);
       final source =
           (run.state as _EventState<_FieldEventGame>).source as _FieldSystem;
 
       expect(
         source.alpha.listenerCount,
-        1,
+        3,
         reason:
-            'the system itself, which is a _Noted, and nothing else. The two '
-            'ears are the states composition, not this systems - a '
-            'dispatcher that had landed in the states binder would have '
-            'collected all three',
+            'the system itself and both ears. There is one binder for the '
+            'whole game, so which object holds the field decides nothing - '
+            'bound per owner this list would hold the source alone',
       );
       expect(source.beta.listenerCount, source.alpha.listenerCount);
     });
 
-    test('both directions deliver, and to the same one listener', () async {
+    test('both directions deliver, and reverse turns the list around',
+        () async {
       final run = await _boot(_FieldEventGame.new);
       final source =
           (run.state as _EventState<_FieldEventGame>).source as _FieldSystem;
@@ -246,11 +246,19 @@ void main() {
 
       expect(
         _Noted.log,
-        <String>['alpha:source', 'beta:source'],
+        <String>[
+          'alpha:source',
+          'alpha:earA',
+          'alpha:earB',
+          'beta:earB',
+          'beta:earA',
+          'beta:source',
+        ],
         reason:
-            '`reverse: true` turns the order of a list around and does not '
-            'change what is in it - and a one-entry list is the same either '
-            'way, which is what the count above is for',
+            'declaration order forwards, the same list backwards for the '
+            'reverse one. `source` is an `@system late final` field, so its '
+            'initialiser ran during the boot pass and it was in the list at '
+            'all - which is the half a one-entry list could not have shown',
       );
     });
   });

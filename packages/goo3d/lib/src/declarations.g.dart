@@ -30,8 +30,6 @@ List<ScannableField> _worldTransform3DSystem(Object object) {
   final owner = object as WorldTransform3DSystem;
   return <ScannableField>[
     owner.roots,
-    owner.mountEvent,
-    owner.unmountEvent,
   ];
 }
 

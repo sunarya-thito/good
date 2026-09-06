@@ -24,8 +24,6 @@ List<ScannableField> _collect$Unit(Object object) {
   final owner = object as _Unit;
   return <ScannableField>[
     owner.mark,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -33,8 +31,6 @@ List<ScannableField> _collect$Level(Object object) {
   final owner = object as _Level;
   return <ScannableField>[
     owner.unit,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -60,11 +56,8 @@ List<ScannableField> _collect$LevelGame(Object object) {
 }
 
 List<ScannableField> _collect$OtherLevel(Object object) {
-  final owner = object as _OtherLevel;
-  return <ScannableField>[
-    owner.mountedEvent,
-    owner.unmountedEvent,
-  ];
+  object as _OtherLevel;
+  return const <ScannableField>[];
 }
 
 /// Every fixture this library declares, and how to read one.

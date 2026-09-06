@@ -42,8 +42,6 @@ List<ScannableField> _collect$Mote(Object object) {
     owner.transformScaleX,
     owner.transformScaleY,
     owner.transformRotation,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -68,8 +66,6 @@ List<ScannableField> _collect$Eye(Object object) {
     owner.transformScaleX,
     owner.transformScaleY,
     owner.transformRotation,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -78,8 +74,6 @@ List<ScannableField> _collect$Galaxy(Object object) {
   return <ScannableField>[
     owner.mote,
     owner.eye,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -87,8 +81,6 @@ List<ScannableField> _collect$SwirlSystem(Object object) {
   final owner = object as SwirlSystem;
   return <ScannableField>[
     owner.motes,
-    owner.mountEvent,
-    owner.unmountEvent,
   ];
 }
 

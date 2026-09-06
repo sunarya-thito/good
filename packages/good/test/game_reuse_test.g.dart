@@ -21,19 +21,14 @@
 part of 'game_reuse_test.dart';
 
 List<ScannableField> _collect$Thing(Object object) {
-  final owner = object as _Thing;
-  return <ScannableField>[
-    owner.mountedEvent,
-    owner.unmountedEvent,
-  ];
+  object as _Thing;
+  return const <ScannableField>[];
 }
 
 List<ScannableField> _collect$Level(Object object) {
   final owner = object as _Level;
   return <ScannableField>[
     owner.thing,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 

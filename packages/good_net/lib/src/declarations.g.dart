@@ -27,11 +27,8 @@ import 'package:good/good.dart';
 import 'package:good_net/src/system.dart';
 
 List<ScannableField> _networkSystem(Object object) {
-  final owner = object as NetworkSystem;
-  return <ScannableField>[
-    owner.mountEvent,
-    owner.unmountEvent,
-  ];
+  object as NetworkSystem;
+  return const <ScannableField>[];
 }
 
 /// Every class `package:good_net` can instantiate that holds a

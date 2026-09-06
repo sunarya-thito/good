@@ -392,11 +392,10 @@ per load.
 
 ## Lifecycle hooks
 
-Mix in `EntityLifecycleListener` to run code when a row is created:
+Override `onEntityMounted` to run code when a row is created:
 
 ```dart
-class Bullet extends EntityStruct
-    with Transform2D, Renderable2D, EntityLifecycleListener {
+class Bullet extends EntityStruct with Transform2D, Renderable2D {
   @override
   void onEntityMounted(Entity entity) {
     super.onEntityMounted(entity);
@@ -412,16 +411,14 @@ class Bullet extends EntityStruct
     with the same expression. Leaving it at the default for one frame is exactly
     how an entity appears to snap or flash at the origin on its second frame.
 
-The mixin is what makes it work, and not as a formality. `onEntityMounted` is
-an event: `EntityStruct` declares a dispatcher for it, and the boot pass
-collects your prefab into that dispatcher because it is an
-`EntityLifecycleListener`. Leave the mixin off and the override compiles, is
-never collected, and never runs. Call `super` for the same reason you do in
-`describeType` — another mixin on the same prefab may override the same hook.
+The engine calls it about this prefab's own entities and no others, so you
+never have to ask whether the entity was one of yours. Call `super` for the same
+reason you do in `describeType` — another mixin on the same prefab may override
+the same hook.
 
 Related mixins: `EntitySpawnListener` (a broad "something spawned" signal, which
-is what the physics system listens to), `SceneLifecycleListener`,
-`SceneLoadListener`, `GameLifecycleListener`, `GameSystemLifecycleListener`.
+is what the physics system listens to), `SceneLoadListener` and
+`GameLifecycleListener`. Those go on a `GameSystem`, not on a prefab.
 [Events and listeners](events.md) covers how all of them are delivered, and how
 to declare one of your own.
 

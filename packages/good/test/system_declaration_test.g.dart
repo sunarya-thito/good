@@ -26,19 +26,13 @@
 part of 'system_declaration_test.dart';
 
 List<ScannableField> _collect$EarA(Object object) {
-  final owner = object as _EarA;
-  return <ScannableField>[
-    owner.mountEvent,
-    owner.unmountEvent,
-  ];
+  object as _EarA;
+  return const <ScannableField>[];
 }
 
 List<ScannableField> _collect$EarB(Object object) {
-  final owner = object as _EarB;
-  return <ScannableField>[
-    owner.mountEvent,
-    owner.unmountEvent,
-  ];
+  object as _EarB;
+  return const <ScannableField>[];
 }
 
 List<ScannableField> _collect$FieldSystem(Object object) {
@@ -46,8 +40,6 @@ List<ScannableField> _collect$FieldSystem(Object object) {
   return <ScannableField>[
     owner.alpha,
     owner.beta,
-    owner.mountEvent,
-    owner.unmountEvent,
   ];
 }
 
@@ -81,8 +73,6 @@ List<ScannableField> _collect$FieldInputSystem(Object object) {
     owner.fire,
     owner.alt,
     owner.unbound,
-    owner.mountEvent,
-    owner.unmountEvent,
   ];
 }
 
@@ -91,8 +81,6 @@ List<ScannableField> _collect$MixedInputSystem(Object object) {
   return <ScannableField>[
     owner.fire,
     owner.throttle,
-    owner.mountEvent,
-    owner.unmountEvent,
   ];
 }
 
@@ -124,27 +112,18 @@ List<ScannableField> _collect$MixedInputGame(Object object) {
 }
 
 List<ScannableField> _collect$Counting(Object object) {
-  final owner = object as _Counting;
-  return <ScannableField>[
-    owner.mountEvent,
-    owner.unmountEvent,
-  ];
+  object as _Counting;
+  return const <ScannableField>[];
 }
 
 List<ScannableField> _collect$MarkedSystem(Object object) {
-  final owner = object as _MarkedSystem;
-  return <ScannableField>[
-    owner.mountEvent,
-    owner.unmountEvent,
-  ];
+  object as _MarkedSystem;
+  return const <ScannableField>[];
 }
 
 List<ScannableField> _collect$SpareSystem(Object object) {
-  final owner = object as _SpareSystem;
-  return <ScannableField>[
-    owner.mountEvent,
-    owner.unmountEvent,
-  ];
+  object as _SpareSystem;
+  return const <ScannableField>[];
 }
 
 List<ScannableField> _collect$MarkerState(Object object) {

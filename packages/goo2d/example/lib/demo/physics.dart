@@ -170,8 +170,7 @@ class Crate extends EntityStruct
         Renderable2D,
         Collider2D,
         RigidBody2D,
-        CollisionListener,
-        EntityLifecycleListener {
+        CollisionListener {
   // 1 m x 1 m, in WORLD units - the same units the collider below uses,
   // and the same units Box2D simulates in. `Sprite.width` is world units,
   // not pixels; the camera's `zoom` is the only thing that converts to
@@ -248,8 +247,7 @@ class Ball extends EntityStruct
         Renderable2D,
         Collider2D,
         RigidBody2D,
-        CollisionListener,
-        EntityLifecycleListener {
+        CollisionListener {
   // Matches the 0.4 m collider radius below.
   final body = Sprite.of(width: 0.8, height: 0.8, color: _ballColor);
   final circle = ColliderBody.circle(
@@ -327,8 +325,7 @@ class Ground extends EntityStruct
         Transform2D,
         Renderable2D,
         Collider2D,
-        RigidBody2D,
-        EntityLifecycleListener {
+        RigidBody2D {
   final body = Sprite.of(color: _floorColor);
   final box = ColliderBody.box(friction: 0.6);
 
@@ -366,8 +363,7 @@ class Wall extends EntityStruct
         Transform2D,
         Renderable2D,
         Collider2D,
-        RigidBody2D,
-        EntityLifecycleListener {
+        RigidBody2D {
   final body = Sprite.of(color: _floorColor);
   final box = ColliderBody.box();
 

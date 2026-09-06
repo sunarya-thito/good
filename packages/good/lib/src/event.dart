@@ -8,7 +8,13 @@ import 'package:good/src/scannable.dart';
 /// that is the load-bearing part: the classes implementing it are exactly the
 /// ones the engine walks when it collects listeners at boot, so "who could
 /// possibly receive this event" has a closed, written-down answer -
-/// `GameState`, `SceneStruct`, `EntityStruct`, `GameSystem`.
+/// `GameState` and `GameSystem`.
+///
+/// A `SceneStruct` and an `EntityStruct` are not on that list. Their own
+/// bring-up and tear-down are virtual methods (`onSceneMounted`,
+/// `onEntityMounted` and the two teardown halves), called by the engine at the
+/// point the dispatch used to happen. A struct that wants to hear about the
+/// rest of the world uses a system.
 abstract interface class GameListener {
   /// Whether this listener should receive events **right now**.
   ///
@@ -22,9 +28,9 @@ abstract interface class GameListener {
   /// Stops this listener receiving events, after it threw out of one.
   ///
   /// Called by the dispatcher that caught it. A requirement stated on the
-  /// interface, not an `is GameSystem` test inside the dispatcher: the
-  /// four hosts differ in whether they can be switched off at all, and letting
-  /// each answer for itself is what the no-dispatch-on-`is` rule asks for.
+  /// interface, not an `is GameSystem` test inside the dispatcher: the two
+  /// hosts differ in whether they can be switched off at all, and letting each
+  /// answer for itself is what the no-dispatch-on-`is` rule asks for.
   void disableAfterUncaught([Object? error, StackTrace? stack]);
 }
 
@@ -39,12 +45,10 @@ abstract class GameListenerBase implements GameListener {
   @override
   bool get listensToEvents => true;
 
-  /// A no-op by default, which is the right answer for three of the four
-  /// hosts. Switching off the `GameState` would stop the whole game, and a
-  /// `SceneStruct` or `EntityStruct` that declined events would leave its own
-  /// world half-simulated - neither is a smaller failure than the throw was.
-  /// `GameSystem` overrides it, being the one host the engine can drop and
-  /// keep going without.
+  /// A no-op by default, which is the right answer for the `GameState`:
+  /// switching it off would stop the whole game, which is not a smaller
+  /// failure than the throw was. `GameSystem` overrides it, being the host the
+  /// engine can drop and keep going without.
   @override
   void disableAfterUncaught([Object? error, StackTrace? stack]) {}
 }
@@ -128,15 +132,18 @@ transient.''');
 /// collect pass fills it, so by the time an event is dispatched the receivers
 /// are already known and [dispatch] is an indexed loop over a plain list.
 ///
-/// # Scope is the declaring owner
+/// # Every dispatcher hears every listener
 ///
-/// A dispatcher belongs to whoever declared it, and it collects from *that
-/// owner's* composition and no further. Declared on an
-/// `EntityStruct`, it reaches that struct's listeners only - which is what
-/// makes `onEntityMounted` on `MyPlayer` fire for `MyPlayer` entities and
-/// nothing else. Declared on a `GameState`, the same event reaches everything
-/// beneath it, because a `GameState` collects from its scenes and a scene
-/// from its prefabs.
+/// There is no scope. One collect pass runs over the whole game and offers
+/// each listener it finds to every dispatcher that was declared, wherever it
+/// was declared - so a `GameSystem` can own an event and still reach the
+/// listeners on the state and on its sibling systems. What decides whether a
+/// listener is in a given list is its *type*, and nothing else.
+///
+/// That is what lets a package ship an event. Before, a dispatcher only saw
+/// what its own owner offered, so an event had to be declared on the
+/// `GameState` to be heard at all, and a package shipping one had to force a
+/// mixin onto the user's state.
 ///
 /// # There is no event object
 ///
@@ -144,12 +151,12 @@ transient.''');
 /// an event class:
 ///
 /// ```dart
-/// final entityMounted = Event.of<EntityLifecycleListener, Entity>(
-///   (listener, entity) => listener.onEntityMounted(entity),
+/// final entitySpawned = Event.of<EntitySpawnListener, Entity>(
+///   (listener, entity) => listener.onEntitySpawned(entity),
 /// );
 ///
 /// // and firing it:
-/// entityMounted.call(entity);
+/// entitySpawned.call(entity);
 /// ```
 ///
 /// This replaced a `GameEvent<L>` class per event with a `dispatchListener`
@@ -314,18 +321,18 @@ abstract class EventDescriptor {
 ///
 /// # Who can declare this way
 ///
-/// Every [EventBus] there is - a [GameState], a [SceneStruct], an
-/// [EntityStruct], a [GameSystem] - with no asymmetry between them and
-/// nothing to remember about how the object was built.
+/// Every [EventBus] there is - a [GameState] and a [GameSystem] - with no
+/// asymmetry between them. A system's dispatcher is filled from the same
+/// collect pass the state's is, so shipping an event no longer means shipping
+/// a mixin for somebody else's `GameState`:
 ///
-/// That was not true while a binder had to be open around the constructor.
-/// `SceneDescriptor.has` takes a `T Function()` and a closure may hand back an
-/// object built earlier (`descriptor.has(() => _prefab)`), a `SceneStruct` is
-/// constructed by the caller outright, and neither had a binder around it - so
-/// a field declaration on one of those declared nothing, or worse, declared
-/// into whatever binder happened to be open instead. `EntityStruct`'s and
-/// `GameSystem`'s own dispatchers stayed in `describeEvents` for exactly that
-/// reason, and both are fields now.
+/// ```dart
+/// class ScoreSystem extends GameSystem {
+///   final scored = Event.of<ScoreListener, int>(
+///     (listener, points) => listener.onScored(points),
+///   );
+/// }
+/// ```
 ///
 /// Nothing is open around one of these calls. A dispatcher is built with its
 /// delivery closure and no listeners, and `EventBinder.bind` reads it off the
@@ -357,21 +364,16 @@ abstract final class Event {
   }) => SignalDispatcher<L>(deliver, reverse: reverse);
 }
 
-/// One owner's dispatchers, and the collector that fills them.
+/// Every dispatcher in the game, and the collector that fills them.
 ///
-/// One object plays both roles: a dispatcher is only ever offered candidates
-/// by the owner that declared it, which is precisely what makes an event's
-/// reach the owner's own composition and nothing wider.
-///
-/// Lives here and not inside `Game` because two things bind events: the
-/// boot pass, for the `GameState` and its systems, and
-/// `SceneStruct.initializeScene`, for a scene and the prefabs it just
-/// registered. A scene brought up headlessly never sees a `Game`, and its
-/// prefabs still need their dispatchers - one home for the machinery, used by
-/// both (the one-fact-one-place rule).
+/// One registry for the whole run, not one per owner. It takes the
+/// dispatchers off each owner in turn, and then every listener it is offered
+/// goes to all of them - which is what makes a system's event reach the same
+/// audience the state's does.
 @internal
 final class EventBinder implements EventDescriptor, ListenerCollector {
-  /// Every dispatcher this owner declared, in declaration order.
+  /// Every dispatcher declared anywhere in the game, in the order the owners
+  /// were bound and, within an owner, in declaration order.
   ///
   /// A plain list of dispatchers, because a dispatcher decides for itself
   /// whether a candidate is one of its listeners - see [_ListenerSet.offer].
@@ -394,39 +396,54 @@ final class EventBinder implements EventDescriptor, ListenerCollector {
     }
   }
 
-  /// Runs all three passes over [bus] - the field declarations, the
-  /// `describeEvents` body, then the collect - which is the whole of binding
-  /// one owner's events.
+  /// Declares every owner's dispatchers, then offers every owner's listeners
+  /// to all of them.
   ///
-  /// Field declarations first and the hook after, so an owner declaring
-  /// through both gets them in that order. Which order they went in does not
-  /// change delivery: the order listeners arrive in is the order [offer] is
-  /// called, which is the collect walk and not this list.
+  /// Two rounds, and the split between them is the whole of what makes an
+  /// event global. Declared and collected one owner at a time, a dispatcher on
+  /// the last system would miss every listener offered before it was built,
+  /// and one on the first would miss every listener offered after. Declaring
+  /// the lot first means the collect pass has somewhere to put whatever it
+  /// finds.
+  ///
+  /// Within an owner, field declarations first and the `describeEvents` hook
+  /// after, so an owner declaring through both gets them in that order. Which
+  /// order they went in does not change delivery: the order listeners arrive
+  /// in is the order [offer] is called, which is the collect pass and not this
+  /// list.
   ///
   /// Binding twice is an error, and has to stay one. It was caught by the
   /// `late final` dispatchers this replaced - assigning one twice throws -
   /// and nothing about a `final` field would notice: the second pass would
   /// offer every candidate to the same dispatchers again and each listener
-  /// would receive every event twice. `SceneStruct.bindEvents` guards its own
-  /// three entry points against reaching here twice.
-  static void bind(EventBus bus) {
-    if (bus._didBind) {
-      throw StateError(
-        '${bus.runtimeType} has already had its events bound. A second '
-        'collect pass would offer every candidate to the dispatchers the '
-        'first one filled, and each listener would then receive every event '
-        'twice.',
-      );
+  /// would receive every event twice. The flag is per owner, and the check is
+  /// its own pass so a list holding one already-bound owner is refused before
+  /// anything in it has been touched.
+  static void bind(List<EventBus> buses) {
+    for (var i = 0; i < buses.length; i++) {
+      if (buses[i]._didBind) {
+        throw StateError(
+          '${buses[i].runtimeType} has already had its events bound. A second '
+          'collect pass would offer every candidate to the dispatchers the '
+          'first one filled, and each listener would then receive every event '
+          'twice.',
+        );
+      }
     }
-    bus._didBind = true;
     final binder = EventBinder();
-    // The dispatchers the constructor produced, read off the constructed
-    // object. Nothing was open while it was being built, so this is the only
-    // record of what it declared - which is what makes an owner the framework
-    // did not build declare exactly like one it did.
-    binder.declare(collectDeclarations(bus));
-    bus.describeEvents(binder);
-    bus.collectListeners(binder);
+    for (var i = 0; i < buses.length; i++) {
+      final bus = buses[i];
+      bus._didBind = true;
+      // The dispatchers the constructor produced, read off the constructed
+      // object. Nothing was open while it was being built, so this is the only
+      // record of what it declared - which is what makes an owner the
+      // framework did not build declare exactly like one it did.
+      binder.declare(collectDeclarations(bus));
+      bus.describeEvents(binder);
+    }
+    for (var i = 0; i < buses.length; i++) {
+      buses[i].collectListeners(binder);
+    }
   }
 
   @override
@@ -457,33 +474,36 @@ final class EventBinder implements EventDescriptor, ListenerCollector {
   }
 }
 
-/// Collects the listeners a dispatcher will deliver to.
+/// Collects the listeners every dispatcher will deliver to.
 ///
 /// Handed to [EventBus.collectListeners] during boot. An owner offers itself
-/// and whatever it composes; the collector decides what each declared
-/// dispatcher accepts, by listener type.
+/// and whatever it composes; the collector decides what each dispatcher
+/// accepts, by listener type.
 abstract class ListenerCollector {
   /// Offers [candidate] to every dispatcher whose listener type it satisfies.
   void offer(GameListener candidate);
 }
 
-/// Opts a [GameListener] into declaring and dispatching its own events.
+/// Opts a [GameListener] into declaring and dispatching events.
 ///
 /// ```dart
-/// class MyPlayer extends EntityStruct with EventBus {
-///   final mounted = Event.of<EntityLifecycleListener, Entity>(
-///     (listener, entity) => listener.onEntityMounted(entity),
+/// class ScoreSystem extends GameSystem {
+///   final scored = Event.of<ScoreListener, int>(
+///     (listener, points) => listener.onScored(points),
 ///   );
 /// }
 /// ```
 ///
+/// `GameState` and `GameSystem` mix it in, and nothing else does. A dispatcher
+/// declared on either reaches the same listeners, because one [EventBinder]
+/// holds every dispatcher in the game and offers each collected listener to
+/// all of them.
+///
 /// # The composition walk is explicit, and has to be
 ///
 /// This API does not know the engine's hierarchy - it does not know a
-/// `GameState` has scenes or that a scene has prefabs. So each level says so
-/// itself, by overriding [collectListeners] and offering what it composes.
-/// That is what makes an event declared high up reach everything below it
-/// while one declared on a prefab reaches only that prefab.
+/// `GameState` has systems. So the state says so itself, by overriding
+/// [collectListeners] and offering what it composes.
 @Describes(EventDispatcher)
 @Describes(SignalDispatcher)
 mixin EventBus on GameListener implements Scannable {
@@ -496,17 +516,17 @@ mixin EventBus on GameListener implements Scannable {
   @mustCallSuper
   void describeEvents(EventDescriptor descriptor) {}
 
-  /// Offers this owner's listeners to its own dispatchers.
+  /// Offers this owner's listeners to every dispatcher in the game.
   ///
-  /// The default offers `this`, which is what makes a struct's own
-  /// `onEntityMounted` fire for its own events. An owner that composes others
-  /// overrides it, calls `super`, and offers them too:
+  /// The default offers `this`, which is what makes a system's own `onTick`
+  /// fire. An owner that composes others overrides it, calls `super`, and
+  /// offers them too:
   ///
   /// ```dart
   /// @override
   /// void collectListeners(ListenerCollector collector) {
   ///   super.collectListeners(collector);
-  ///   for (final scene in declaredScenes) collector.offer(scene);
+  ///   for (final system in declaredSystems) collector.offer(system);
   /// }
   /// ```
   @mustCallSuper

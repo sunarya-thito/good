@@ -41,8 +41,6 @@ List<ScannableField> _collect$CamEntity(Object object) {
     owner.transformScaleX,
     owner.transformScaleY,
     owner.transformRotation,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -50,8 +48,6 @@ List<ScannableField> _collect$Scene(Object object) {
   final owner = object as _Scene;
   return <ScannableField>[
     owner.cam,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -59,8 +55,6 @@ List<ScannableField> _collect$CameraQuerySystem(Object object) {
   final owner = object as _CameraQuerySystem;
   return <ScannableField>[
     owner.cameras,
-    owner.mountEvent,
-    owner.unmountEvent,
   ];
 }
 

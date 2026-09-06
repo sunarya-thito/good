@@ -39,8 +39,6 @@ List<ScannableField> _collect$Ship(Object object) {
     owner.transformScaleX,
     owner.transformScaleY,
     owner.transformRotation,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -54,8 +52,6 @@ List<ScannableField> _collect$Eye(Object object) {
     owner.transformScaleX,
     owner.transformScaleY,
     owner.transformRotation,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -65,8 +61,6 @@ List<ScannableField> _collect$Bare(Object object) {
     owner.childParent,
     owner.childNextSibling,
     owner.childPrevSibling,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -76,8 +70,6 @@ List<ScannableField> _collect$Forward(Object object) {
     owner.ship,
     owner.eye,
     owner.bare,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -87,8 +79,6 @@ List<ScannableField> _collect$Reversed(Object object) {
     owner.bare,
     owner.eye,
     owner.ship,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 

@@ -53,7 +53,7 @@ mixin _Counter on Component {
   }
 }
 
-class _Unit extends EntityStruct with _Counter, EntityLifecycleListener {
+class _Unit extends EntityStruct with _Counter {
   @override
   void onEntityMounted(Entity entity) {
     super.onEntityMounted(entity);

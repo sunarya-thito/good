@@ -30,8 +30,6 @@ List<ScannableField> _collect$Grunt(Object object) {
     owner.leader,
     owner.shield,
     owner.aim,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -45,8 +43,6 @@ List<ScannableField> _collect$Captain(Object object) {
     owner.leader,
     owner.shield,
     owner.aim,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -60,8 +56,6 @@ List<ScannableField> _collect$Lieutenant(Object object) {
     owner.leader,
     owner.shield,
     owner.aim,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -71,8 +65,6 @@ List<ScannableField> _collect$Squad(Object object) {
     owner.grunt,
     owner.captain,
     owner.lieutenant,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 

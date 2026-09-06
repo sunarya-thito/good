@@ -20,7 +20,7 @@ part 'event_scope_test.g.dart';
 /// one inline run per isolate means one binding is enough.
 late Game run;
 
-// Scoped, boot-collected dispatch.
+// Boot-collected dispatch, and who ends up in a list.
 //
 // Dispatch used to be a *walk*: from object to object at runtime, type-testing
 // every candidate on the way, so a class that could never accept an event was
@@ -29,12 +29,10 @@ late Game run;
 // `collectListeners` fills them - so by the time an event is dispatched the
 // receiver list is already correct and dispatch is an indexed `for`.
 //
-// What that buys, and what this file pins down, is *scope*. A dispatcher
-// belongs to whoever declared it and collects from that owner's composition
-// and no further. Declared on a `GameState` it reaches everything beneath -
-// systems, scenes, and the prefabs those scenes registered. Declared on a
-// prefab it reaches that prefab and nothing else, which is the mechanism a
-// per-struct `onMounted(Entity)` will be built out of.
+// There is one collect pass and one binder for the whole game, so membership
+// is decided by listener type and by nothing else. An event declared on a
+// system reaches what one declared on the state reaches; a class that is not
+// a `GameListener` - a `SceneStruct`, an `EntityStruct` - is in no list at all.
 
 /// The listener half: a plain mixin on [GameListener], exactly the shape
 /// `Tickable`/`FixedTickable` have.
@@ -43,7 +41,7 @@ mixin _Ping on GameListener {
   void onPing() => pings++;
 }
 
-// There is no event class. Delivery is the closure passed to `hasSignal`
+// There is no event class. Delivery is the closure passed to `Event.signal`
 // below, captured once at declare time, so firing allocates nothing.
 
 class _PingSystem extends GameSystem with _Ping {}
@@ -52,21 +50,16 @@ class _PingSystem extends GameSystem with _Ping {}
 /// boot it is never looked at again either.
 class _DeafSystem extends GameSystem {}
 
-class _PingUnit extends EntityStruct with _Ping {}
-
-/// A prefab that declares a dispatcher of its own. Its dispatcher collects
-/// from its own composition only, which is one object: itself.
-class _SelfishUnit extends EntityStruct with _Ping {
-  // On the field, which works because `_PingScene` registers this one with
-  // `descriptor.has(_SelfishUnit.new)` - a constructor the framework calls.
+/// A system that declares a dispatcher of its own.
+class _SelfishSystem extends GameSystem with _Ping {
   final ping = Event.signal<_Ping>((listener) => listener.onPing());
 }
 
-class _PingScene extends SceneStruct with _Ping {
+class _PingUnit extends EntityStruct {}
+
+class _PingScene extends SceneStruct {
   @sub
   final unit = _PingUnit();
-  @sub
-  final selfish = _SelfishUnit();
 }
 
 class _PingState extends GameState<_PingGame> with _Ping {
@@ -76,6 +69,8 @@ class _PingState extends GameState<_PingGame> with _Ping {
   final pingSystem = _PingSystem();
   @system
   final deafSystem = _DeafSystem();
+  @system
+  final selfishSystem = _SelfishSystem();
 }
 
 class _PingGame extends Game {
@@ -89,6 +84,7 @@ class _PingGame extends Game {
 
   /// Reached through the state - a system is an `@system` field of one.
   _PingSystem get pinger => run.state.getSystem<_PingSystem>();
+  _SelfishSystem get selfish => run.state.getSystem<_SelfishSystem>();
 
   @override
   GameState createState() => _PingState();
@@ -125,11 +121,10 @@ void main() {
 
       expect(
         state.ping.listenerCount,
-        5,
+        3,
         reason:
-            'the state itself, the one _Ping system, the scene, and the '
-            "scene's two prefabs - resolved during start(), with nothing "
-            'dispatched yet',
+            'the state itself and the two _Ping systems - resolved during '
+            'start(), with nothing dispatched yet',
       );
     });
 
@@ -140,7 +135,7 @@ void main() {
 
       expect(
         state.ping.listenerCount,
-        5,
+        3,
         reason:
             '_DeafSystem is not a _Ping. Under the old walk it was still '
             'reached and still type-tested on every dispatch; now it is not '
@@ -149,8 +144,8 @@ void main() {
     });
   });
 
-  group('an event declared on the GameState reaches the whole composition', () {
-    test('down through systems, scenes and prefabs', () async {
+  group('an event reaches every listener, whoever declared it', () {
+    test('the state and every system', () async {
       final game = await _boot();
       final state = run.state as _PingState;
 
@@ -158,16 +153,25 @@ void main() {
 
       expect(state.pings, 1, reason: 'the owner collects itself');
       expect(game.pinger.pings, 1, reason: 'GameState offers its systems');
-      expect(game.level.pings, 1, reason: 'and its declared scenes');
+      expect(game.selfish.pings, 1);
+    });
+
+    test('and a system\'s own event reaches exactly the same set', () async {
+      final game = await _boot();
+      final state = run.state as _PingState;
+
+      game.selfish.ping.call();
+
       expect(
-        game.level.unit.pings,
-        1,
+        game.selfish.ping.listenerCount,
+        state.ping.listenerCount,
         reason:
-            'and each scene offers the prefabs it registered - this is '
-            'the Game -> Scenes -> Entities broadcast, walked once at boot '
-            'instead of once per event',
+            'one binder, one collect pass. A dispatcher does not know which '
+            'object holds the field it lives on',
       );
-      expect(game.level.selfish.pings, 1);
+      expect(state.pings, 1, reason: 'upwards to the state');
+      expect(game.pinger.pings, 1, reason: 'and sideways to a sibling system');
+      expect(game.selfish.pings, 1);
     });
 
     test('every listener is hit exactly once per dispatch', () async {
@@ -178,52 +182,47 @@ void main() {
       state.ping.call();
 
       expect(
-        game.level.unit.pings,
+        game.pinger.pings,
         2,
         reason:
             'the composition walk can legitimately reach one listener by '
-            'two routes; the dispatcher dedupes on identity so a double '
-            'delivery cannot happen',
+            'two routes - a system is offered by the state and again by '
+            'itself - and the dispatcher dedupes on identity',
       );
     });
-  });
 
-  group('an event declared lower down stays there', () {
-    test(
-      "a prefab's own dispatcher reaches that prefab and nothing else",
-      () async {
-        final game = await _boot();
-        final selfish = game.level.selfish;
-
-        expect(
-          selfish.ping.listenerCount,
-          1,
-          reason:
-              'a prefab composes nothing further, so its dispatcher is the '
-              'narrowest scope there is',
-        );
-
-        selfish.ping.call();
-
-        expect(selfish.pings, 1);
-        expect(game.level.unit.pings, 0, reason: 'not its sibling prefab');
-        expect(game.level.pings, 0, reason: 'not upwards to its scene');
-        expect(game.pinger.pings, 0, reason: 'and not sideways to systems');
-        expect((run.state as _PingState).pings, 0);
-      },
-    );
-
-    test('the same listener type is two independent dispatchers', () async {
+    test('two owners declaring one listener type get two lists', () async {
       final game = await _boot();
       final state = run.state as _PingState;
 
       expect(
         state.ping,
-        isNot(same(game.level.selfish.ping)),
+        isNot(same(game.selfish.ping)),
         reason:
-            'scope is per declaring owner, not per listener type - two '
-            'owners declaring EventDispatcher<_Ping> get two lists',
+            'a dispatcher is per declaration, not per listener type - what '
+            'is shared is the audience, not the object',
       );
+
+      game.selfish.ping.call();
+
+      expect(state.pings, 1, reason: 'fired one, and only one, of the two');
+    });
+  });
+
+  group('a struct is not a listener', () {
+    test('so nothing about a scene or a prefab is collected', () async {
+      final game = await _boot();
+      final state = run.state as _PingState;
+
+      expect(
+        state.ping.listenerCount,
+        3,
+        reason:
+            'the scene and its prefab exist and are declared - they are just '
+            'not GameListeners, so no list can hold them. A struct hears its '
+            'own bring-up through onSceneMounted/onEntityMounted instead',
+      );
+      expect(game.level.declaredPrefabs, hasLength(1));
     });
   });
 
@@ -238,13 +237,13 @@ void main() {
       expect(game.pinger.pings, 0, reason: 'disabled means it declines');
       expect(
         state.ping.listenerCount,
-        5,
+        3,
         reason:
             'but it is still in the list - enablement is runtime state, '
             'so it is a bool read at dispatch rather than a re-collection',
       );
       expect(
-        game.level.unit.pings,
+        game.selfish.pings,
         1,
         reason: 'and one listener declining does not stop the loop',
       );

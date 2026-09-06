@@ -837,8 +837,8 @@ void main() {
 
   group('body lifetime', () {
     test('destroying an entity destroys its Box2D body', () async {
-      // **The leak.** `Entity.destroy` used to fire only the prefab's narrow
-      // `unmountedEvent`; the broad `entityDespawnedEvent` this system listens
+      // **The leak.** `Entity.destroy` used to reach only the prefab's own
+      // hook; the broad `entityDespawnedEvent` this system listens
       // to went in on the scene-unload path alone. So a game that recycles
       // entities - and every game does - left one Box2D body behind per
       // destroy, forever, with no Dart-visible symptom at all.
@@ -904,7 +904,7 @@ void main() {
 
   group('teardown', () {
     test('stopping the game releases the Box2D world', () async {
-      // **`GameSystem.unmountEvent` was declared from the start and fired by
+      // **`GameSystem.onUnmounted` was declared from the start and called by
       // nothing.** So `dispose` documented "call it yourself after stopping",
       // nothing ever did, and every run leaked a Box2D world - plus, once the
       // demo threaded by default, its worker threads. That is the reported

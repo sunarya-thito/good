@@ -2,7 +2,6 @@ import 'package:good/src/scene_handle.dart';
 import 'package:good/src/archetype.dart';
 import 'package:good/src/data.dart';
 import 'package:good/src/data/hierarchy.dart';
-import 'package:good/src/event/lifecycle.dart';
 import 'package:good/src/pool.dart';
 import 'package:good/src/scene.dart';
 import 'package:good/src/struct.dart';
@@ -86,9 +85,9 @@ class _DeclaresWithoutParent extends EntityStruct with _Name, Child {
 
 final List<String> _dispatchLog = <String>[];
 
-/// The shape a `Parent.onEntityMounted` would have: a component mixin that is
-/// also a lifecycle listener.
-mixin _Probe on Component, EntityLifecycleListener {
+/// The shape a `Parent.onEntityMounted` would have: a mixin on the struct
+/// itself, overriding the hook the engine calls.
+mixin _Probe on EntityStruct {
   @override
   void describeType(ComponentDescriptor component) {
     super.describeType(component);
@@ -108,10 +107,9 @@ mixin _Probe on Component, EntityLifecycleListener {
   }
 }
 
-class _Probed extends EntityStruct with EntityLifecycleListener, _Probe {}
+class _Probed extends EntityStruct with _Probe {}
 
-class _ProbedSuperLast extends EntityStruct
-    with EntityLifecycleListener, _Probe {
+class _ProbedSuperLast extends EntityStruct with _Probe {
   @override
   void onEntityMounted(Entity entity) {
     _dispatchLog.add('struct mounted');
@@ -119,7 +117,7 @@ class _ProbedSuperLast extends EntityStruct
   }
 }
 
-class _ProbedNoSuper extends EntityStruct with EntityLifecycleListener, _Probe {
+class _ProbedNoSuper extends EntityStruct with _Probe {
   @override
   void onEntityMounted(Entity entity) {
     _dispatchLog.add('struct mounted');

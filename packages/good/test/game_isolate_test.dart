@@ -11,7 +11,6 @@ import 'package:good/src/data.dart';
 import 'package:good/src/debug/world_census.dart';
 import 'package:good/src/event/fixed_loop.dart';
 import 'package:good/src/event/tick_loop.dart';
-import 'package:good/src/event/lifecycle.dart';
 import 'package:good/src/event/state.dart';
 import 'package:good/src/game.dart';
 import 'package:good/src/game_state.dart';
@@ -85,7 +84,7 @@ mixin _Moving on Component {
   }
 }
 
-class _Mover extends EntityStruct with _Moving, EntityLifecycleListener {
+class _Mover extends EntityStruct with _Moving {
   @override
   void onEntityMounted(Entity entity) {
     super.onEntityMounted(entity);

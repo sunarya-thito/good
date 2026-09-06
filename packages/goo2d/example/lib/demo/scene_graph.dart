@@ -22,8 +22,7 @@ class Critter extends EntityStruct
         WorldTransform2D,
         Child,
         Parent,
-        Renderable2D,
-        EntityLifecycleListener {
+        Renderable2D {
   final body = Sprite.of(width: 22, height: 22, texture: discTexture);
 
   final angle = Field.float64();
@@ -81,8 +80,7 @@ class Limb extends EntityStruct
         Transform2D,
         WorldTransform2D,
         Child,
-        Renderable2D,
-        EntityLifecycleListener {
+        Renderable2D {
   final body = Sprite.of(width: 11, height: 11, texture: discTexture);
 
   int _spawned = 0;

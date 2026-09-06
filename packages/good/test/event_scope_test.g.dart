@@ -21,45 +21,31 @@
 part of 'event_scope_test.dart';
 
 List<ScannableField> _collect$PingSystem(Object object) {
-  final owner = object as _PingSystem;
-  return <ScannableField>[
-    owner.mountEvent,
-    owner.unmountEvent,
-  ];
+  object as _PingSystem;
+  return const <ScannableField>[];
 }
 
 List<ScannableField> _collect$DeafSystem(Object object) {
-  final owner = object as _DeafSystem;
+  object as _DeafSystem;
+  return const <ScannableField>[];
+}
+
+List<ScannableField> _collect$SelfishSystem(Object object) {
+  final owner = object as _SelfishSystem;
   return <ScannableField>[
-    owner.mountEvent,
-    owner.unmountEvent,
+    owner.ping,
   ];
 }
 
 List<ScannableField> _collect$PingUnit(Object object) {
-  final owner = object as _PingUnit;
-  return <ScannableField>[
-    owner.mountedEvent,
-    owner.unmountedEvent,
-  ];
-}
-
-List<ScannableField> _collect$SelfishUnit(Object object) {
-  final owner = object as _SelfishUnit;
-  return <ScannableField>[
-    owner.ping,
-    owner.mountedEvent,
-    owner.unmountedEvent,
-  ];
+  object as _PingUnit;
+  return const <ScannableField>[];
 }
 
 List<ScannableField> _collect$PingScene(Object object) {
   final owner = object as _PingScene;
   return <ScannableField>[
     owner.unit,
-    owner.selfish,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -69,6 +55,7 @@ List<ScannableField> _collect$PingState(Object object) {
     owner.ping,
     owner.pingSystem,
     owner.deafSystem,
+    owner.selfishSystem,
     owner.fixedTickEvent,
     owner.tickEvent,
     owner.gameMountedEvent,
@@ -98,8 +85,8 @@ const GeneratedDeclarations _eventScopeTestDeclarations =
       collectors: <DeclarationCollector>[
         DeclarationCollector(_PingSystem, _collect$PingSystem),
         DeclarationCollector(_DeafSystem, _collect$DeafSystem),
+        DeclarationCollector(_SelfishSystem, _collect$SelfishSystem),
         DeclarationCollector(_PingUnit, _collect$PingUnit),
-        DeclarationCollector(_SelfishUnit, _collect$SelfishUnit),
         DeclarationCollector(_PingScene, _collect$PingScene),
         DeclarationCollector(_PingState, _collect$PingState),
         DeclarationCollector(_PingGame, _collect$PingGame),

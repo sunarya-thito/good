@@ -24,8 +24,6 @@ List<ScannableField> _collect$ContactSystem(Object object) {
   final owner = object as _ContactSystem;
   return <ScannableField>[
     owner.contacts,
-    owner.mountEvent,
-    owner.unmountEvent,
   ];
 }
 

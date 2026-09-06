@@ -27,8 +27,6 @@ List<ScannableField> _collect$PadSystem(Object object) {
     owner.p1Confirm,
     owner.p2Confirm,
     owner.move,
-    owner.mountEvent,
-    owner.unmountEvent,
   ];
 }
 

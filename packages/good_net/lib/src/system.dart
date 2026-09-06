@@ -12,12 +12,11 @@ import 'registry.dart';
 import 'session.dart';
 import 'transport.dart';
 
-/// Hears about peers arriving and leaving. Mixed into anything that already
-/// lives on the game isolate - a system, a scene, an entity struct, the state
-/// itself - exactly like `EntitySpawnListener`.
+/// Hears about peers arriving and leaving. Mixed into a `GameSystem` or the
+/// `GameState`, exactly like `EntitySpawnListener`.
 ///
 /// ```dart
-/// class Lobby extends SceneStruct with NetPeerListener {
+/// class LobbySystem extends GameSystem with NetPeerListener {
 ///   @override
 ///   void onPeerJoined(NetPeerId peer) => spawnPlayerFor(peer);
 /// }
@@ -184,7 +183,7 @@ mixin MultiplayerState<G extends Game> on GameState<G> {
 /// catch-up steps produce one batch of datagrams instead of three, and a
 /// message queued by the first step does not wait for the next frame.
 class NetworkSystem extends GameSystem
-    with FixedTickable, Tickable, GameSystemLifecycleListener
+    with FixedTickable, Tickable
     implements NetSender, NetListener {
   /// Built by [MultiplayerState.network]'s initialiser.
   @internal

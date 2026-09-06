@@ -3,7 +3,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:good/src/archetype.dart';
 import 'package:good/src/data.dart';
 import 'package:good/src/data/hierarchy.dart';
-import 'package:good/src/event/lifecycle.dart';
 import 'package:good/src/game.dart';
 import 'package:good/src/game_state.dart';
 import 'package:good/src/scene.dart';
@@ -25,7 +24,7 @@ late Game run;
 /// Both halves of the hierarchy on one prefab, so any of the four operations
 /// can be pointed at any of these entities, plus a field to prove a row is
 /// still readable after the other scene has gone.
-class _Body extends EntityStruct with Child, Parent, EntityLifecycleListener {
+class _Body extends EntityStruct with Child, Parent {
   final mark = Field.uint16();
 
   @override

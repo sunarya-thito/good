@@ -25,8 +25,6 @@ List<ScannableField> _collect$TouchSystem(Object object) {
   return <ScannableField>[
     owner.contacts,
     owner.cursor,
-    owner.mountEvent,
-    owner.unmountEvent,
   ];
 }
 

@@ -40,8 +40,6 @@ List<ScannableField> _collect$World(Object object) {
     owner.transformScaleX,
     owner.transformScaleY,
     owner.transformRotation,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -66,8 +64,6 @@ List<ScannableField> _collect$Eye(Object object) {
     owner.transformScaleX,
     owner.transformScaleY,
     owner.transformRotation,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -93,8 +89,6 @@ List<ScannableField> _collect$Rig(Object object) {
     owner.transformScaleX,
     owner.transformScaleY,
     owner.transformRotation,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -110,8 +104,6 @@ List<ScannableField> _collect$Pinned(Object object) {
     owner.transformScaleX,
     owner.transformScaleY,
     owner.transformRotation,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -124,8 +116,6 @@ List<ScannableField> _collect$Corner(Object object) {
     owner.transformScaleX,
     owner.transformScaleY,
     owner.transformRotation,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -138,8 +128,6 @@ List<ScannableField> _collect$Backdrop(Object object) {
     owner.transformScaleX,
     owner.transformScaleY,
     owner.transformRotation,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -152,8 +140,6 @@ List<ScannableField> _collect$Banner(Object object) {
     owner.transformScaleX,
     owner.transformScaleY,
     owner.transformRotation,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -166,8 +152,6 @@ List<ScannableField> _collect$Panel(Object object) {
     owner.transformScaleX,
     owner.transformScaleY,
     owner.transformRotation,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -180,8 +164,6 @@ List<ScannableField> _collect$Spinner(Object object) {
     owner.transformScaleX,
     owner.transformScaleY,
     owner.transformRotation,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -218,8 +200,6 @@ List<ScannableField> _collect$Label(Object object) {
     owner.transformScaleX,
     owner.transformScaleY,
     owner.transformRotation,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -236,8 +216,6 @@ List<ScannableField> _collect$Stage(Object object) {
     owner.panel,
     owner.spinner,
     owner.label,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -289,8 +267,6 @@ List<ScannableField> _collect$Clash(Object object) {
     owner.transformScaleX,
     owner.transformScaleY,
     owner.transformRotation,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -315,8 +291,6 @@ List<ScannableField> _collect$LabelClash(Object object) {
     owner.transformScaleX,
     owner.transformScaleY,
     owner.transformRotation,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -324,8 +298,6 @@ List<ScannableField> _collect$ClashScene(Object object) {
   final owner = object as _ClashScene;
   return <ScannableField>[
     owner.clash,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -333,8 +305,6 @@ List<ScannableField> _collect$LabelClashScene(Object object) {
   final owner = object as _LabelClashScene;
   return <ScannableField>[
     owner.clash,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 

@@ -47,12 +47,10 @@ final List<String> events = <String>[];
 /// they go. An earlier version of this fixture subscribed from
 /// `describeInputs` and said it had to, because "a `GameSystem` does not
 /// currently receive `MountEvent`" - that was wrong when it was written and
-/// is wrong now: `GameState.mount` calls `mountEvent` on every system, and
-/// mixing in `GameSystemLifecycleListener` is all it takes to hear it.
+/// is wrong now: `GameState.mount` calls `onMounted` on every system.
 /// 'a system hears its own onMounted' pins that so the claim cannot come
 /// back.
-class _PlayerSystem extends GameSystem
-    with FixedTickable, GameSystemLifecycleListener {
+class _PlayerSystem extends GameSystem with FixedTickable {
   final movement = Input.of<Vector2>(
     const Vec2Binding(up: .w, down: .s, left: .a, right: .d),
   );
@@ -141,7 +139,7 @@ class _InputGame extends Game {
 /// Separate `heard` lists rather than the file-level `events`, so a listener
 /// delivered to the wrong action shows up as an entry on the other system's
 /// list instead of being swallowed by a shared collector.
-class _ListenerSystemA extends GameSystem with GameSystemLifecycleListener {
+class _ListenerSystemA extends GameSystem {
   final List<String> heard = <String>[];
   final fire = Input.of<bool>(const TriggerBinding(.spacebar));
   bool mountedRan = false;
@@ -158,7 +156,7 @@ class _ListenerSystemA extends GameSystem with GameSystemLifecycleListener {
   void onFire(InputEvent<bool> event) => heard.add('A ${event.value}');
 }
 
-class _ListenerSystemB extends GameSystem with GameSystemLifecycleListener {
+class _ListenerSystemB extends GameSystem {
   final List<String> heard = <String>[];
   final fire = Input.of<bool>(const TriggerBinding(.enter));
 
@@ -201,7 +199,7 @@ class _ListenerGame extends Game {
 /// factory's return type, which is what the typed locals in
 /// 'the shorthand infers the action type' check - at compile time, so a
 /// regression there fails this file rather than one test in it.
-class _ShorthandSystem extends GameSystem with GameSystemLifecycleListener {
+class _ShorthandSystem extends GameSystem {
   /// The issue body's example, character for character.
   final attack = Input.of(
     .composite(.trigger(.leftMouseButton), .trigger(.spacebar)),
@@ -1063,8 +1061,7 @@ void main() {
         a.mountedRan,
         isTrue,
         reason:
-            'GameState.mount calls mountEvent on every system, so a system '
-            'that mixes in GameSystemLifecycleListener hears onMounted - '
+            'GameState.mount calls onMounted on every system - '
             'which is the site Input.pressed sends subscriptions to, and the '
             'only site where an instance method can be named at all',
       );

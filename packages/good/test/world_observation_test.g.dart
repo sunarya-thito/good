@@ -21,19 +21,13 @@
 part of 'world_observation_test.dart';
 
 List<ScannableField> _collect$Rock(Object object) {
-  final owner = object as _Rock;
-  return <ScannableField>[
-    owner.mountedEvent,
-    owner.unmountedEvent,
-  ];
+  object as _Rock;
+  return const <ScannableField>[];
 }
 
 List<ScannableField> _collect$Tree(Object object) {
-  final owner = object as _Tree;
-  return <ScannableField>[
-    owner.mountedEvent,
-    owner.unmountedEvent,
-  ];
+  object as _Tree;
+  return const <ScannableField>[];
 }
 
 List<ScannableField> _collect$Node(Object object) {
@@ -44,17 +38,12 @@ List<ScannableField> _collect$Node(Object object) {
     owner.childParent,
     owner.childNextSibling,
     owner.childPrevSibling,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
 List<ScannableField> _collect$Watched(Object object) {
-  final owner = object as _Watched;
-  return <ScannableField>[
-    owner.mountedEvent,
-    owner.unmountedEvent,
-  ];
+  object as _Watched;
+  return const <ScannableField>[];
 }
 
 List<ScannableField> _collect$Scene(Object object) {
@@ -64,17 +53,12 @@ List<ScannableField> _collect$Scene(Object object) {
     owner.tree,
     owner.node,
     owner.watched,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
 List<ScannableField> _collect$Observer(Object object) {
-  final owner = object as _Observer;
-  return <ScannableField>[
-    owner.mountEvent,
-    owner.unmountEvent,
-  ];
+  object as _Observer;
+  return const <ScannableField>[];
 }
 
 List<ScannableField> _collect$GameState(Object object) {

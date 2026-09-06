@@ -2,7 +2,6 @@ import 'package:flutter_test/flutter_test.dart' hide EventDispatcher;
 
 import 'package:good/src/archetype.dart';
 import 'package:good/src/data.dart';
-import 'package:good/src/event.dart';
 import 'package:good/src/event/lifecycle.dart';
 import 'package:good/src/game.dart';
 import 'package:good/src/game_state.dart';
@@ -20,24 +19,18 @@ part 'event_lifecycle_test.g.dart';
 /// one inline run per isolate means one binding is enough.
 late Game run;
 
-// Lifecycle at all three levels, and the scoping that decides who hears what.
+// Lifecycle at all three levels, and which half of the split each one is.
 //
-// Only `GameState.onMounted()` is still a plain virtual. The scene and entity
-// levels used to have one each; now the owner mixes in the same listener
-// anything else would - `SceneLifecycleListener`, `EntityLifecycleListener` -
-// and hears itself through its own dispatcher. What differs between the levels
-// is where that dispatcher is declared, and that is not a detail - it *is* the
-// audience:
+// An owner answering for itself is a virtual. `GameState.onMounted()`,
+// `SceneStruct.onSceneMounted(Scene)` and `EntityStruct.onEntityMounted(Entity)`
+// are all that shape: the framework is the only caller, there is one receiver,
+// and the receiver is the thing the call is about - so it never has to ask
+// whether the scene or the entity was one of its own.
 //
-//  * game lifecycle is declared on `GameState`, so it reaches everything -
-//    correct, because `GameState` is the only object at that level;
-//  * scene lifecycle is declared on the `SceneStruct`, so unloading scene A
-//    cannot tell scene B;
-//  * entity lifecycle is declared on the `EntityStruct`, so a listener never
-//    has to ask whether the entity was one of its own.
-//
-// Widening any of them is explicit: override `collectListeners` and offer the
-// listener in, which `_Indexed` below does for a system.
+// Anything *else* wanting to know is an event, and events are global.
+// `GameLifecycleListener`, `SceneLoadListener` and `EntitySpawnListener` are
+// mixed into a `GameSystem` or the `GameState`, one list per event for the
+// whole game, and a listener there expects to filter.
 
 mixin _Marked on Component {
   final mark = Field.uint8(7);
@@ -51,8 +44,8 @@ mixin _Marked on Component {
 
 class _Unit extends EntityStruct with _Marked {}
 
-/// Game-level listener. A `GameSystem` is collected into `GameState`'s
-/// dispatchers, so this is the level it can hear without being offered in.
+/// Game-level listener. A `GameSystem` is collected into every dispatcher in
+/// the game, so this is what hearing the game come up looks like.
 class _Watcher extends GameSystem with GameLifecycleListener {
   final List<String> log = <String>[];
 
@@ -66,46 +59,34 @@ class _Watcher extends GameSystem with GameLifecycleListener {
 /// Listens to nothing - never collected anywhere.
 class _Bystander extends GameSystem {}
 
-/// A system mixing in both halves at once: the two *scoped* lifecycle mixins,
-/// which no dispatcher a system reaches ever delivers, and the two
-/// *observation* events, which `GameState` declares and does.
-///
-/// The pairing is the point. [scoped] staying empty is the claim under test,
-/// and an empty list proves nothing on its own - [observed] filling up is what
-/// says the system is wired, enabled and running, so the empty one means the
-/// event never arrived rather than that the fixture is dead.
-class _Deaf extends GameSystem
-    with
-        SceneLifecycleListener,
-        EntityLifecycleListener,
-        SceneLoadListener,
-        EntitySpawnListener {
-  final List<String> scoped = <String>[];
+/// The world-observation half, all four hooks on one system.
+class _Observing extends GameSystem
+    with SceneLoadListener, EntitySpawnListener {
   final List<String> observed = <String>[];
 
   @override
-  void onSceneMounted(Scene scene) => scoped.add('scene.mounted');
+  void onSceneLoaded(Scene scene) {
+    observed.add('scene.loaded');
+    log.add('observer.sceneLoaded');
+  }
 
   @override
-  void onSceneUnmounted(Scene scene) => scoped.add('scene.unmounted');
+  void onSceneUnloaded(Scene scene) {
+    observed.add('scene.unloaded');
+    log.add('observer.sceneUnloaded');
+  }
 
   @override
-  void onEntityMounted(Entity entity) => scoped.add('entity.mounted');
+  void onEntitySpawned(Entity entity) {
+    observed.add('entity.spawned');
+    log.add('observer.entitySpawned');
+  }
 
   @override
-  void onEntityUnmounted(Entity entity) => scoped.add('entity.unmounted');
-
-  @override
-  void onSceneLoaded(Scene scene) => observed.add('scene.loaded');
-
-  @override
-  void onSceneUnloaded(Scene scene) => observed.add('scene.unloaded');
-
-  @override
-  void onEntitySpawned(Entity entity) => observed.add('entity.spawned');
-
-  @override
-  void onEntityDespawned(Entity entity) => observed.add('entity.despawned');
+  void onEntityDespawned(Entity entity) {
+    observed.add('entity.despawned');
+    log.add('observer.entityDespawned');
+  }
 }
 
 class _Level extends SceneStruct {
@@ -123,10 +104,9 @@ class _Level extends SceneStruct {
 /// Ordering probe shared by the fixtures below.
 final List<String> log = <String>[];
 
-/// A scene that listens for scene lifecycle. Because the dispatcher belongs to
-/// the scene, this only ever hears about **itself** - which is the property
-/// under test.
-class _Observer extends SceneStruct with SceneLifecycleListener {
+/// A scene that records its own mounts. It only ever hears about **itself**,
+/// which is the property under test.
+class _Observer extends SceneStruct {
   final List<Scene> heard = <Scene>[];
 
   @override
@@ -136,35 +116,9 @@ class _Observer extends SceneStruct with SceneLifecycleListener {
   }
 }
 
-/// A prefab that listens for *its scene's* lifecycle - reachable because a
-/// scene's collect pass walks its prefabs.
-class _SceneAware extends EntityStruct with SceneLifecycleListener {
-  final List<Scene> heard = <Scene>[];
-
-  @override
-  void onSceneMounted(Scene scene) {
-    heard.add(scene);
-    log.add('prefab.mounted');
-  }
-
-  @override
-  void onSceneUnmounted(Scene scene) => log.add('prefab.unmounted');
-}
-
-/// A prefab that hears the *game* coming up: the bottom of the composition
-/// walk from `GameState` down.
-class _Nosy extends EntityStruct with GameLifecycleListener {
-  int mounts = 0;
-
-  @override
-  void onGameMounted() => mounts++;
-}
-
 class _NosyScene extends SceneStruct {
   @sub
-  final nosy = _Nosy();
-  @sub
-  final aware = _SceneAware();
+  final unit = _Unit();
 
   @override
   void onSceneMounted(Scene scene) => log.add('scene.mounted');
@@ -173,13 +127,9 @@ class _NosyScene extends SceneStruct {
   void onSceneUnmounted(Scene scene) => log.add('scene.unmounted');
 }
 
-/// A struct hearing its **own** entities.
-///
-/// There is no separate virtual hook for this: a prefab's default
-/// `collectListeners` offers itself, so mixing in [EntityLifecycleListener] is
-/// what a struct does to initialise its own rows. One mechanism, and the same
-/// one anything else would use.
-class _Tracked extends EntityStruct with _Marked, EntityLifecycleListener {
+/// A struct hearing its **own** entities, through the hook the engine calls
+/// about them. There is no mixin and no dispatcher: one receiver, one caller.
+class _Tracked extends EntityStruct with _Marked {
   final List<Entity> mine = <Entity>[];
   final List<Entity> gone = <Entity>[];
 
@@ -187,40 +137,37 @@ class _Tracked extends EntityStruct with _Marked, EntityLifecycleListener {
   void onEntityMounted(Entity entity) {
     super.onEntityMounted(entity);
     mine.add(entity);
+    log.add('tracked.mounted');
   }
 
   @override
   void onEntityUnmounted(Entity entity) {
     super.onEntityUnmounted(entity);
     gone.add(entity);
+    log.add('tracked.unmounted');
   }
 }
 
-/// Widening the audience, explicitly: this struct offers a *system* into its
-/// own dispatcher, so `_Census` hears `_Indexed` entities and no others.
-class _Indexed extends EntityStruct with _Marked {
-  @override
-  void collectListeners(ListenerCollector collector) {
-    super.collectListeners(collector);
-    collector.offer(getSystem<_Census>());
-  }
-}
+class _Indexed extends EntityStruct with _Marked {}
 
-/// Offered in by [_Indexed]. It is a system, so nothing collects it into an
-/// entity dispatcher by default - being told is something a struct opts it
-/// into.
-class _Census extends GameSystem with EntityLifecycleListener {
+/// The system half of the same question: it sees every entity in the game and
+/// filters, which is what watching the world costs and what it buys.
+class _Census extends GameSystem with EntitySpawnListener {
   final List<Entity> mounted = <Entity>[];
   final List<Entity> unmounted = <Entity>[];
 
-  /// Read during unmount, to prove the row is still live at that point.
+  /// Read during despawn, to prove the row is still live at that point.
   final List<int> marksAtUnmount = <int>[];
 
   @override
-  void onEntityMounted(Entity entity) => mounted.add(entity);
+  void onEntitySpawned(Entity entity) {
+    if (!entity.has<_Marked>()) return;
+    mounted.add(entity);
+  }
 
   @override
-  void onEntityUnmounted(Entity entity) {
+  void onEntityDespawned(Entity entity) {
+    if (!entity.has<_Marked>()) return;
     unmounted.add(entity);
     marksAtUnmount.add(entity<_Marked>().component.mark[entity]);
   }
@@ -247,7 +194,7 @@ class _LifecycleState extends GameState<_LifecycleGame> {
   @system
   final bystander = _Bystander();
   @system
-  final deaf2 = _Deaf();
+  final observing = _Observing();
 }
 
 class _LifecycleGame extends Game {
@@ -268,7 +215,7 @@ class _LifecycleGame extends Game {
   /// would be written on a copy that never declares one.
   _Watcher get watcher => run.state.getSystem<_Watcher>();
   _Census get census => run.state.getSystem<_Census>();
-  _Deaf get deaf => run.state.getSystem<_Deaf>();
+  _Observing get observing => run.state.getSystem<_Observing>();
 
   @override
   GameState createState() => _LifecycleState();
@@ -327,18 +274,6 @@ void main() {
       expect(game.watcher.log, contains('game+'));
     });
 
-    test('reaches prefabs too, not just systems', () async {
-      final game = await _boot();
-
-      expect(
-        game.nosyScene.nosy.mounts,
-        1,
-        reason:
-            'GameState -> scenes -> prefabs: the whole composition, '
-            'collected once at boot',
-      );
-    });
-
     test('unmount fires while the world is still standing', () async {
       final game = await _boot();
       await run.stop();
@@ -347,7 +282,7 @@ void main() {
     });
   });
 
-  group('scene lifecycle, declared on the SceneStruct', () {
+  group('scene lifecycle is the scene answering for itself', () {
     test('a scene hears its own mount, and is told which instance', () async {
       final game = await _boot();
 
@@ -369,38 +304,24 @@ void main() {
         game.observer.heard.map((s) => s<SceneStruct>()),
         everyElement(same(game.observer)),
         reason:
-            'the dispatcher belongs to _Observer, so its list was '
-            'filled from _Observer\'s composition. Declared on GameState '
-            'this would be one list holding every scene, and loading _Level '
-            'would call onSceneMounted(_Level) on _Observer, which would '
-            'then have to compare handles to find out it was not about it',
-      );
-    });
-
-    test('a prefab hears its own scene mount', () async {
-      final game = await _boot();
-      final scene = await run.state.loadScene(game.nosyScene);
-
-      expect(
-        game.nosyScene.aware.heard,
-        [scene],
-        reason:
-            'a scene collects its prefabs, so this is in range - and it '
-            'heard only its own scene, not _Level or _Observer',
+            'onSceneMounted is called on the struct being mounted and on no '
+            'other, so a scene never compares handles to find out an event '
+            'was not about it. That is the whole of what a virtual buys here',
       );
     });
 
     test('unload is announced while the entities are still readable', () async {
       final game = await _boot();
       final scene = await run.state.loadScene(game.nosyScene);
-      expect(game.nosyScene.aware.heard, hasLength(1));
+      expect(log, contains('scene.mounted'));
 
       run.state.unloadScene(scene);
 
+      expect(log, contains('scene.unmounted'));
       expect(scene.isLoaded, isFalse);
     });
 
-    test('one dispatch per load, including later ones', () async {
+    test('one call per load, including later ones', () async {
       final game = await _boot();
       await run.state.loadScene(game.observer);
 
@@ -409,30 +330,21 @@ void main() {
         hasLength(2),
         reason:
             'two instances of one declaration are two mounts, and the '
-            'struct is told about each - the handle is what tells them '
-            'apart, which is the one case a struct legitimately hears about '
-            'a sibling instance',
+            'struct is told about each - the handle is what tells them apart',
       );
       expect(game.observer.heard.first, isNot(game.observer.heard.last));
     });
   });
 
-  group('entity lifecycle, declared on the EntityStruct', () {
+  group('entity lifecycle is the struct answering for itself', () {
     test(
-      "the struct's own onMounted fires, for its own entities only",
+      "the struct's own onEntityMounted fires, for its own entities only",
       () async {
         final game = await _boot();
         final scene = await run.state.loadScene(game.trackedScene);
         final entity = scene.addEntity(game.trackedScene.tracked);
 
-        expect(
-          game.trackedScene.tracked.mine,
-          [entity],
-          reason:
-              'the narrow half, unchanged apart from its name - it was '
-              'onCreated, which made the entity level read as a different '
-              'kind of thing from the two levels above it',
-        );
+        expect(game.trackedScene.tracked.mine, [entity]);
         expect(
           game.trackedScene.tracked.mine,
           isNot(contains(game.level.spawned)),
@@ -443,55 +355,49 @@ void main() {
       },
     );
 
-    test(
-      'a system offered in by a struct hears that struct\'s entities',
-      () async {
-        final game = await _boot();
-        final scene = await run.state.loadScene(game.trackedScene);
-        final indexed = scene.addEntity(game.trackedScene.indexed);
-
-        expect(
-          game.census.mounted,
-          [indexed],
-          reason:
-              '_Indexed offers _Census into its own dispatcher, which is '
-              'how a system is let into a scope it is not part of',
-        );
-      },
-    );
-
-    test('and hears nothing from a struct that did not offer it', () async {
+    test('a system sees every entity and filters', () async {
       final game = await _boot();
       final scene = await run.state.loadScene(game.trackedScene);
-      scene.addEntity(game.trackedScene.tracked);
+      final tracked = scene.addEntity(game.trackedScene.tracked);
+      final indexed = scene.addEntity(game.trackedScene.indexed);
 
       expect(
         game.census.mounted,
-        isEmpty,
+        containsAll(<Entity>[tracked, indexed]),
         reason:
-            '_Tracked never offered _Census in, so its entities are '
-            'invisible to it - no filtering by archetype required, because '
-            'the event never arrives',
+            'EntitySpawnListener is the world-observation half: a system '
+            'asked to see everything and gets everything, its own filter '
+            'deciding what it keeps',
       );
-      expect(game.census.mounted, isNot(contains(game.level.spawned)));
     });
 
-    test(
-      'the event fires after the struct hook, on a finished entity',
-      () async {
-        final game = await _boot();
-        final scene = await run.state.loadScene(game.trackedScene);
-        final indexed = scene.addEntity(game.trackedScene.indexed);
+    test('the struct hook runs before the observation event', () async {
+      final game = await _boot();
+      final scene = await run.state.loadScene(game.trackedScene);
+      log.clear();
 
-        expect(
-          game.trackedScene.indexed.mark[indexed],
-          7,
-          reason:
-              'a listener sees declared defaults already stamped, because '
-              'the dispatch is the last thing addEntity does',
-        );
-      },
-    );
+      scene.addEntity(game.trackedScene.tracked);
+
+      expect(
+        log,
+        ['tracked.mounted', 'observer.entitySpawned'],
+        reason:
+            'something watching the whole world sees an entity whose struct '
+            'has already initialised it',
+      );
+    });
+
+    test('a listener sees the declared defaults already stamped', () async {
+      final game = await _boot();
+      final scene = await run.state.loadScene(game.trackedScene);
+      final indexed = scene.addEntity(game.trackedScene.indexed);
+
+      expect(
+        game.trackedScene.indexed.mark[indexed],
+        7,
+        reason: 'the notification is the last thing addEntity does',
+      );
+    });
 
     test(
       'unload tears entities down while their rows are still readable',
@@ -501,22 +407,17 @@ void main() {
         final tracked = scene.addEntity(game.trackedScene.tracked);
         final indexed = scene.addEntity(game.trackedScene.indexed);
         game.trackedScene.indexed.mark[indexed] = 42;
+        game.census.marksAtUnmount.clear();
 
         run.state.unloadScene(scene);
 
         expect(game.trackedScene.tracked.gone, [
           tracked,
         ], reason: 'the struct is told its own entity is going');
-        expect(
-          game.census.unmounted,
-          [indexed],
-          reason:
-              'and so is the system _Indexed offered in - and only for '
-              '_Indexed entities',
-        );
+        expect(game.census.unmounted, containsAll(<Entity>[tracked, indexed]));
         expect(
           game.census.marksAtUnmount,
-          [42],
+          contains(42),
           reason:
               'read from inside the listener - the pages are released '
               'immediately afterwards, so this is the only moment it works',
@@ -528,46 +429,74 @@ void main() {
         );
       },
     );
+
+    test(
+      'destroy() calls the struct\'s own unmount, not scene unload only',
+      () async {
+        // The stale claim this was written for: "there is no per-entity
+        // destroy yet - rows are not recycled - so scene unload is the only
+        // thing that fires this". Both halves were false, and the last change
+        // that trusted it leaked a Box2D body per destroyed entity.
+        final game = await _boot();
+        final scene = await run.state.loadScene(game.trackedScene);
+        final doomed = scene.addEntity(game.trackedScene.tracked);
+        final kept = scene.addEntity(game.trackedScene.tracked);
+        log.clear();
+
+        doomed.destroy();
+
+        expect(game.trackedScene.tracked.gone, [doomed]);
+        expect(
+          game.trackedScene.tracked.gone,
+          isNot(contains(kept)),
+          reason: 'and only the entity that was actually destroyed',
+        );
+        expect(
+          log,
+          ['observer.entityDespawned', 'tracked.unmounted'],
+          reason:
+              'observation first on the way out, mirroring the way the '
+              'struct goes first on the way in',
+        );
+      },
+    );
   });
 
   group('membership', () {
-    test('a listener is only in the lists its type and scope allow', () async {
+    test('a listener is only in the lists its type allows', () async {
       final game = await _boot();
       final state = run.state;
 
       expect(
         state.gameMountedEvent.listenerCount,
+        1,
+        reason:
+            'only _Watcher. _Bystander listens to nothing, and the scene and '
+            'entity structs are not GameListeners at all',
+      );
+      expect(
+        state.entitySpawnedEvent.listenerCount,
         2,
-        reason:
-            '_Watcher (a system) and _Nosy (a prefab). _Bystander '
-            'listens to nothing, and the scene/entity listeners are not '
-            'game-level',
+        reason: '_Census and _Observing, both systems',
       );
       expect(
-        game.observer.mountedEvent.listenerCount,
-        1,
-        reason: 'the observer scene collects only itself - it has no prefabs',
-      );
-      expect(
-        game.nosyScene.aware.mountedEvent.listenerCount,
-        0,
-        reason:
-            'a prefab composes nothing, and _SceneAware is not an '
-            'EntityLifecycleListener, so its own entity dispatcher is empty',
-      );
-      expect(
-        game.trackedScene.indexed.mountedEvent.listenerCount,
+        state.sceneLoadedEvent.listenerCount,
         1,
         reason:
-            'just the _Census it offered in - _Indexed is not itself an '
-            'EntityLifecycleListener',
+            'just _Observing - a SceneStruct hearing its own mount needs no '
+            'entry here, because it is not being dispatched to',
       );
+      expect(game.observer.heard, isNotEmpty);
     });
 
     test(
-      'a disabled system declines a lifecycle event like any other',
+      'a disabled system declines an observation event like any other',
       () async {
         final game = await _boot();
+        // _Level spawns one during boot, and the census hears every entity in
+        // the game now - so the list has to start from a known point rather
+        // than from whatever the bring-up put in it.
+        game.census.mounted.clear();
         run.state.disableSystem<_Census>();
         final scene = await run.state.loadScene(game.trackedScene);
         scene.addEntity(game.trackedScene.indexed);
@@ -581,105 +510,29 @@ void main() {
         );
       },
     );
-  });
 
-  group('the scoped lifecycle events never reach a system', () {
-    // `event/lifecycle.dart` used to say a `GameSystem` mixing in
-    // `SceneLifecycleListener` heard "a scene mounted" as a broadcast, and
-    // that `EntityLifecycleListener` had a broadcast half wherever `GameState`
-    // collects. Neither dispatcher exists: `GameState` declares
-    // `SceneLoadListener` and `EntitySpawnListener` for that question, and the
-    // scoped pair is declared on the `SceneStruct` and the `EntityStruct`,
-    // which collect their own composition. A system following the old comment
-    // got a hook that compiled and never ran, which is the one kind of failure
-    // no other test can see - it looks exactly like a hook nobody wrote.
-
-    test('a system hears no scene lifecycle, and every scene load', () async {
+    test('a disabled system does not stop the struct hearing itself', () async {
       final game = await _boot();
-      final deaf = game.deaf;
-      deaf.scoped.clear();
-      deaf.observed.clear();
-
-      final scene = await run.state.loadScene(game.nosyScene);
-      run.state.unloadScene(scene);
-
-      expect(
-        deaf.scoped,
-        isEmpty,
-        reason:
-            'SceneLifecycleListener is delivered only by a SceneStruct\'s own '
-            'mountedEvent/unmountedEvent, and those collect that struct and '
-            'its prefabs - a system is offered to neither',
-      );
-      expect(
-        deaf.observed,
-        ['scene.loaded', 'scene.unloaded'],
-        reason:
-            'the same system heard both through SceneLoadListener, which is '
-            'what GameState declares for this question',
-      );
-    });
-
-    test('a system hears no entity lifecycle, and every spawn', () async {
-      final game = await _boot();
+      run.state.disableSystem<_Census>();
       final scene = await run.state.loadScene(game.trackedScene);
-      final deaf = game.deaf;
-      deaf.scoped.clear();
-      deaf.observed.clear();
-
       final entity = scene.addEntity(game.trackedScene.tracked);
-      entity.destroy();
 
       expect(
-        deaf.scoped,
-        isEmpty,
+        game.trackedScene.tracked.mine,
+        [entity],
         reason:
-            'EntityLifecycleListener is delivered only by an EntityStruct\'s '
-            'own dispatchers, which collect that struct. _Tracked never '
-            'offered this system in, the way _Indexed offers _Census',
-      );
-      expect(
-        deaf.observed,
-        ['entity.spawned', 'entity.despawned'],
-        reason:
-            'and EntitySpawnListener on the same system saw both ends, which '
-            'is what a spatial index or a physics backend mixes in',
+            'the struct hook is a method call and goes through no dispatcher, '
+            'so nothing about the event system can switch it off',
       );
     });
-
-    test(
-      'destroy() fires the struct\'s own unmount, not scene unload only',
-      () async {
-        // The other stale claim: "there is no per-entity destroy yet - rows are
-        // not recycled - so scene unload is the only thing that fires this".
-        // Both halves were false, and the last change that trusted it leaked a
-        // Box2D body per destroyed entity.
-        final game = await _boot();
-        final scene = await run.state.loadScene(game.trackedScene);
-        final doomed = scene.addEntity(game.trackedScene.tracked);
-        final kept = scene.addEntity(game.trackedScene.tracked);
-
-        doomed.destroy();
-
-        expect(game.trackedScene.tracked.gone, [doomed]);
-        expect(
-          game.trackedScene.tracked.gone,
-          isNot(contains(kept)),
-          reason: 'and only the entity that was actually destroyed',
-        );
-      },
-    );
   });
 
   group('bring-up and tear-down run in opposite orders', () {
-    // This is the guarantee that used to be carried by a pair of virtuals
-    // (`SceneStruct.onMounted`/`onUnmounted`) bracketing the dispatch. Those
-    // are gone; what replaced them is one collect pass read forwards at mount
-    // and backwards at unmount (`reverse: true` on `unmountedEvent`).
-    //
-    // Nothing covered it before, and it is not self-evident: deleting the
-    // `reverse` flag leaves every other test in this file and in
-    // multi_scene_test passing.
+    // The scene used to be told through a dispatcher its prefabs shared, read
+    // forwards at mount and backwards at unmount. The virtual keeps the same
+    // observable order against the world-observation event beside it, and
+    // deleting either `reverse: true` or one of the two call orders in
+    // `GameState` leaves the rest of this file passing.
     test('the scene is told first at mount and last at unmount', () async {
       final game = await _boot();
       log.clear();
@@ -687,22 +540,20 @@ void main() {
       final scene = await run.state.loadScene(game.nosyScene);
       expect(
         log,
-        ['scene.mounted', 'prefab.mounted'],
+        ['scene.mounted', 'observer.sceneLoaded'],
         reason:
-            'outside-in: the scene has spawned its starting entities by '
-            'the time anything it composes is told, which is exactly what '
-            "SceneLifecycleListener.onSceneMounted's doc promises",
+            'outside-in: the scene has spawned its starting entities by the '
+            'time anything watching the world is told',
       );
 
       log.clear();
       run.state.unloadScene(scene);
       expect(
-        log,
-        ['prefab.unmounted', 'scene.unmounted'],
+        log.take(2),
+        ['observer.sceneUnloaded', 'scene.unmounted'],
         reason:
             'inside-out: the scene is told last, so it can still read a '
-            'world its prefabs have already been warned about. Reversed '
-            'from the mount order, off the same collected list',
+            'world the observers have already been warned about',
       );
     });
   });

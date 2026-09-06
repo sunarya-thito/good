@@ -24,17 +24,12 @@ List<ScannableField> _collect$MusicScene(Object object) {
   final owner = object as _MusicScene;
   return <ScannableField>[
     owner.theme,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
 List<ScannableField> _collect$Reporter(Object object) {
-  final owner = object as _Reporter;
-  return <ScannableField>[
-    owner.mountEvent,
-    owner.unmountEvent,
-  ];
+  object as _Reporter;
+  return const <ScannableField>[];
 }
 
 List<ScannableField> _collect$IsolateAudioState(Object object) {

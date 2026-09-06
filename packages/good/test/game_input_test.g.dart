@@ -27,8 +27,6 @@ List<ScannableField> _collect$PlayerSystem(Object object) {
     owner.triggerSkill,
     owner.ping,
     owner.aim,
-    owner.mountEvent,
-    owner.unmountEvent,
   ];
 }
 
@@ -58,8 +56,6 @@ List<ScannableField> _collect$ListenerSystemA(Object object) {
   final owner = object as _ListenerSystemA;
   return <ScannableField>[
     owner.fire,
-    owner.mountEvent,
-    owner.unmountEvent,
   ];
 }
 
@@ -67,8 +63,6 @@ List<ScannableField> _collect$ListenerSystemB(Object object) {
   final owner = object as _ListenerSystemB;
   return <ScannableField>[
     owner.fire,
-    owner.mountEvent,
-    owner.unmountEvent,
   ];
 }
 
@@ -102,8 +96,6 @@ List<ScannableField> _collect$ShorthandSystem(Object object) {
     owner.movement,
     owner.jump,
     owner.cursor,
-    owner.mountEvent,
-    owner.unmountEvent,
   ];
 }
 
@@ -133,8 +125,6 @@ List<ScannableField> _collect$CtorSubSystem(Object object) {
   final owner = object as _CtorSubSystem;
   return <ScannableField>[
     owner.fire,
-    owner.mountEvent,
-    owner.unmountEvent,
   ];
 }
 
@@ -142,8 +132,6 @@ List<ScannableField> _collect$CtorSubOldSpelling(Object object) {
   final owner = object as _CtorSubOldSpelling;
   return <ScannableField>[
     owner.jump,
-    owner.mountEvent,
-    owner.unmountEvent,
   ];
 }
 
@@ -216,11 +204,8 @@ List<ScannableField> _collect$DuplicateDefaultState(Object object) {
 }
 
 List<ScannableField> _collect$LateDefaultSystem(Object object) {
-  final owner = object as _LateDefaultSystem;
-  return <ScannableField>[
-    owner.mountEvent,
-    owner.unmountEvent,
-  ];
+  object as _LateDefaultSystem;
+  return const <ScannableField>[];
 }
 
 List<ScannableField> _collect$SharedDescriptorGame(Object object) {
@@ -252,8 +237,6 @@ List<ScannableField> _collect$CursorSystem(Object object) {
   return <ScannableField>[
     owner.cursor,
     owner.click,
-    owner.mountEvent,
-    owner.unmountEvent,
   ];
 }
 

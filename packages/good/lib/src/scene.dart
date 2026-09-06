@@ -8,8 +8,6 @@ import 'package:good/src/asset.dart';
 import 'package:good/src/camera_view.dart';
 import 'package:good/src/data/hierarchy.dart';
 import 'package:good/src/data_layout.dart';
-import 'package:good/src/event.dart';
-import 'package:good/src/event/lifecycle.dart';
 import 'package:good/src/game.dart';
 import 'package:good/src/game_state.dart';
 import 'package:good/src/pool.dart';
@@ -19,70 +17,41 @@ import 'package:good/src/struct.dart';
 
 @Describes(EntityStruct)
 @Describes(Asset)
-abstract class SceneStruct extends GameListenerBase
-    with EventBus, SceneLifecycleListener, Coroutines
-    implements Scannable {
-  /// An instance of **this** scene was loaded.
+abstract class SceneStruct with Coroutines implements Scannable {
+  /// An instance of **this** scene has been loaded, with its starting entities
+  /// not yet spawned - spawning them is what an override is usually for:
   ///
-  /// Declared here and not on `GameState`, and that placement is the whole
-  /// point of scoping: the collect pass fills this from *this scene's*
-  /// composition - itself and its prefabs - so a prefab of some other scene
-  /// cannot be in the list and cannot be told. Declared one level up it would
-  /// be a single list holding every scene and every prefab in the game, and
-  /// unloading scene A would call `onSceneUnmounted(A)` on scene B, which
-  /// would then have to compare handles to find out the event was not about
-  /// it.
+  /// ```dart
+  /// @override
+  /// void onSceneMounted(Scene scene) => scene.addEntity(player);
+  /// ```
   ///
-  /// The payload is still the [Scene], because one `SceneStruct` backs however
-  /// many loaded instances: "which of mine" is a real question even here.
-  final mountedEvent = Event.of<SceneLifecycleListener, Scene>(
-    (listener, scene) => listener.onSceneMounted(scene),
-  );
+  /// Called for this struct's own scenes and no others. The payload is the
+  /// [Scene] and not the struct, because one `SceneStruct` backs however many
+  /// loaded instances: "which of mine" is a real question even here.
+  ///
+  /// A `GameSystem` that wants to hear about every scene, this one included,
+  /// mixes in `SceneLoadListener`. That one fires immediately after this
+  /// returns, so a listener at that level finds the starting entities already
+  /// spawned.
+  void onSceneMounted(Scene scene) {}
 
   /// An instance of this scene is being unloaded, while its entities are still
-  /// readable. Same scope as [mountedEvent].
-  /// `reverse: true` is what lets the owning struct stop being a separate
-  /// virtual. One collect pass offers this scene *first* and its prefabs
-  /// after, so at mount the scene's own `onSceneMounted` runs before anything
-  /// it composes - a listener still finds the starting entities already
-  /// spawned. Reading the same list backwards at unmount puts the scene
-  /// *last*, so it can still read the world when everything below it has been
-  /// told. Two orders, one list.
-  final unmountedEvent = Event.of<SceneLifecycleListener, Scene>(
-    (listener, scene) => listener.onSceneUnmounted(scene),
-    reverse: true,
-  );
+  /// readable. They are despawned immediately after this returns and never
+  /// readable again.
+  ///
+  /// `SceneLoadListener.onSceneUnloaded` fires *before* this, mirroring the
+  /// mount order: an observer is told while the scene that owns the entities
+  /// has not yet torn anything down.
+  void onSceneUnmounted(Scene scene) {}
 
   /// Every prefab [describeScene] registered, in declaration order.
-  ///
-  /// Typed as [EventBus], not `EntityStruct`, because that is exactly the
-  /// capability this list exists to serve: the prefabs in it are collected as
-  /// listeners and get their own `describeEvents` pass. Nothing here needs them
-  /// to be entity structs specifically.
-  final List<EventBus> _prefabs = <EventBus>[];
+  final List<EntityStruct> _prefabs = <EntityStruct>[];
 
-  /// [_prefabs] - the live list, walked at boot by `Game._bindEvents` so each
-  /// prefab gets its own `describeEvents` pass. Internal: user code holds the
-  /// typed instances `describeScene` gave it, never this.
+  /// [_prefabs] - the live list. Internal: user code holds the typed instances
+  /// `describeScene` gave it, never this.
   @internal
-  List<EventBus> get declaredPrefabs => _prefabs;
-
-  /// Offers this scene and its prefabs to the collector, so an event declared
-  /// above reaches every entity struct this scene can spawn.
-  ///
-  /// The explicit half of the composition walk - the event API does not know a
-  /// scene has prefabs, so the scene says so. See `EventBus.collectListeners`.
-  ///
-  /// Delegates to each prefab's own `collectListeners` instead of offering it
-  /// directly, so the walk stays uniform all the way down: a prefab that ever
-  /// composes listeners of its own gets to say so in the same way a scene does.
-  @override
-  void collectListeners(ListenerCollector collector) {
-    super.collectListeners(collector);
-    for (var i = 0; i < _prefabs.length; i++) {
-      _prefabs[i].collectListeners(collector);
-    }
-  }
+  List<EntityStruct> get declaredPrefabs => _prefabs;
 
   Assets? _assets;
 
@@ -184,21 +153,6 @@ abstract class SceneStruct extends GameListenerBase
   @internal
   GameState? get stateOrNull => _state;
 
-  // `onMounted(Scene)`/`onUnmounted(Scene)` used to live here as plain
-  // virtuals beside the dispatchers, and are now the dispatchers: a
-  // `SceneStruct` mixes in `SceneLifecycleListener`, so it hears its own
-  // mount through [mountedEvent] like anything else.
-  //
-  // I argued at length that this was impossible, and was wrong. The claim
-  // was that the virtuals *bracket* the dispatch in opposite orders -
-  // owner first at mount, owner last at unmount - and that "one listener
-  // list cannot deliver that". There are **two** lists, one per
-  // dispatcher, filled by one collect pass; the orders differ because
-  // [unmountedEvent] reads its list backwards. The guarantee survives and
-  // the special case does not.
-  //
-  // Override `onSceneMounted(Scene)` / `onSceneUnmounted(Scene)`.
-
   bool _initialized = false;
 
   /// Every asset declared while this scene was initialized, in declaration
@@ -297,33 +251,6 @@ abstract class SceneStruct extends GameListenerBase
       if (declaration is EntityStruct) scene.register(declaration);
     }
     describeScene(scene);
-    // A scene brought up by hand has no boot pass to bind its events, so it
-    // does it now. One brought up by a `Game` waits: a prefab's
-    // `collectListeners` may reach for a system (`getSystem<T>()`), and
-    // `Game._bootGame` runs `describeScenes` before it collects the systems,
-    // so no system exists at this point. `Game` calls [bindEvents] once every
-    // declaration exists.
-    if (_state == null) bindEvents();
-  }
-
-  bool _eventsBound = false;
-
-  /// Runs the declare-then-collect event passes over this scene and every
-  /// prefab it registered.
-  ///
-  /// Idempotent, because three paths reach it - [initializeScene] for a
-  /// headless scene, `Game._bindEvents` for a declared one, and
-  /// `GameState.loadScene` for one loaded at runtime - and a `late final`
-  /// dispatcher assigned twice throws. The guard is what lets each of those
-  /// call it without first working out whether one of the others already did.
-  @internal
-  void bindEvents() {
-    if (_eventsBound) return;
-    _eventsBound = true;
-    EventBinder.bind(this);
-    for (var i = 0; i < _prefabs.length; i++) {
-      EventBinder.bind(_prefabs[i]);
-    }
   }
 
   bool get isInitialized => _initialized;
@@ -408,20 +335,13 @@ abstract class SceneStruct extends GameListenerBase
         );
       }
     }
-    // The one entity-mount notification there is. A struct that wants to
-    // initialise its own rows mixes in `EntityLifecycleListener` and is
-    // collected into this dispatcher by the default `collectListeners`, so
-    // "my own entity" and "somebody else's entity of this struct" arrive
-    // through the same door. There is no separate virtual hook.
-    //
-    // Unguarded, because there is nothing to guard against: the `Entity`
-    // travels as an argument, so a dispatch with no listeners is an empty loop
-    // that allocates nothing.
-    prefab.mountedEvent.call(entity);
+    // The struct answers for its own row first - a virtual, because there is
+    // one receiver and the framework is the only caller.
+    prefab.onEntityMounted(entity);
     // The world-observation half, from the same call site so the narrow and
-    // broad views can never disagree about when a spawn happened. The prefab's
-    // own listeners run first: something watching the whole world sees an
-    // entity whose struct has already initialised it.
+    // broad views can never disagree about when a spawn happened. The prefab
+    // runs first: something watching the whole world sees an entity whose
+    // struct has already initialised it.
     // `stateOrNull`, not `state`: a scene brought up through the public
     // `initializeScene` rather than `GameState.loadScene` has no simulation
     // behind it - the headless-fixture case that accessor exists for. Such a
@@ -519,7 +439,7 @@ abstract class SceneStruct extends GameListenerBase
           // on the way in: an observer is told while the struct that owns the
           // entity has not yet torn anything down.
           observers?.entityDespawnedEvent.call(entity);
-          prefab.unmountedEvent.call(entity);
+          prefab.onEntityUnmounted(entity);
         }
       }
     }
@@ -796,13 +716,8 @@ final class _SceneDescriptor implements SceneDescriptor {
     // *when* the bits are taken, which is what leaves an array length
     // adjustable and a camera-view table resolvable up to this line.
     data.realize();
-    // Recorded for the event passes: `Game._bindEvents` gives each prefab its
-    // own `describeEvents`, and `SceneStruct.collectListeners` walks this list
-    // so an event declared above reaches every struct the scene can spawn.
-    //
     // A declared child lands here before its declarer does, because its whole
-    // registration finishes inside the walk above. Deterministic, which is all
-    // the event order has ever promised.
+    // registration finishes inside the walk above.
     _scene._prefabs.add(object);
     // There is deliberately no describeState pass here. A prefab used to be
     // able to declare a state channel, threaded through the scene's `game`
@@ -1067,7 +982,7 @@ extension EntityLifetime on Entity {
     final handle = SceneRegistry.handleAt(sceneSlot);
     final owner = handle == null ? null : SceneRegistry.tryResolve(handle);
     owner?.stateOrNull?.entityDespawnedEvent.call(this);
-    storage.prefab.unmountedEvent.call(this);
+    storage.prefab.onEntityUnmounted(this);
     // After every listener has read the row and before the row goes: a
     // heap-object field's value is a slot in a process-global table, and
     // freeing the row reclaims the page bytes holding the address but not the

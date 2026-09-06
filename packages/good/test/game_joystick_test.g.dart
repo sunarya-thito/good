@@ -25,8 +25,6 @@ List<ScannableField> _collect$StickSystem(Object object) {
   return <ScannableField>[
     owner.move,
     owner.aim,
-    owner.mountEvent,
-    owner.unmountEvent,
   ];
 }
 

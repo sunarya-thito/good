@@ -153,9 +153,7 @@ entity.destroy();          // removes it and its whole subtree
 ```
 
 `addEntity` allocates a row in the prefab's archetype, applies every declared
-default, fires the prefab's mount event — which is where `onEntityMounted`
-comes from, if the prefab mixes in `EntityLifecycleListener` — and returns the
-handle. That returned handle is the only time the engine offers you this
+default, calls the prefab's `onEntityMounted`, and returns the handle. That returned handle is the only time the engine offers you this
 particular entity, so keep it if you will want it later; there is no lookup by
 name or tag. See [Events and listeners](events.md).
 
@@ -212,8 +210,8 @@ handle: one address, one decode. Declare an asset wherever you use it; declaring
 it twice costs nothing and forgetting to costs a `LateInitializationError` on
 mount.
 
-Scenes can also mix in `SceneLifecycleListener`, `Tickable`, `FixedTickable`,
-`Coroutines` and `Animations` — a scene is a `GameListener`, so it can hold
+A scene overrides `onSceneMounted` and `onSceneUnmounted` to hear its own
+bring-up and tear-down, and can mix in `Coroutines` and `Animations` for
 per-scene logic without a system.
 
 ## Composing scenes with mixins

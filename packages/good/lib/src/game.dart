@@ -2027,32 +2027,27 @@ abstract class Game implements RandomOwner, Scannable {
     // the end of [_bootGame] instead.
   }
 
-  /// Binds events for the `GameState`, every declared system, and every
-  /// declared scene with its prefabs.
+  /// Binds events for the `GameState` and every declared system.
   ///
-  /// Runs after **all** the declaration passes, and that ordering is
-  /// load-bearing: a prefab's `collectListeners` may offer a system into its
-  /// own dispatcher (`collector.offer(getSystem<T>())`), which needs the
-  /// systems to exist. [_bootGame] declares scenes before systems, so at the
-  /// moment a scene registers there is no system to offer - a scene cannot
-  /// bind its own events at registration time and waits for this instead.
-  /// `SceneStruct.bindEvents` is idempotent, so calling it here is safe
-  /// whichever path already ran.
+  /// One pass over both, in one binder, so a dispatcher declared on a system
+  /// collects the same listeners one on the state does. The state goes first
+  /// only so its dispatchers come first in the binder's list, which decides
+  /// nothing about delivery - the order listeners arrive in is the order they
+  /// are offered.
   ///
-  /// Binding is per owner, and that is what scopes an event: a dispatcher only
-  /// ever sees what its own owner offered.
+  /// Runs after **all** the declaration passes, because `state.declaredSystems`
+  /// is what there is to bind and [_bootGame] fills it a few lines earlier.
+  /// That is also what constructs a system held in an `@system late final`
+  /// field: the initialiser runs on first touch, and `collectDeclarations` is
+  /// the touch.
+  ///
+  /// Scenes and prefabs are not here. They declare no dispatchers and receive
+  /// no events; a struct hears about its own scene or its own entities through
+  /// a virtual the engine calls.
   void _bindEvents(GameRuntime runtime) {
     final state = runtime.state;
-    if (state is EventBus) EventBinder.bind(state as EventBus);
-    if (state != null) {
-      final systems = state.declaredSystems;
-      for (var i = 0; i < systems.length; i++) {
-        EventBinder.bind(systems[i]);
-      }
-    }
-    for (var i = 0; i < _declaredScenes.length; i++) {
-      _declaredScenes[i].bindEvents();
-    }
+    if (state == null) return;
+    EventBinder.bind(<EventBus>[state, ...state.declaredSystems]);
   }
 
   // There is deliberately no `_captureRegistries`/`_restoreRegistries` pair
@@ -2080,8 +2075,7 @@ abstract class Game implements RandomOwner, Scannable {
   // `EntityStruct.bindArchetype` already use. Each is a plain field read: no
   // copying, no allocation, safe to call once per system per tick.
 
-  /// Every scene declared in [describeScenes], in declaration order - what
-  /// `GameState.collectListeners` walks to reach the prefabs beneath them.
+  /// Every scene declared in [describeScenes], in declaration order.
   @internal
   List<SceneStruct> get declaredScenes => _declaredScenes;
 

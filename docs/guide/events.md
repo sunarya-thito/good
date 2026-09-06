@@ -10,7 +10,7 @@ class ArenaState extends GameState2D<ArenaGame> {}
 
 class MusicSystem extends GameSystem {}
 
-late EventDispatcher<EntityLifecycleListener, Entity> mountedEvent;
+late EventDispatcher<EntitySpawnListener, Entity> entitySpawnedEvent;
 late EventDispatcher<WaveListener, int> waveCleared;
 int wave = 1;
 
@@ -41,12 +41,9 @@ An event is an `EventDispatcher<L, E>` held in a field. `L` is the listener
 type it delivers to, `E` is the payload it carries, and you fire it by calling
 it.
 
-On a `GameState` or an `EntityStruct` the declaration goes in the field's own
-initialiser. Both are built by the framework — `Game.createState` for one,
-`descriptor.has(Orc.new)` for the other — so there is a constructor call for
-the declaration to happen inside:
+The declaration goes in the field's own initialiser:
 
-<!-- snippet: in EntityStruct -->
+<!-- snippet: in GameSystem -->
 ```dart
 final wounded = Event.of<WoundListener, int>(
   (listener, damage) => listener.onWounded(damage),
@@ -68,7 +65,7 @@ Firing it is one call, and the dispatcher is named `call` so the parentheses
 work directly:
 
 ```dart
-mountedEvent(entity);       // same as mountedEvent.call(entity)
+entitySpawnedEvent(entity);   // same as entitySpawnedEvent.call(entity)
 ```
 
 The closure is the whole of delivery, and it is built once, at declaration.
@@ -82,19 +79,18 @@ For an event that carries nothing, use `Event.signal` and hold a
 the entire message, and `GameState.fixedTickEvent` is this declaration with a
 different name on it:
 
-<!-- snippet: in EntityStruct -->
+<!-- snippet: in GameSystem -->
 ```dart
 final chirped = Event.signal<ChirpListener>((listener) => listener.onChirp());
 ```
 
-### The hook, and who still needs it
+### The hook
 
-A `SceneStruct` is constructed by you, not by the framework — `final level =
-MainScene();` — so nothing is open while its fields initialise. It declares in
-`describeEvents`, which runs once at boot and is handed a descriptor to declare
-into:
+`describeEvents` is the other form. It runs once at boot, is handed a descriptor
+to declare into, and exists for a dispatcher whose delivery closure needs
+something the field initialiser cannot see:
 
-<!-- snippet: in SceneStruct -->
+<!-- snippet: in GameSystem -->
 ```dart
 late final EventDispatcher<WaveListener, int> waveSpotted;
 
@@ -110,37 +106,8 @@ void describeEvents(EventDescriptor descriptor) {
 `late final` with no initialiser is right here and only here: the field is
 assigned from the hook, which runs after the constructor.
 
-Two base-class pairs are declared this way too, for a narrower reason.
-`EntityStruct`'s `mountedEvent`/`unmountedEvent` and `GameSystem`'s
-`mountEvent`/`unmountEvent` are inherited by every struct and every system
-however it was built, so neither can assume a binder of its own. A pair you
-declare on your own struct or your own system can, as long as you let the
-framework build it.
-
-That caveat is worth reading twice for a prefab, because the failure is quiet.
-`SceneDescriptor.has` takes a `T Function()`, and a closure may hand back an
-object that already existed:
-
-<!-- snippet: skip the wrong half of a before/after, and deliberately so -->
-```dart
-final _spawner = Spawner();                 // built here, in a state field
-// ...
-descriptor.has(() => _spawner);             // handed over, not built
-```
-
-A prefab handed over that way throws, because nothing was open above it. Build
-inside the closure, or pass the constructor:
-
-<!-- snippet: skip two fragments of one class body, not a class -->
-```dart
-late final Spawner spawner;
-// ...
-spawner = descriptor.has(Spawner.new);
-```
-
-The hook works on all four owners and is not going anywhere. An owner may use
-both forms at once: its fields' dispatchers are declared first, its hook's
-second, and one collect pass fills them all.
+An owner may use both forms at once: its fields' dispatchers are declared first,
+its hook's second, and one collect pass fills them all.
 
 Keep the handle, whichever way you declared it. Nothing is addressable by name,
 so there is nothing to look up later — the same shape every other `describe*`
@@ -148,16 +115,19 @@ pass uses.
 
 ## Who can declare one
 
-Anything that mixes in `EventBus`, whose bound is `on GameListener`. Four
-framework types qualify — `GameState`, `SceneStruct`, `EntityStruct` and
-`GameSystem` — and they are exactly the four that live on the game isolate.
-`GameState`, `EntityStruct` and `GameSystem` declare on a field; `SceneStruct`
-declares in `describeEvents`, for the construction reason above.
+Anything that mixes in `EventBus`, whose bound is `on GameListener`. Two
+framework types qualify — `GameState` and `GameSystem` — and they are the two
+that carry behaviour on the game isolate.
 
-`Game` is not a `GameListener`, so it cannot declare or receive an event. Every
-event in the engine happens on the simulating isolate; traffic to Flutter goes
-out through [state channels](flutter-bridge.md#state-channels) and comes back
-as [commands](flutter-bridge.md#commands).
+A `SceneStruct` and an `EntityStruct` are neither. They are declarations of a
+scene and of a row layout, they receive no events, and they hear their own
+bring-up through `onSceneMounted` and `onEntityMounted`, which the engine calls
+on them directly.
+
+`Game` is not a `GameListener` either, so it cannot declare or receive an event.
+Every event in the engine happens on the simulating isolate; traffic to Flutter
+goes out through [state channels](flutter-bridge.md#state-channels) and comes
+back as [commands](flutter-bridge.md#commands).
 
 These are the built-in dispatchers, with the mixin you apply to hear each one:
 
@@ -168,54 +138,44 @@ These are the built-in dispatchers, with the mixin you apply to hear each one:
 | `gameMountedEvent`, `gameUnmountedEvent` | `GameState` | `GameLifecycleListener` |
 | `entitySpawnedEvent`, `entityDespawnedEvent` | `GameState` | `EntitySpawnListener` |
 | `sceneLoadedEvent`, `sceneUnloadedEvent` | `GameState` | `SceneLoadListener` |
-| `mountedEvent`, `unmountedEvent` | `SceneStruct` | `SceneLifecycleListener` |
-| `mountedEvent`, `unmountedEvent` | `EntityStruct` | `EntityLifecycleListener` |
-| `mountEvent`, `unmountEvent` | `GameSystem` | `GameSystemLifecycleListener` |
 
-The pairs are not redundant. `SceneLifecycleListener` on a `SceneStruct` means
-"an instance of **me** mounted"; `SceneLoadListener` on a system means "**a**
-scene mounted, tell me which". Which one you want depends on whether you are
-the thing coming up or an observer watching the world. The entity pair splits
-the same way.
+Three more hooks look like they belong in that table and do not.
+`GameSystem.onMounted`, `SceneStruct.onSceneMounted` and
+`EntityStruct.onEntityMounted` are methods, not events: one receiver, the
+framework the only caller, and the receiver is the thing the call is about.
+`SceneLoadListener` on a system is the other question
+— "**a** scene mounted, tell me which" — and it is an event because the
+audience is open. The entity pair splits the same way.
 
 ## How listeners are collected
 
-Two passes run over each owner at boot, in this order:
+Two passes run at boot, in this order:
 
-1. **The declaration pass** creates every dispatcher that owner declares — the
-   ones in its field initialisers first, then the ones in `describeEvents`.
-2. **`collectListeners`** walks that owner's composition and offers each
-   candidate to every dispatcher it just created. A dispatcher accepts a
-   candidate when it is an `L`, and ignores it otherwise.
+1. **The declaration pass** creates every dispatcher in the game — the state's
+   and every system's, field initialisers first and `describeEvents` second.
+2. **`collectListeners`** walks the composition once and offers each candidate
+   to **every** dispatcher from pass one. A dispatcher accepts a candidate when
+   it is an `L`, and ignores it otherwise.
 
 After that the lists are settled. Dispatch is then an indexed `for` over a
 plain list — no walking, no type tests, no allocation, and no work at all for
 an object that could never have received the event.
 
-The default `collectListeners` offers `this`, which is what makes a prefab hear
-its own mount. An owner that composes other things overrides it and offers them
-too, and those overrides are the whole of how far an event travels:
+There is one binder for the whole game, so **who declared an event decides
+nothing about who hears it.** A dispatcher on a system reaches exactly what one
+on the state reaches, and that is what lets a package ship an event: it ships a
+system holding the dispatcher, and you write one `@system` field.
 
 ```mermaid
 flowchart TD
     gs["<b>GameState</b><br/><i>offers itself</i>"] --> sys["every declared GameSystem"]
-    gs --> sc["every declared SceneStruct<br/><i>offers itself</i>"]
-    sc --> pf["every prefab that scene registered"]
+    sys --> b["one binder: every dispatcher, wherever declared"]
+    gs --> b
 ```
 
-So **an event reaches its declaring owner's composition and nothing wider.**
-Declared on the `GameState` it reaches every system, every scene and every
-prefab. Declared on a `SceneStruct` it reaches that scene and the prefabs it
-registered. Declared on an `EntityStruct` or a `GameSystem` it reaches that one
-object, because a prefab composes nothing further and a system's default walk
-offers only itself.
-
-That last line explains something otherwise surprising: a dispatcher you
-declare on your own system delivers back to your own system and to nobody else.
-Put a game-wide event on the state.
-
-You can widen your own walk by overriding `collectListeners`, calling `super`
-first:
+The default `collectListeners` offers `this`. An owner that composes other
+things overrides it and offers them too — which is how the state offers its
+systems:
 
 <!-- snippet: in GameState -->
 ```dart
@@ -227,9 +187,9 @@ void collectListeners(ListenerCollector collector) {
 ```
 
 Skipping `super` drops everything the framework was about to offer — every
-system and every scene, in the `GameState` case. Offering the same object twice
-is harmless: the collector deduplicates by identity, so a listener never
-receives one event twice.
+system, in the `GameState` case. Offering the same object twice is harmless: the
+collector deduplicates by identity, so a listener never receives one event
+twice.
 
 !!! info "A disabled system stays in the list"
     `state.disableSystem<AiSystem>()` does not rebuild anything. The system is
@@ -240,13 +200,12 @@ receives one event twice.
 ## Ordering
 
 Delivery follows collection order, and collection order is declaration order:
-systems in the order their `@system` fields declared them (then `compareTo`), scenes
-in `describeScenes` order, prefabs in `describeScene` order. Nothing sorts at
-dispatch time.
+the state, then its systems in the order their `@system` fields declared them
+(then `compareTo`). Nothing sorts at dispatch time.
 
-Bring-up runs outside-in — the owner first, then what it composes — so
+Bring-up runs outside-in — the thing coming up first, then the observers — so
 `onSceneMounted` on the scene struct itself has already spawned the starting
-entities by the time a watching system hears about it.
+entities by the time a watching system hears `onSceneLoaded`.
 
 Teardown has to run the other way. A listener told the world is going away
 *after* its owner has already taken it apart is looking at rubble. Pass
@@ -255,25 +214,25 @@ one list serving both orders instead of two that could drift apart:
 
 <!-- snippet-setup
 final descriptor = given<EventDescriptor>();
-late SignalDispatcher<GameSystemLifecycleListener> unmountEvent;
+late SignalDispatcher<GameLifecycleListener> shutdown;
 -->
 ```dart
-unmountEvent = descriptor.hasSignal(
-  (listener) => listener.onUnmounted(),
+shutdown = descriptor.hasSignal(
+  (listener) => listener.onGameUnmounted(),
   reverse: true,
 );
 ```
 
-That is `GameSystem`'s own teardown signal, declared in the hook because a
-system is one of the two owners that has to. On a field it is the same
-argument in the same place — `Event.signal(..., reverse: true)`, which is how
-`GameState.sceneUnloadedEvent` does it with a payload. The rule for your own events: forward for anything
-meaning "this now exists", reverse for anything meaning "this is going away".
+On a field it is the same argument in the same place —
+`Event.signal(..., reverse: true)`, which is how
+`GameState.sceneUnloadedEvent` does it with a payload. The rule for your own
+events: forward for anything meaning "this now exists", reverse for anything
+meaning "this is going away".
 
 ## Declaring an event of your own
 
-Three pieces. A listener mixin, a dispatcher on the owner whose reach you want,
-and a call.
+Three pieces. A listener mixin, a dispatcher on your state or on a system, and
+a call.
 
 **The listener mixin.** Bound `on GameListener`, with no-op bodies so a
 listener overrides only the hooks it cares about:
@@ -288,8 +247,8 @@ The bound is doing real work. `Game` is not a `GameListener`, so
 `class MyGame extends Game with WaveListener` fails to compile instead of
 compiling cleanly and never firing.
 
-**The dispatcher.** A wave clearing is game-wide, so it goes on the state,
-whose walk reaches everything:
+**The dispatcher.** On the state here, because the arena owns the wave counter.
+On a system it would reach the same listeners:
 
 ```dart
 class ArenaState extends GameState2D<ArenaGame> {
@@ -306,8 +265,9 @@ class ArenaState extends GameState2D<ArenaGame> {
 }
 ```
 
-**The listeners.** Anything the state collects opts in by mixing `WaveListener`
-in. It needs nothing else — no registration call, no handle to keep:
+**The listeners.** Any system, and the state itself, opts in by mixing
+`WaveListener` in. It needs nothing else — no registration call, no handle to
+keep:
 
 ```dart
 class MusicSystem extends GameSystem with WaveListener {
@@ -317,21 +277,21 @@ class MusicSystem extends GameSystem with WaveListener {
   }
 }
 
-class Orc extends EntityStruct with Transform2D, Renderable2D, WaveListener {
+class SpawnSystem extends GameSystem with WaveListener {
   @override
   void onWaveCleared(int wave) {
-    // fires once for the prefab, not once per orc
+    // queue the next wave's spawns
   }
 }
 ```
 
-!!! warning "A prefab is one object, so it hears an event once"
-    There is one `Orc` instance in the whole game — see
-    [Entities and components](entities-and-components.md#an-entitystruct-is-a-layout-not-an-object).
-    A broadcast event calls its handler a single time, with no entity attached,
-    even if ten thousand orcs are alive. Work that has to touch every orc
-    belongs in a system with a query; the prefab handler is for setting a flag
-    that the system then reads.
+!!! warning "A prefab cannot be a listener"
+    `class Orc extends EntityStruct with WaveListener` does not compile, and
+    that is the point: there is one `Orc` instance in the whole game — see
+    [Entities and components](entities-and-components.md#an-entitystruct-is-a-layout-not-an-object)
+    — so a handler on it would run once, with no entity attached, however many
+    orcs were alive. Work that has to touch every orc belongs in a system with
+    a query.
 
 Carrying more than one value means a record, exactly as
 [commands](flutter-bridge.md#more-than-one-parameter-use-a-record) do:

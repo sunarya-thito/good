@@ -73,8 +73,7 @@ class Enemy extends EntityStruct
         Transform2D,
         WorldTransform2D,
         Child,
-        Renderable2D,
-        EntityLifecycleListener {
+        Renderable2D {
   final body = Sprite.of(width: 36, height: 36, color: _enemyColor);
 
   /// Plain Dart state on the prefab, which lives on the game isolate and is
@@ -106,8 +105,7 @@ class Wingman extends EntityStruct
         Transform2D,
         WorldTransform2D,
         Child,
-        Renderable2D,
-        EntityLifecycleListener {
+        Renderable2D {
   final body = Sprite.of(width: 28, height: 28, color: _wingmanColor);
 
   @override

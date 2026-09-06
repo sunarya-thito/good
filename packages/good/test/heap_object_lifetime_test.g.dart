@@ -30,8 +30,6 @@ List<ScannableField> _collect$Thing(Object object) {
     owner.childPrevSibling,
     owner.owned,
     owner.maybe,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -39,8 +37,6 @@ List<ScannableField> _collect$Level(Object object) {
   final owner = object as _Level;
   return <ScannableField>[
     owner.thing,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -48,8 +44,6 @@ List<ScannableField> _collect$GameLevel(Object object) {
   final owner = object as _GameLevel;
   return <ScannableField>[
     owner.thing,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 

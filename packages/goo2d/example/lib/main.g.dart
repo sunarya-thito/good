@@ -54,8 +54,6 @@ List<ScannableField> _collect$Player(Object object) {
     owner.transformScaleX,
     owner.transformScaleY,
     owner.transformRotation,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -82,8 +80,6 @@ List<ScannableField> _collect$Enemy(Object object) {
     owner.transformScaleX,
     owner.transformScaleY,
     owner.transformRotation,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -110,8 +106,6 @@ List<ScannableField> _collect$Wingman(Object object) {
     owner.transformScaleX,
     owner.transformScaleY,
     owner.transformRotation,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -136,8 +130,6 @@ List<ScannableField> _collect$Eye(Object object) {
     owner.transformScaleX,
     owner.transformScaleY,
     owner.transformRotation,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -148,8 +140,6 @@ List<ScannableField> _collect$MainScene(Object object) {
     owner.enemyPrefab,
     owner.wingmanPrefab,
     owner.eyePrefab,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -157,8 +147,6 @@ List<ScannableField> _collect$SpinSystem(Object object) {
   final owner = object as SpinSystem;
   return <ScannableField>[
     owner.spinnable,
-    owner.mountEvent,
-    owner.unmountEvent,
   ];
 }
 

@@ -24,8 +24,6 @@ List<ScannableField> _collect$Mover(Object object) {
   final owner = object as _Mover;
   return <ScannableField>[
     owner.marker,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -33,8 +31,6 @@ List<ScannableField> _collect$Scene(Object object) {
   final owner = object as _Scene;
   return <ScannableField>[
     owner.mover,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 

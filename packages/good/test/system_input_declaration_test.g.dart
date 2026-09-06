@@ -24,8 +24,6 @@ List<ScannableField> _collect$OneActionSystem(Object object) {
   final owner = object as _OneActionSystem;
   return <ScannableField>[
     owner.fire,
-    owner.mountEvent,
-    owner.unmountEvent,
   ];
 }
 

@@ -698,7 +698,7 @@ overwrite.
 
 ## Events
 
-<!-- snippet: in GameSystem with GameSystemLifecycleListener -->
+<!-- snippet: in GameSystem -->
 ```dart
 @override
 void onMounted() {
@@ -712,13 +712,13 @@ void onMounted() {
 setter accepts back. Subscribe from `onMounted`, **not from a tick**: `+=` in
 `onFixedUpdate` adds a subscriber sixty times a second.
 
-`GameSystemLifecycleListener` is what supplies `onMounted`; `GameState.mount`
-fires every system's `mountEvent` once the game's own `onMounted` has returned.
+Every `GameSystem` has `onMounted`; `GameState.mount` calls it on each of them
+once the game's own `onMounted` has returned.
 
 `-=` removes one. It compares by `==`, so a **method tear-off** can be removed
 by writing it again:
 
-<!-- snippet: in GameSystem with GameSystemLifecycleListener -->
+<!-- snippet: in GameSystem -->
 ```dart
 @override
 void onMounted() {

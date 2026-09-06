@@ -58,8 +58,6 @@ List<ScannableField> _collect$DefaultEye(Object object) {
     owner.transformRotationY,
     owner.transformRotationZ,
     owner.transformRotationW,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -101,8 +99,6 @@ List<ScannableField> _collect$WideEye(Object object) {
     owner.transformRotationY,
     owner.transformRotationZ,
     owner.transformRotationW,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -111,8 +107,6 @@ List<ScannableField> _collect$Scene(Object object) {
   return <ScannableField>[
     owner.defaultEye,
     owner.wideEye,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 

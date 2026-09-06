@@ -108,11 +108,8 @@ List<ScannableField> _collect$NetState(Object object) {
 }
 
 List<ScannableField> _collect$Watcher(Object object) {
-  final owner = object as _Watcher;
-  return <ScannableField>[
-    owner.mountEvent,
-    owner.unmountEvent,
-  ];
+  object as _Watcher;
+  return const <ScannableField>[];
 }
 
 List<ScannableField> _collect$FireRenamed(Object object) {

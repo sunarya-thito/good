@@ -24,8 +24,6 @@ List<ScannableField> _collect$MusicScene(Object object) {
   final owner = object as _MusicScene;
   return <ScannableField>[
     owner.theme,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -33,8 +31,6 @@ List<ScannableField> _collect$AlsoMusicScene(Object object) {
   final owner = object as _AlsoMusicScene;
   return <ScannableField>[
     owner.theme,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -42,8 +38,6 @@ List<ScannableField> _collect$EffectScene(Object object) {
   final owner = object as _EffectScene;
   return <ScannableField>[
     owner.hit,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 

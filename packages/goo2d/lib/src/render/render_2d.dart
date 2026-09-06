@@ -1811,8 +1811,7 @@ final class _SpriteDrawQueue {
 /// or nothing - so one long label that does not fit closes the budget for
 /// everything behind it, which under the depth trim is the back of the
 /// scene.
-class GameRenderer2D extends GameSystem
-    with Tickable, GameSystemLifecycleListener {
+class GameRenderer2D extends GameSystem with Tickable {
   /// Runs in the presentation phase, after the fixed tick commits, and after
   /// `WorldTransformSystem` within it.
   ///
