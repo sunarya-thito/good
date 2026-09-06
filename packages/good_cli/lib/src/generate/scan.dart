@@ -245,18 +245,24 @@ class ScannedField {
 
   /// Whether it is written `late`.
   ///
-  /// A `late` field with an initialiser is allowed and is how a declaration
-  /// reaches `this`; a `late` field without one is the half of a double
-  /// declaration this walk can see. So this is read together with
-  /// [hasInitializer] and never on its own - see `scanDeclarations`.
+  /// **Nothing is refused for being `late`, and nothing ever was.** The word
+  /// is read to word a report and to find a ring of deferred initialisers, and
+  /// for nothing else: `late final X x;` and `X x;` are the same field with
+  /// the deferral spelled two ways, and neither is refused.
+  ///
+  /// Said outright because the obvious edit is wrong twice over. A walk keyed
+  /// on this would refuse `late final x = Effector(region);`, the shape that
+  /// exists so a declaration can reach `this`, and `late Ptr x;` assigned in a
+  /// constructor body, which a collector reads perfectly well - and either
+  /// refusal would look like an old rule working rather than a new bug.
   final bool isLate;
 
   /// Whether it has an initialiser at its declaration.
   ///
-  /// A `late final X x;` with no initialiser is filled in from somewhere the
-  /// declaration does not say - a `describeX` body, a constructor. This walk
-  /// deliberately does not go looking for the other half; one half is enough
-  /// to refuse.
+  /// Its absence is reported, not refused - see [DeclarationScan.deferred].
+  /// This walk deliberately does not go looking for the other half, so it
+  /// cannot tell a constructor body, which runs *before* a collect pass, from
+  /// a `describeX` body, which runs after one.
   final bool hasInitializer;
 
   /// Whether the initialiser is, at its head, a call to an unnamed
@@ -897,8 +903,20 @@ Future<ScanSources> readSources(
 /// # Where it goes, and what bounds it
 ///
 /// `.dart_tool/` under the directory the walk was asked about, which is the
-/// package or project whose sources it is caching and which every layout in
-/// this repository and every `flutter create` project already ignores in git.
+/// package or project whose sources it is caching.
+///
+/// **It ignores itself, rather than relying on a rule outside it.** Every
+/// package's own `.gitignore` covers `.dart_tool/` and so does what
+/// `flutter create` writes, and a repository *root* is neither a package nor a
+/// project: `good_tool --dir packages` run from one - which is what the usage
+/// text shows - left twenty-seven megabytes that `git status` reported and
+/// nothing ignored. Reproduced, and it is why a `.gitignore` holding `*` goes
+/// inside the directory: that covers wherever it lands, including a
+/// third-party monorepo no rule of this repository's ever reaches.
+///
+/// Rewritten when absent rather than once, because eviction deletes the oldest
+/// files in the directory and has no reason to spare this one.
+///
 /// A checkout that cannot be written to falls back to memory rather than
 /// failing: a cache is an optimisation and refusing to run without one would
 /// make it a dependency.
@@ -911,6 +929,8 @@ ByteStore _scanByteStore(String home) {
   final cache = p.join(home, '.dart_tool', 'good_scan');
   try {
     Directory(cache).createSync(recursive: true);
+    final ignore = File(p.join(cache, '.gitignore'));
+    if (!ignore.existsSync()) ignore.writeAsStringSync('*\n');
     return EvictingFileByteStore(cache, scanCacheMaxBytes);
   } on FileSystemException {
     return MemoryByteStore();
@@ -2080,6 +2100,7 @@ class DeclarationScan {
     required this.cycles,
     required this.uncollectable,
     required this.unmarked,
+    this.deferred = const <String, String>{},
   });
 
   /// Classes holding at least one declaration, in path order.
@@ -2157,6 +2178,26 @@ class DeclarationScan {
   /// would delete the shape the marker was introduced to make writable.
   final Map<String, String> unmarked;
 
+  /// Declarations whose value is assigned somewhere other than the line that
+  /// declares them, keyed `Class.field`, to why.
+  ///
+  /// Reported and **not** refused, and the difference is what a run of the
+  /// engine actually does with each shape. A constructor body runs before a
+  /// collect pass, so `late Ptr hp; Player() { hp = ...; }` is assigned by the
+  /// time the collector reads it and the row is right. A describe pass runs
+  /// *after* one, so the same field filled in there is unassigned at the read
+  /// and throws `LateInitializationError` **naming the field** - verified by
+  /// running both.
+  ///
+  /// This walk cannot tell those two apart: it deliberately does not go
+  /// looking for the other half, and a rule that had to find it would pass
+  /// whenever the assignment moved somewhere this pass does not read. Refusing
+  /// therefore refused the working shape to catch the broken one earlier - and
+  /// the broken one already fails loudly, by name, at the first thing that
+  /// touches it. So what is bought is *earlier* detection, not detection, and
+  /// it was being paid for in correct code.
+  final Map<String, String> deferred;
+
   int get declarationCount {
     var count = 0;
     for (final declarer in declarers) {
@@ -2170,42 +2211,52 @@ class DeclarationScan {
 ///
 /// # What is refused, and why none of it is a style rule
 ///
-/// **No initialiser, `late` or not.**
-/// `late final DataPointer<CameraView?> cameraView;` filled in from a
-/// `describeStruct` body is one declaration written twice, and the second half
-/// runs at a moment nothing at the declaration says. It is also what a
-/// collector trips over first: a collect pass reads declarations off a freshly
-/// constructed instance, and an unassigned `late final` throws there instead
-/// of yielding anything. Without the word it is the same field with the
-/// deferral unstated.
+/// **`static`, and a top-level variable.** Both initialise lazily - the first
+/// read runs the initialiser - so the value lands on whichever owner happens
+/// to be under construction at that moment, which is one instance in a process
+/// that has many. A top-level variable is refused whether or not `late` is
+/// written, because Dart makes every one of them lazy regardless.
 ///
-/// **A `late` field *with* an initialiser is allowed, and is how a declaration
-/// reaches `this`.** A `late` initialiser runs on first touch, after
-/// construction, so `Effector(region)` can name the field beside it and
-/// `Asset.of(key)` can read a constructor argument. The collector's read *is*
+/// **A ring of deferred initialisers.**
+/// `late final a = b; late final b = a;` compiles, and the first touch of
+/// either throws `LateInitializationError` naming one field and nothing about
+/// the ring, from a stack with no engine frame on it. The collector's read
+/// *is* that first touch, so the ring is a boot that dies with nothing to go
+/// on; see [DeclarationScan.cycles].
+///
+/// **A field whose type the analyzer could not name**, because a field that
+/// might be a declaration and might not is the one outcome this walk exists to
+/// prevent; see [DeclarationScan.unresolved].
+///
+/// # `late` is not on that list, and never was
+///
+/// A `late` initialiser runs on first touch, after construction, so it is the
+/// one shape that can read `this` - `Effector(region)` names the field beside
+/// it, `Asset.of(key)` reads a constructor argument. The collector's read is
 /// that first touch and Dart memoises the result, so collect and gameplay see
-/// one object. The rule the `late` ban was carrying is the double declaration,
-/// and a `late final x = ...` is not one: it is written once, in the place
-/// that declares it.
+/// one object.
 ///
-/// Two things follow from running an initialiser later rather than never. An
-/// initialiser that throws now throws during collect, where the stack names
-/// the field rather than a hook. And a ring of them -
-/// `late final a = b; late final b = a;` - is a `LateInitializationError` that
-/// names nothing at run time, so it is refused here, the way a prefab ring is;
-/// see [DeclarationScan.cycles].
+/// A `late` field with **no** initialiser is not refused either, and that is a
+/// narrowing this walk made deliberately. It cannot see where the value comes
+/// from, and the two places it can come from behave oppositely: a constructor
+/// body runs *before* a collect pass, so the field is assigned by the time the
+/// collector reads it, and a `describeX` body runs *after* one, so it is not.
+/// Refusing caught the second by refusing the first as well - and the second
+/// already fails loudly, at the first thing that touches it, with
+/// `LateInitializationError: Field 'mp' has not been initialized.` naming the
+/// field. Both halves verified by running. So the refusal bought *earlier*
+/// detection rather than detection, and paid for it in correct code; what is
+/// left is a report, [DeclarationScan.deferred].
+///
+/// One thing follows from running an initialiser later rather than never: an
+/// initialiser that throws throws during collect, where the stack names the
+/// field rather than a hook.
 ///
 /// # What is reported and not refused
 ///
 /// A bare constructor call with no marker - `final spare = Enemy();`. It is
 /// legal, it declares nothing, and it lands in [DeclarationScan.unmarked]; see
 /// [isCollectedDeclarationField].
-///
-/// **`static`, and a top-level variable.** Both initialise lazily - the first
-/// read runs the initialiser - so the value lands on whichever owner happens
-/// to be under construction at that moment. A top-level variable is refused
-/// whether or not `late` is written, because Dart makes every one of them
-/// lazy regardless.
 ///
 /// # What it does not look at
 ///
@@ -2228,6 +2279,7 @@ DeclarationScan scanDeclarations(ScanSources sources) {
   final unresolved = <DeclarationRefusal>[];
   final uncollectable = <String, String>{};
   final unmarked = <String, String>{};
+  final deferred = <String, String>{};
   final markers = scannableAnnotationNames(sources);
 
   final lateRings = <DeclarationRefusal>[];
@@ -2297,24 +2349,12 @@ DeclarationScan scanDeclarations(ScanSources sources) {
           continue;
         }
         if (!field.hasInitializer) {
-          refusals.add(
-            DeclarationRefusal(
-              owner: type.name,
-              field: field.name,
-              path: path,
-              reason: field.isLate
-                  ? 'it is late and has no initialiser, so the value is '
-                        'assigned somewhere else - a describe pass, a '
-                        'constructor body - and the declaration is written '
-                        'twice. A collect pass reads declarations off a '
-                        'freshly constructed instance and finds this one '
-                        'unassigned. Give the field its initialiser'
-                  : 'it has no initialiser, so whatever assigns it does so '
-                        'somewhere the declaration does not say. Give the '
-                        'field its initialiser',
-            ),
-          );
-          continue;
+          deferred['${type.name}.${field.name}'] =
+              'it has no initialiser, so something else assigns it. A '
+              'constructor body runs before a collect pass and this will be '
+              'read fine; a describe pass runs after one and this will throw '
+              'LateInitializationError naming the field. Nothing here can '
+              'tell those apart, so it is said rather than refused';
         }
         if (!isCollectedDeclarationField(field, scope, markers)) {
           unmarked['${type.name}.${field.name}'] =
@@ -2365,6 +2405,7 @@ DeclarationScan scanDeclarations(ScanSources sources) {
     ],
     uncollectable: uncollectable,
     unmarked: unmarked,
+    deferred: deferred,
   );
 }
 

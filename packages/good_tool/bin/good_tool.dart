@@ -652,6 +652,7 @@ Future<void> _declarations(
     cycles: cycles,
     uncollectable: scan.uncollectable,
     unmarked: scan.unmarked,
+    deferred: scan.deferred,
   );
 
   if (verbose) {
@@ -666,6 +667,14 @@ Future<void> _declarations(
     final unmarked = scan.unmarked.keys.toList()..sort();
     for (final key in unmarked) {
       stdout.writeln('Not a declaration: $key - ${scan.unmarked[key]}');
+    }
+    // A third kind of line, and a third thing to do about it. This one is a
+    // declaration the walk cannot see the value of: it works if a constructor
+    // body assigns it and throws at collect if a describe pass does, and
+    // nothing here can tell which. Naming it is all that is honest.
+    final deferred = scan.deferred.keys.toList()..sort();
+    for (final key in deferred) {
+      stdout.writeln('Assigned elsewhere: $key - ${scan.deferred[key]}');
     }
   }
 

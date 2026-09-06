@@ -99,6 +99,24 @@ List<ScannableField> _collect$Level(Object object) {
   ];
 }
 
+List<ScannableField> _collect$FromConstructor(Object object) {
+  final owner = object as _FromConstructor;
+  return <ScannableField>[
+    owner.speed,
+    owner.mountedEvent,
+    owner.unmountedEvent,
+  ];
+}
+
+List<ScannableField> _collect$FromNowhere(Object object) {
+  final owner = object as _FromNowhere;
+  return <ScannableField>[
+    owner.speed,
+    owner.mountedEvent,
+    owner.unmountedEvent,
+  ];
+}
+
 /// Every fixture this library declares, and how to read one.
 ///
 /// It carries the package's own generated table as a
@@ -116,6 +134,8 @@ const GeneratedDeclarations _fieldDeclarationTestDeclarations =
         DeclarationCollector(_After, _collect$After),
         DeclarationCollector(_Broken, _collect$Broken),
         DeclarationCollector(_Level, _collect$Level),
+        DeclarationCollector(_FromConstructor, _collect$FromConstructor),
+        DeclarationCollector(_FromNowhere, _collect$FromNowhere),
       ],
       dependencies: <GeneratedDeclarations>[
         goodDeclarations,
