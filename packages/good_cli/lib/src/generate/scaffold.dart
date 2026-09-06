@@ -589,16 +589,17 @@ ${_declarationsOverride(projectName)}
 
 /// The **game isolate** half: what the game *does*.
 class ${className}State extends GameState<$gameClass> {
-  @override
-  void describeSystems(SystemDescriptor descriptor) {
-    super.describeSystems(descriptor);
-    // Composes every entity's local `Transform3D` against its ancestors into
-    // its `WorldTransform3D`, once per tick. Without it a child never moves
-    // with its parent - and again, `Game2D` declares the 2D twin of this for
-    // you while nothing declares this one.
-    descriptor.has(WorldTransform3DSystem.new);
-    descriptor.has(SpinSystem.new);
-  }
+  // Composes every entity's local `Transform3D` against its ancestors into
+  // its `WorldTransform3D`, once per tick. Without it a child never moves
+  // with its parent - and again, `Game2D` declares the 2D twin of this for
+  // you while nothing declares this one.
+  @system
+  final worldTransform = WorldTransform3DSystem();
+
+  // `@system` is what says a field is a declaration. Drop it and the line is
+  // an ordinary field holding a spare - legal, and it declares nothing.
+  @system
+  final spin = SpinSystem();
 
   @override
   void onMounted() {

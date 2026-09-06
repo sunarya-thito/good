@@ -70,9 +70,9 @@ reads it) or on the **`Game`** (for actions several systems share). All sources
 share one descriptor, so a type-level default registered anywhere is visible
 everywhere.
 
-`Input.of` works on both, and for the same reason: `SystemDescriptor.has` and
-`Game.start` each take a constructor, so the framework does the building and
-the registry is open while the fields initialise.
+`Input.of` works on both, and for the same reason: an action is built inert
+where it is written and resolved against the raw input block by the boot pass,
+so nothing has to be open while the fields initialise.
 
 The hook survives on both as well, and there is one thing that needs it:
 `hasDefaultValue` hands nothing back, so it has no field to live on. Either

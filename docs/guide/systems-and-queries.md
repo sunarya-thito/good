@@ -54,16 +54,15 @@ ticks it:
 class MyState extends GameState2D<MyGame> {
   int score = 0;
 
-  @override
-  void describeSystems(SystemDescriptor descriptor) {
-    super.describeSystems(descriptor);
-    descriptor.has(MovementSystem.new);
-  }
+  @system
+  final movement = MovementSystem();
 }
 ```
 
-Calling `super` matters — `GameState2D` declares the renderer and the world
-transform system there.
+`@system` is what says the field is a declaration. Drop it and the line is an
+ordinary field holding a spare — legal, and it declares nothing. `GameState2D`
+brings the renderer and the world transform system with it, as fields of its
+own, so there is no `super` call to remember.
 
 ## Two tick mixins
 

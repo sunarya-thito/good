@@ -32,6 +32,7 @@ List<ScannableField> _collect$ContactSystem(Object object) {
 List<ScannableField> _collect$StackedState(Object object) {
   final owner = object as _StackedState;
   return <ScannableField>[
+    owner.contactSystem,
     owner.fixedTickEvent,
     owner.tickEvent,
     owner.gameMountedEvent,

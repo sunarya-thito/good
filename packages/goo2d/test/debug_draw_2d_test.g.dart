@@ -92,6 +92,9 @@ List<ScannableField> _collect$Painter(Object object) {
 List<ScannableField> _collect$State(Object object) {
   final owner = object as _State;
   return <ScannableField>[
+    owner.painter,
+    owner.worldTransform,
+    owner.renderer,
     owner.fixedTickEvent,
     owner.tickEvent,
     owner.gameMountedEvent,

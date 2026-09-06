@@ -54,11 +54,8 @@ Declare the system on the state:
 
 <!-- snippet: in GameState -->
 ```dart
-@override
-void describeSystems(SystemDescriptor descriptor) {
-  super.describeSystems(descriptor);
-  descriptor.has(() => Box2DPhysicsSystem(gravityY: -10));
-}
+@system
+final physics = Box2DPhysicsSystem(gravityY: -10);
 ```
 
 That is the whole opt-in. Bodies are created as entities spawn and destroyed as

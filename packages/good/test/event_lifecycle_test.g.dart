@@ -135,6 +135,10 @@ List<ScannableField> _collect$TrackedScene(Object object) {
 List<ScannableField> _collect$LifecycleState(Object object) {
   final owner = object as _LifecycleState;
   return <ScannableField>[
+    owner.watcher,
+    owner.census,
+    owner.bystander,
+    owner.deaf2,
     owner.fixedTickEvent,
     owner.tickEvent,
     owner.gameMountedEvent,

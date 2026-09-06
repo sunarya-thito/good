@@ -36,6 +36,7 @@ List<ScannableField> _collect$AnalogSystem(Object object) {
 List<ScannableField> _collect$AnalogGameState(Object object) {
   final owner = object as _AnalogGameState;
   return <ScannableField>[
+    owner.analogSystem,
     owner.fixedTickEvent,
     owner.tickEvent,
     owner.gameMountedEvent,

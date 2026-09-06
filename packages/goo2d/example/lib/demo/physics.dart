@@ -471,9 +471,9 @@ class Sandbox extends SceneStruct {
 
 /// Stamps the clock immediately before `Box2DPhysicsSystem` runs.
 ///
-/// Says so, but does not enforce it on its own: see the note in
-/// [PhysicsState.describeSystems] for why this has to be *declared* ahead of
-/// the system it names for the constraint to survive at all.
+/// Says so, but does not enforce it on its own: see the note on
+/// [PhysicsState.physics] for why this has to be *declared* ahead of the
+/// system it names for the constraint to survive at all.
 class _PhysicsPhaseStart extends GameSystem with FixedTickable {
   @override
   int compareTo(GameSystem other) => other is Box2DPhysicsSystem ? -1 : 0;
@@ -724,6 +724,14 @@ class SandboxSystem extends GameSystem with FixedTickable {
 class PhysicsState extends DemoState<PhysicsGame> {
   final Sandbox sandbox = Sandbox();
 
+  // The two blanket probes, declared here rather than on `DemoState` because
+  // a subclass's fields are initialised first and a blanket claim only beats
+  // another blanket claim by being declared first - see `DemoState`.
+  @system
+  final fixedPhaseStart = FixedPhaseStart();
+  @system
+  final presentPhaseStart = PresentPhaseStart();
+
   /// Written by the probe pair below, read by [SandboxSystem] when it
   /// publishes. On [DemoProfile]'s clock rather than one of its own: the case
   /// already has a free-running monotonic clock and a second would only be a
@@ -734,45 +742,47 @@ class PhysicsState extends DemoState<PhysicsGame> {
   @override
   void onMounted() => loadScene(sandbox);
 
-  @override
-  void describeSystems(SystemDescriptor descriptor) {
-    super.describeSystems(descriptor);
-    // **The start probe is declared before the system it measures, and that
-    // is what makes the measurement real.** `sortSystems` asks the
-    // earlier-declared system of a pair first and takes the first non-zero
-    // answer; `Box2DPhysicsSystem.compareTo` answers -1 for everything that
-    // is not itself, so whenever it is asked first it wins and the other
-    // system's opinion is never read. The start probe says "before physics"
-    // and physics says "before everything", and only declaration order
-    // decides which of those two survives. With physics declared first the
-    // probe stamped the clock *after* the step and the demo's physics figure
-    // was the gap between two adjacent no-ops (#187).
-    //
-    // The end probe needs no such care: "after physics" and "physics first"
-    // agree, so it lands after the step from either side. It is declared
-    // before `SandboxSystem` because those two have no opinion about each
-    // other and the tie breaks on declaration order.
-    descriptor.has(_PhysicsPhaseStart.new);
-    // Gravity in metres per second squared, and heavier than the -10 default
-    // so a big pile settles while you watch it. Negative is down; see
-    // Box2DPhysicsSystem.gravityY.
-    // **Read off the Game, not a top-level.** `describeSystems` runs on the
-    // game isolate, and top-level state does not cross `Isolate.spawn` - a
-    // top-level `physicsWorkerCount` set on main read back as its default of
-    // 1 here, so the world was built single-threaded no matter what the
-    // caller asked for, and the bench dutifully reported that threading
-    // changed nothing. A field on the `Game` travels with the copied object
-    // graph and arrives.
-    descriptor.has(
-      () => Box2DPhysicsSystem(
-        gravityY: -18,
-        workerCount: game.solverWorkerCount,
-      ),
-    );
-    descriptor
-      ..has(_PhysicsPhaseEnd.new)
-      ..has(SandboxSystem.new);
-  }
+  // **The start probe is declared before the system it measures, and that
+  // is what makes the measurement real.** `sortSystems` asks the
+  // earlier-declared system of a pair first and takes the first non-zero
+  // answer; `Box2DPhysicsSystem.compareTo` answers -1 for everything that
+  // is not itself, so whenever it is asked first it wins and the other
+  // system's opinion is never read. The start probe says "before physics"
+  // and physics says "before everything", and only declaration order
+  // decides which of those two survives. With physics declared first the
+  // probe stamped the clock *after* the step and the demo's physics figure
+  // was the gap between two adjacent no-ops (#187). Declaration order is now
+  // the order these fields are written in.
+  @system
+  final physicsPhaseStart = _PhysicsPhaseStart();
+
+  // Gravity in metres per second squared, and heavier than the -10 default
+  // so a big pile settles while you watch it. Negative is down; see
+  // Box2DPhysicsSystem.gravityY.
+  //
+  // **Read off the Game, not a top-level.** A top-level `physicsWorkerCount`
+  // set on main read back as its default of 1 on the game isolate, so the
+  // world was built single-threaded no matter what the caller asked for, and
+  // the bench dutifully reported that threading changed nothing. A field on
+  // the `Game` travels with the copied object graph and arrives.
+  //
+  // `late final` because reading `game` needs `this`, which a plain field
+  // initialiser cannot reach. The collect pass is the first touch, and it
+  // runs on the game isolate, well after the state is bound to its runtime.
+  @system
+  late final physics = Box2DPhysicsSystem(
+    gravityY: -18,
+    workerCount: game.solverWorkerCount,
+  );
+
+  // The end probe needs no such care as the start one: "after physics" and
+  // "physics first" agree, so it lands after the step from either side. It is
+  // written before `SandboxSystem` because those two have no opinion about
+  // each other and the tie breaks on declaration order.
+  @system
+  final physicsPhaseEnd = _PhysicsPhaseEnd();
+  @system
+  final sandboxSystem = SandboxSystem();
 }
 
 class PhysicsGame extends DemoGame {
@@ -789,8 +799,9 @@ class PhysicsGame extends DemoGame {
   ///
   /// A plain field on the `Game` because that object is deep-copied to the
   /// game isolate, so a value set here arrives where the world is actually
-  /// built. A top-level would not: `describeSystems` runs on the game
-  /// isolate, where top-level state is back at its default.
+  /// built. A top-level would not: the field initialiser that builds the
+  /// system runs on the game isolate, where top-level state is back at its
+  /// default.
   ///
   /// Not a slider, because `workerCount` is fixed when the Box2D world is
   /// created and a world cannot change it afterwards - a control that

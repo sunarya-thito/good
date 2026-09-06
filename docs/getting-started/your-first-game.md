@@ -78,13 +78,10 @@ class PlayerSystem extends GameSystem with FixedTickable {
 Declare it on the **state**, not the game — a system exists only on the isolate
 that ticks it:
 
-```dart title="lib/game/my_game_game.dart" hl_lines="4 5 6 7 8"
+```dart title="lib/game/my_game_game.dart" hl_lines="2 3"
 class MyGameState extends GameState2D<MyGameGame> {
-  @override
-  void describeSystems(SystemDescriptor descriptor) {
-    super.describeSystems(descriptor);
-    descriptor.has(PlayerSystem.new);
-  }
+  @system
+  final player = PlayerSystem();
 
   @override
   void onMounted() => loadScene(MainScene());

@@ -90,13 +90,9 @@ class _OriginProbe extends GameSystem with Tickable {
 }
 
 class _ProbedState extends SceneGraphState {
-  late final _OriginProbe probe;
 
-  @override
-  void describeSystems(SystemDescriptor descriptor) {
-    super.describeSystems(descriptor);
-    probe = descriptor.has(_OriginProbe.new);
-  }
+  @system
+  final probe = _OriginProbe();
 }
 
 class _ProbedGame extends SceneGraphGame {

@@ -33,6 +33,7 @@ List<ScannableField> _collect$TouchSystem(Object object) {
 List<ScannableField> _collect$TouchState(Object object) {
   final owner = object as _TouchState;
   return <ScannableField>[
+    owner.touchSystem,
     owner.fixedTickEvent,
     owner.tickEvent,
     owner.gameMountedEvent,

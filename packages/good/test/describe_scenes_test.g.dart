@@ -77,6 +77,7 @@ List<ScannableField> _collect$SecondCensusSystem(Object object) {
 List<ScannableField> _collect$SecondCensusState(Object object) {
   final owner = object as _SecondCensusState;
   return <ScannableField>[
+    owner.secondCensusSystem,
     owner.fixedTickEvent,
     owner.tickEvent,
     owner.gameMountedEvent,
@@ -115,6 +116,7 @@ List<ScannableField> _collect$CensusSystem(Object object) {
 List<ScannableField> _collect$DeclaringState(Object object) {
   final owner = object as _DeclaringState;
   return <ScannableField>[
+    owner.censusSystem,
     owner.fixedTickEvent,
     owner.tickEvent,
     owner.gameMountedEvent,

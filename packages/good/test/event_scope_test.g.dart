@@ -67,6 +67,8 @@ List<ScannableField> _collect$PingState(Object object) {
   final owner = object as _PingState;
   return <ScannableField>[
     owner.ping,
+    owner.pingSystem,
+    owner.deafSystem,
     owner.fixedTickEvent,
     owner.tickEvent,
     owner.gameMountedEvent,

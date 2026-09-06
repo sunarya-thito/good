@@ -18,7 +18,7 @@ import 'package:goo2d_physics_box2d/goo2d_physics_box2d.dart';
 part 'static_sync_test.g.dart';
 
 late Game run;
-late Box2DPhysicsSystem physics;
+Box2DPhysicsSystem get physics => run.state.getSystem<Box2DPhysicsSystem>();
 late _Scene _declaration;
 
 class _Slab extends EntityStruct with Transform2D, Collider2D, RigidBody2D {
@@ -55,18 +55,16 @@ class _Turner extends GameSystem with FixedTickable {
   }
 }
 
-late _Turner _turner;
+_Turner get _turner => run.state.getSystem<_Turner>();
 
 class _GameState extends GameState<_Game> {
   @override
   void onMounted() {}
 
-  @override
-  void describeSystems(SystemDescriptor d) {
-    super.describeSystems(d);
-    physics = d.has(Box2DPhysicsSystem.new);
-    _turner = d.has(_Turner.new);
-  }
+  @system
+  final physics = Box2DPhysicsSystem();
+  @system
+  final turner = _Turner();
 }
 
 class _Game extends Game {

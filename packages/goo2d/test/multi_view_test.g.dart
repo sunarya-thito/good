@@ -122,6 +122,9 @@ List<ScannableField> _collect$Overlay(Object object) {
 List<ScannableField> _collect$MultiState(Object object) {
   final owner = object as _MultiState;
   return <ScannableField>[
+    owner.pointerPickingSystem,
+    owner.worldTransform,
+    owner.renderer,
     owner.fixedTickEvent,
     owner.tickEvent,
     owner.gameMountedEvent,

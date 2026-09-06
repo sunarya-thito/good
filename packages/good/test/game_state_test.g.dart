@@ -49,6 +49,7 @@ List<ScannableField> _collect$StateSystem(Object object) {
 List<ScannableField> _collect$StateGameState(Object object) {
   final owner = object as _StateGameState;
   return <ScannableField>[
+    owner.stateSystem,
     owner.fixedTickEvent,
     owner.tickEvent,
     owner.gameMountedEvent,

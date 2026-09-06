@@ -79,6 +79,8 @@ List<ScannableField> _collect$NeedsTick(Object object) {
 List<ScannableField> _collect$CensusState(Object object) {
   final owner = object as _CensusState;
   return <ScannableField>[
+    owner.alphaSystem,
+    owner.betaSystem,
     owner.fixedTickEvent,
     owner.tickEvent,
     owner.gameMountedEvent,

@@ -488,17 +488,20 @@ abstract class Game implements RandomOwner, Scannable {
   /// engine's.
   int get maxVoicesPerBus => 16;
 
-  // `describeSystems` is **not** here. It is `GameState.describeSystems`.
+  // A system is **not** declared here. It is an `@system` field of the
+  // `GameState`.
   //
-  // A system exists only on the isolate that ticks it, so the pass that
-  // creates one belongs to the object that lives there. It was on this class
-  // for a while after the systems themselves moved, on the argument that a
-  // `Game` *mixin* had to be able to contribute a system - `Renderer2D`
-  // declaring `WorldTransformSystem` and `GameRenderer2D` is what makes
-  // `extends Game2D` a single opt-in for 2D rendering. That is a real
-  // requirement and it is met a better way now: `Game2D.createState()` narrows
-  // its return type to `GameState2D`, so a 2D game that forgets the simulation
-  // half does not compile, where before it silently painted nothing.
+  // A system exists only on the isolate that ticks it, so what holds one is
+  // the object that lives there. The pass that used to create them was on
+  // this class for a while after the systems themselves moved, on the
+  // argument that a `Game` *mixin* had to be able to contribute a system -
+  // `Renderer2D` declaring `WorldTransformSystem` and `GameRenderer2D` is
+  // what makes `extends Game2D` a single opt-in for 2D rendering. That is a
+  // real requirement and it is met a better way now: `Game2D.createState()`
+  // narrows its return type to `GameState2D`, so a 2D game that forgets the
+  // simulation half does not compile, where before it silently painted
+  // nothing - and `Renderer2DState` carries the two systems as fields, so
+  // there is no `super` call to forget either.
 
   /// Declares every [SceneStruct] this game can load.
   ///
@@ -518,10 +521,10 @@ abstract class Game implements RandomOwner, Scannable {
   /// in a `late final` field (the typed-handle rule) - there is no separate
   /// handle type.
   ///
-  /// **A scene is passed as an instance; a system, a prefab and a command are
-  /// not.** Those three descriptors take the constructor and build the object
-  /// themselves - `SystemDescriptor.has(SpinSystem.new)`,
-  /// `SceneDescriptor.has(Mote.new)`, `CommandDescriptor.has(Damage.new)` -
+  /// **A scene is passed as an instance; a prefab and a command are not.**
+  /// Those two descriptors take the constructor and build the object
+  /// themselves - `SceneDescriptor.has(Mote.new)`,
+  /// `CommandDescriptor.has(Damage.new)` -
   /// because those objects declare from their field initialisers, which run
   /// during construction and need a window open around it. A `SceneStruct`
   /// declares from [SceneStruct.describeAssets] and
@@ -1060,9 +1063,8 @@ abstract class Game implements RandomOwner, Scannable {
   // lets the *runtime* be the spawn message and swap its isolate roles,
   // while the description simply arrives on the far side identical.
 
-  // No system list here. `describeSystems` is declared on this class and runs
-  // in [GameRuntime.bootGame]; the objects it produces are held by the
-  // `GameState`, on the isolate that ticks them.
+  // No system list here. A system is a field of the `GameState`, collected
+  // off it in [_bootGame] and held there, on the isolate that ticks them.
 
   // Every SceneStruct declared through [describeScenes], in declaration order.
   // Holding them is what keeps their archetypes registered for the life of the
@@ -1654,7 +1656,7 @@ abstract class Game implements RandomOwner, Scannable {
   ///    declaration pass. Both facts point here: allocation cannot happen
   ///    before the declaration, and the game isolate must inherit the
   ///    numbering instead of re-deriving it.
-  ///  * the `GameState` carrying `describeSystems` is *built* here, by
+  ///  * the `GameState` carrying the systems is *built* here, by
   ///    [createState] - a `GameState` mixin has to be able to contribute a
   ///    system, which is what makes `extends Game2D` (and the `GameState2D` it
   ///    forces out of `createState`) the whole opt-in for 2D rendering. But
@@ -1684,9 +1686,18 @@ abstract class Game implements RandomOwner, Scannable {
     // other copy. This one is a declaration mirror: it exists so that
     // `describeCommands` below can register the same command handlers in the
     // same order on both copies, and it never simulates, never mounts and
-    // never holds a scene. It also never gets its systems - `describeSystems`
-    // is called from [_bootGame], so a `GameSystem` is one thing the mirror
-    // has no counterpart for.
+    // never holds a scene.
+    //
+    // Its `@system` fields *are* built here, and that is new: a system is a
+    // field initialiser now, so `createState()` constructs one on whichever
+    // copy calls it. Nothing about a system's construction is isolate-
+    // dependent - a `Query` holds the types it named until [_bootGame]
+    // resolves them, an `Input` resolves against the raw block on the copy
+    // that ticks, and a dispatcher is built inert - so the mirror's systems
+    // simply ride the spawn with everything else and are declared, bound and
+    // ticked over there. This copy never calls [GameState.declareSystems], so
+    // its own `_systems` list stays empty and `getSystem` here still throws.
+    //
     // Nothing is open around this call. A dispatcher declared on a field of
     // the state - `final waveCleared = Event.of(...)` - is built with the
     // state and read off it by `_bindEvents` on the far side; see
@@ -1825,9 +1836,23 @@ abstract class Game implements RandomOwner, Scannable {
     // bind its own events and waits for [_bindEvents] instead.
     describeScenes(_GameSceneDescriptor(runtime));
 
-    // Declared and held by the state, so the system objects only ever exist on
-    // this copy.
-    state.describeSystems(_SystemDescriptor(state));
+    // Systems, read off the fields of the state that holds them. The list is
+    // the generated collector's, so its order is the order Dart would have
+    // run the field initialisers in - the state's own fields, then each
+    // mixin's with the last `with` name first, then the superclass's. That is
+    // *declaration* order and it is only the tie-break: `sortSystems` turns
+    // every `compareTo` opinion into a constraint graph and emits from that,
+    // so a field-declared system is ordered by exactly the rule a
+    // hook-declared one was.
+    //
+    // The objects themselves were built by `createState`, which runs on main
+    // - so on a spawned run these arrived through the deep copy rather than
+    // being constructed here. Nothing about a system's construction is
+    // isolate-dependent any more: a `Query` holds the types it named and
+    // takes its bits in `resolve()` below, an `Input` resolves against the
+    // raw block on this copy, and a dispatcher is built inert and filled by
+    // `_bindEvents`. That deferral is what this change is the payoff for.
+    state.declareSystems(collectDeclarations(state));
     state.sortSystems();
 
     final queries = ArchetypeQueryDescriptor();
@@ -1890,12 +1915,13 @@ abstract class Game implements RandomOwner, Scannable {
   /// both copies see live storage from their first tick.
   void _bootAllocate(GameRuntime runtime) {
     // Allocated here rather than next to the command ring in [_runOnIsolate]:
-    // the declarations only exist once describeSystems has run, and this is
-    // the first point at which every declaration source has been seen. It is
-    // still comfortably early - _boot() finishes before the game isolate
-    // sends `ready`, which is before mount() and before the tick timer
-    // starts, so a buffer exists on both sides before any system could write
-    // to it. The handle copy allocates nothing; it adopts (see _msgBuffer).
+    // the declarations only exist once the systems have been collected, and
+    // this is the first point at which every declaration source has been
+    // seen. It is still comfortably early - _boot() finishes before the game
+    // isolate sends `ready`, which is before mount() and before the tick
+    // timer starts, so a buffer exists on both sides before any system could
+    // write to it. The handle copy allocates nothing; it adopts (see
+    // _msgBuffer).
     {
       // The two command rings, unless this is the single-copy configuration -
       // inline crosses no boundary, so a batch is run by the copy that built
@@ -2072,12 +2098,13 @@ abstract class Game implements RandomOwner, Scannable {
 
   // --- systems ----------------------------------------------------------
   //
-  // Systems live on the `GameState`, on the game isolate, and nothing about
-  // them exists on the presentation copy. `describeSystems` is still declared
-  // *here* - a `Game` mixin has to be able to contribute one, which is what
-  // makes `extends Game2D` the whole opt-in for 2D rendering - but it is
-  // *invoked* from [_bootGame], so the objects it creates only ever come into
-  // being over there.
+  // Systems are declared and held on the `GameState`, and nothing about them
+  // is reachable from the presentation copy: its mirror state never runs
+  // [GameState.declareSystems], so its `_systems` list is empty. A `Game`
+  // mixin contributes one through the state it forces out of `createState` -
+  // `Game2D` narrows to `GameState2D`, which mixes in `Renderer2DState` and
+  // its two `@system` fields, which is what makes `extends Game2D` the whole
+  // opt-in for 2D rendering.
   //
   // `enableSystem`/`disableSystem` used to live here and are gone with them,
   // along with their `_msgEnable`/`_msgDisable` control messages. Main cannot
@@ -3452,30 +3479,9 @@ abstract class GameSceneDescriptor {
   T has<T extends SceneStruct>(T scene);
 }
 
-/// Declares the systems a game runs, in the order it runs them - see
-/// `GameState.describeSystems`.
-abstract class SystemDescriptor {
-  /// Builds [create]'s system, declares it, and returns it.
-  ///
-  /// A **constructor**, not an instance: `descriptor.has(SpinSystem.new)`.
-  /// The framework builds the system so that the declaration windows a field
-  /// initialiser needs are open while it does - `Event.of`, `Event.signal`
-  /// and `Input.of` all read a context that only exists for the duration of
-  /// this call. A system built anywhere else has none of them open, which is
-  /// what those three throw about.
-  ///
-  /// A system taking constructor arguments goes through a closure:
-  /// `descriptor.has(() => Box2DPhysicsSystem(gravityY: -10))`. The window is
-  /// open while the closure runs, so that shape declares on fields too. What
-  /// does *not* work is a closure handing back an object built earlier -
-  /// `descriptor.has(() => _spawner)` - because nothing was open around
-  /// **that** construction. Keep the handle this returns instead.
-  T has<T extends GameSystem>(T Function() create);
-}
-
 /// Declares the auxiliary ring buffers a game (or one of its systems) needs
 /// - see [Game.describeBuffers]. Same one-pass declarative shape as
-/// `SystemDescriptor`/`CommandDescriptor`/`SceneDescriptor`/`StateDescriptor`.
+/// `CommandDescriptor`/`SceneDescriptor`/`StateDescriptor`.
 abstract class BufferDescriptor {
   /// Declares a buffer of [capacityBytes] and returns the handle to keep in
   /// a field.
@@ -3626,51 +3632,6 @@ final class _GameSceneDescriptor implements GameSceneDescriptor {
     }
     _game._declaredScenes.add(scene);
     return scene;
-  }
-}
-
-/// Collects declared systems into the [GameState] that declares and runs them.
-///
-/// Records declaration order, which *is* execution order - see the class doc
-/// on [Game]. Systems are keyed by `runtimeType`, not by the type argument, so
-/// `descriptor.has(WorldTransformSystem.new)` and
-/// `getSystem<WorldTransformSystem>()` agree without the caller having to
-/// spell the type argument twice. That pair is live in `goo2d`:
-/// `Game2D.describeSystems` (`goo2d/lib/src/render/game_2d.dart`) declares it,
-/// and `WorldTransformSystem` (`goo2d/lib/src/data/world_transform.dart`) is
-/// the system it hands back.
-final class _SystemDescriptor implements SystemDescriptor {
-  _SystemDescriptor(this._state);
-
-  final GameState _state;
-
-  @override
-  T has<T extends GameSystem>(T Function() create) {
-    // Nothing is open around the constructor call. This used to push the
-    // input registry, so that an `Input.of` on one of the system's fields
-    // found it; an action reaches nothing where it is written now, and
-    // `Game._bootGame` reads them off the built system, once every system has
-    // been declared. The event binder went the same way one step earlier, and
-    // the check that a `Game` was not being constructed in here went with the
-    // windows: with nothing ambient, a `Game` built inside a system's field
-    // initialisers declares onto its own fields, which is where its
-    // declarations were always meant to be.
-    final system = create();
-    // After the build, not before: the check is on `runtimeType`, and a
-    // tear-off's type argument is the static type - `descriptor.has(() =>
-    // pickSystem())` would sail past a check written against `T`. The cost
-    // of building first is one object that is thrown away, and nothing else:
-    // registering a system is this list, so a duplicate's declarations have
-    // reached no registry to be taken back out of.
-    final type = system.runtimeType;
-    if (_state.systemIndexOf(type) != null) {
-      throw StateError(
-        '$type is declared twice in ${_state.game.runtimeType}'
-        '.describeSystems. One declaration is one system; declaration '
-        'order is execution order, so a duplicate has no meaningful position.',
-      );
-    }
-    return _state.addDeclaredSystem(system);
   }
 }
 

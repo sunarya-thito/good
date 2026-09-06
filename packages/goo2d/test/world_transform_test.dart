@@ -97,14 +97,11 @@ class _GameState extends GameState<_Game> {
   }
 
   /// Inert in every test that does not arm it.
-  late final _Spawner spawner;
 
-  @override
-  void describeSystems(SystemDescriptor descriptor) {
-    super.describeSystems(descriptor);
-    descriptor.has(WorldTransformSystem.new);
-    spawner = descriptor.has(_Spawner.new);
-  }
+  @system
+  final worldTransformSystem = WorldTransformSystem();
+  @system
+  final spawner = _Spawner();
 }
 
 class _Game extends Game {

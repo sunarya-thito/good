@@ -18,7 +18,7 @@ import 'package:goo2d_physics_box2d/goo2d_physics_box2d.dart';
 part 'effectors_test.g.dart';
 
 late Game run;
-late Box2DPhysicsSystem physics;
+Box2DPhysicsSystem get physics => run.state.getSystem<Box2DPhysicsSystem>();
 
 class _Box extends EntityStruct with Transform2D, Collider2D, RigidBody2D {
   final box = ColliderBody.box(halfWidth: 0.5, halfHeight: 0.5);
@@ -61,21 +61,19 @@ class _EffectorSystem extends GameSystem with FixedTickable {
 }
 
 // ignore: library_private_types_in_public_api
-late _EffectorSystem effectors;
+_EffectorSystem get effectors => run.state.getSystem<_EffectorSystem>();
 
 class _GameState extends GameState<_Game> {
   @override
   void onMounted() => loadScene(_Scene());
 
-  @override
-  void describeSystems(SystemDescriptor descriptor) {
-    super.describeSystems(descriptor);
-    effectors = descriptor.has(_EffectorSystem.new);
-    // No gravity, so each test measures its effector and nothing else. The
-    // buoyancy test puts gravity back by hand, because floating against
-    // nothing is not a test of buoyancy.
-    physics = descriptor.has(() => Box2DPhysicsSystem(gravityY: 0));
-  }
+  // No gravity, so each test measures its effector and nothing else. The
+  // buoyancy test puts gravity back by hand, because floating against
+  // nothing is not a test of buoyancy.
+  @system
+  final effectors = _EffectorSystem();
+  @system
+  late final physics = Box2DPhysicsSystem(gravityY: 0);
 }
 
 class _Game extends Game {

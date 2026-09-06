@@ -232,15 +232,13 @@ class _GameState extends GameState<_Game> {
     loadScene(_Scene());
   }
 
-  @override
-  void describeSystems(SystemDescriptor descriptor) {
-    super.describeSystems(descriptor);
-    descriptor.has(PointerPickingSystem.new);
-    // Declared *after* the picker, so the ordering that makes picking read
-    // resolved transforms has to come from compareTo rather than from the
-    // order these two are written in.
-    descriptor.has(WorldTransformSystem.new);
-  }
+  // Declared *after* the picker, so the ordering that makes picking read
+  // resolved transforms has to come from compareTo rather than from the
+  // order these two are written in.
+  @system
+  final pointerPickingSystem = PointerPickingSystem();
+  @system
+  final worldTransformSystem = WorldTransformSystem();
 }
 
 class _Game extends Game {

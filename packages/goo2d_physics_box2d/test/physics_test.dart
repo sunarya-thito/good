@@ -25,7 +25,7 @@ late Game run;
 
 /// The physics system under test, captured at declare time so tests can
 /// dispose the Box2D world.
-late Box2DPhysicsSystem physics;
+Box2DPhysicsSystem get physics => run.state.getSystem<Box2DPhysicsSystem>();
 
 /// A dynamic crate: a box collider on a simulated body.
 class _Crate extends EntityStruct with Transform2D, Collider2D, RigidBody2D {
@@ -151,12 +151,10 @@ class _GameState extends GameState<_Game> {
     loadScene(_Scene());
   }
 
-  @override
-  void describeSystems(SystemDescriptor descriptor) {
-    super.describeSystems(descriptor);
-    descriptor.has(_GameplaySystem.new);
-    physics = descriptor.has(() => Box2DPhysicsSystem(workerCount: _workers));
-  }
+  @system
+  final gameplaySystem = _GameplaySystem();
+  @system
+  late final physics = Box2DPhysicsSystem(workerCount: _workers);
 }
 
 class _Game extends Game {
@@ -177,8 +175,8 @@ class _Game extends Game {
 const Duration _step = Duration(microseconds: 16667);
 
 /// Worker threads the fixture's physics system is built with. A file-level
-/// binding because the system is constructed inside `describeSystems`, which
-/// the Game calls and which takes no arguments.
+/// binding because the state that declares the system is built by
+/// `createState`, which takes no arguments.
 int _workers = 1;
 
 Future<_Scene> _boot({int workers = 1}) async {

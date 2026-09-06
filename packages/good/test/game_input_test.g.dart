@@ -35,6 +35,7 @@ List<ScannableField> _collect$PlayerSystem(Object object) {
 List<ScannableField> _collect$InputGameState(Object object) {
   final owner = object as _InputGameState;
   return <ScannableField>[
+    owner.playerSystem,
     owner.fixedTickEvent,
     owner.tickEvent,
     owner.gameMountedEvent,
@@ -74,6 +75,8 @@ List<ScannableField> _collect$ListenerSystemB(Object object) {
 List<ScannableField> _collect$ListenerState(Object object) {
   final owner = object as _ListenerState;
   return <ScannableField>[
+    owner.listenerSystemA,
+    owner.listenerSystemB,
     owner.fixedTickEvent,
     owner.tickEvent,
     owner.gameMountedEvent,
@@ -107,6 +110,7 @@ List<ScannableField> _collect$ShorthandSystem(Object object) {
 List<ScannableField> _collect$ShorthandState(Object object) {
   final owner = object as _ShorthandState;
   return <ScannableField>[
+    owner.shorthandSystem,
     owner.fixedTickEvent,
     owner.tickEvent,
     owner.gameMountedEvent,
@@ -146,6 +150,8 @@ List<ScannableField> _collect$CtorSubOldSpelling(Object object) {
 List<ScannableField> _collect$CtorSubState(Object object) {
   final owner = object as _CtorSubState;
   return <ScannableField>[
+    owner.ctorSubSystem,
+    owner.ctorSubOldSpelling,
     owner.fixedTickEvent,
     owner.tickEvent,
     owner.gameMountedEvent,
@@ -227,6 +233,7 @@ List<ScannableField> _collect$SharedDescriptorGame(Object object) {
 List<ScannableField> _collect$SharedDescriptorState(Object object) {
   final owner = object as _SharedDescriptorState;
   return <ScannableField>[
+    owner.lateDefaultSystem,
     owner.fixedTickEvent,
     owner.tickEvent,
     owner.gameMountedEvent,
@@ -253,6 +260,7 @@ List<ScannableField> _collect$CursorSystem(Object object) {
 List<ScannableField> _collect$MouseGameState(Object object) {
   final owner = object as _MouseGameState;
   return <ScannableField>[
+    owner.cursorSystem,
     owner.fixedTickEvent,
     owner.tickEvent,
     owner.gameMountedEvent,

@@ -58,6 +58,8 @@ List<ScannableField> _collect$BothPhases(Object object) {
 List<ScannableField> _collect$PhaseState(Object object) {
   final owner = object as _PhaseState;
   return <ScannableField>[
+    owner.presentSystem,
+    owner.bothPhases,
     owner.fixedTickEvent,
     owner.tickEvent,
     owner.gameMountedEvent,
@@ -95,6 +97,8 @@ List<ScannableField> _collect$AfterThrowerSystem(Object object) {
 List<ScannableField> _collect$ThrowState(Object object) {
   final owner = object as _ThrowState;
   return <ScannableField>[
+    owner.thrower,
+    owner.afterThrower,
     owner.fixedTickEvent,
     owner.tickEvent,
     owner.gameMountedEvent,
@@ -134,6 +138,7 @@ List<ScannableField> _collect$VisibilitySystem(Object object) {
 List<ScannableField> _collect$VisibilityState(Object object) {
   final owner = object as _VisibilityState;
   return <ScannableField>[
+    owner.visibility,
     owner.fixedTickEvent,
     owner.tickEvent,
     owner.gameMountedEvent,
@@ -232,6 +237,16 @@ List<ScannableField> _collect$Spawner(Object object) {
 List<ScannableField> _collect$OrderingState(Object object) {
   final owner = object as _OrderingState;
   return <ScannableField>[
+    owner.indifferent1,
+    owner.indifferent2,
+    owner.sortsFirst,
+    owner.alsoSortsFirst,
+    owner.composer,
+    owner.spawner,
+    owner.systemA,
+    owner.inertSystem,
+    owner.systemB,
+    owner.censusSystem,
     owner.fixedTickEvent,
     owner.tickEvent,
     owner.gameMountedEvent,
@@ -272,6 +287,9 @@ List<ScannableField> _collect$CycleC(Object object) {
 List<ScannableField> _collect$CyclicState(Object object) {
   final owner = object as _CyclicState;
   return <ScannableField>[
+    owner.cycleA,
+    owner.cycleB,
+    owner.cycleC,
     owner.fixedTickEvent,
     owner.tickEvent,
     owner.gameMountedEvent,
@@ -330,6 +348,10 @@ List<ScannableField> _collect$FixtureState(Object object) {
 List<ScannableField> _collect$TestState(Object object) {
   final owner = object as _TestState;
   return <ScannableField>[
+    owner.systemA,
+    owner.inertSystem,
+    owner.systemB,
+    owner.censusSystem,
     owner.fixedTickEvent,
     owner.tickEvent,
     owner.gameMountedEvent,
@@ -550,6 +572,7 @@ List<ScannableField> _collect$MarkerSystem(Object object) {
 List<ScannableField> _collect$WindowState(Object object) {
   final owner = object as _WindowState;
   return <ScannableField>[
+    owner.marker,
     owner.fixedTickEvent,
     owner.tickEvent,
     owner.gameMountedEvent,
@@ -601,6 +624,8 @@ List<ScannableField> _collect$DrawsFromB(Object object) {
 List<ScannableField> _collect$RandomState(Object object) {
   final owner = object as _RandomState;
   return <ScannableField>[
+    owner.drawsA,
+    owner.drawsB,
     owner.fixedTickEvent,
     owner.tickEvent,
     owner.gameMountedEvent,
@@ -651,6 +676,10 @@ List<ScannableField> _collect$CommandState(Object object) {
 List<ScannableField> _collect$BadCommandState(Object object) {
   final owner = object as _BadCommandState;
   return <ScannableField>[
+    owner.systemA,
+    owner.inertSystem,
+    owner.systemB,
+    owner.censusSystem,
     owner.fixedTickEvent,
     owner.tickEvent,
     owner.gameMountedEvent,
@@ -672,6 +701,11 @@ List<ScannableField> _collect$BadCommandGame(Object object) {
 List<ScannableField> _collect$DuplicateSystemState(Object object) {
   final owner = object as _DuplicateSystemState;
   return <ScannableField>[
+    owner.systemA2,
+    owner.systemA,
+    owner.inertSystem,
+    owner.systemB,
+    owner.censusSystem,
     owner.fixedTickEvent,
     owner.tickEvent,
     owner.gameMountedEvent,
@@ -701,6 +735,7 @@ List<ScannableField> _collect$UndeclaredSystem(Object object) {
 List<ScannableField> _collect$ScenelessState(Object object) {
   final owner = object as _ScenelessState;
   return <ScannableField>[
+    owner.systemA3,
     owner.fixedTickEvent,
     owner.tickEvent,
     owner.gameMountedEvent,

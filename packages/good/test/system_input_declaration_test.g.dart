@@ -32,6 +32,7 @@ List<ScannableField> _collect$OneActionSystem(Object object) {
 List<ScannableField> _collect$OneActionState(Object object) {
   final owner = object as _OneActionState;
   return <ScannableField>[
+    owner.oneActionSystem,
     owner.fixedTickEvent,
     owner.tickEvent,
     owner.gameMountedEvent,

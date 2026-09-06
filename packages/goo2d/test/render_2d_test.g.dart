@@ -457,6 +457,8 @@ List<ScannableField> _collect$SpriteScene(Object object) {
 List<ScannableField> _collect$RenderState(Object object) {
   final owner = object as _RenderState;
   return <ScannableField>[
+    owner.worldTransform,
+    owner.renderer,
     owner.fixedTickEvent,
     owner.tickEvent,
     owner.gameMountedEvent,

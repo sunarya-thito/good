@@ -80,6 +80,7 @@ List<ScannableField> _collect$Observer(Object object) {
 List<ScannableField> _collect$GameState(Object object) {
   final owner = object as _GameState;
   return <ScannableField>[
+    owner.observer,
     owner.fixedTickEvent,
     owner.tickEvent,
     owner.gameMountedEvent,

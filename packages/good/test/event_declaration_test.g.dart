@@ -60,6 +60,7 @@ List<ScannableField> _collect$FieldState(Object object) {
   return <ScannableField>[
     owner.alpha,
     owner.beta,
+    owner.notedSystem,
     owner.fixedTickEvent,
     owner.tickEvent,
     owner.gameMountedEvent,

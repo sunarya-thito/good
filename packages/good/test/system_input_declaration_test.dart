@@ -12,9 +12,10 @@ import 'package:good/src/system.dart';
 
 part 'system_input_declaration_test.g.dart';
 
-// One system, one `Input.of` field, booted the way a real one is - through
-// `describeSystems`, which is the only route a system reaches a run by. What
-// this file pins is that the run takes that action exactly once.
+// One system, one `Input.of` field, booted the way a real one is - as an
+// `@system` field of a `GameState`, which is the only route a system reaches
+// a run by. What this file pins is that the run takes that action exactly
+// once.
 //
 // It is worth its own file because the count is not a tidiness figure. An
 // index is how the registry addresses an action, and the resolution pass
@@ -55,11 +56,8 @@ class _OneActionSystem extends GameSystem
 }
 
 class _OneActionState extends GameState<_OneActionGame> {
-  @override
-  void describeSystems(SystemDescriptor descriptor) {
-    super.describeSystems(descriptor);
-    descriptor.has(_OneActionSystem.new);
-  }
+  @system
+  final oneActionSystem = _OneActionSystem();
 }
 
 class _OneActionGame extends Game {

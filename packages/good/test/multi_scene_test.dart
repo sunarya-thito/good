@@ -76,11 +76,8 @@ class _Census extends GameSystem with FixedTickable {
 }
 
 class _MultiState extends GameState<_MultiGame> {
-  @override
-  void describeSystems(SystemDescriptor descriptor) {
-    super.describeSystems(descriptor);
-    descriptor.has(_Census.new);
-  }
+  @system
+  final census2 = _Census();
 }
 
 class _MultiGame extends Game {

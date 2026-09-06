@@ -28,7 +28,7 @@ List<ScannableField> _collect$SetPopulation(Object object) {
 }
 
 List<ScannableField> _collect$FixedPhaseStart(Object object) {
-  final owner = object as _FixedPhaseStart;
+  final owner = object as FixedPhaseStart;
   return <ScannableField>[
     owner.mountEvent,
     owner.unmountEvent,
@@ -44,7 +44,7 @@ List<ScannableField> _collect$FixedPhaseEnd(Object object) {
 }
 
 List<ScannableField> _collect$PresentPhaseStart(Object object) {
-  final owner = object as _PresentPhaseStart;
+  final owner = object as PresentPhaseStart;
   return <ScannableField>[
     owner.mountEvent,
     owner.unmountEvent,
@@ -85,9 +85,9 @@ const GeneratedDeclarations _demoGameDeclarations =
       package: 'goo2d/example/lib/demo/demo_game.dart',
       collectors: <DeclarationCollector>[
         DeclarationCollector(SetPopulation, _collect$SetPopulation),
-        DeclarationCollector(_FixedPhaseStart, _collect$FixedPhaseStart),
+        DeclarationCollector(FixedPhaseStart, _collect$FixedPhaseStart),
         DeclarationCollector(_FixedPhaseEnd, _collect$FixedPhaseEnd),
-        DeclarationCollector(_PresentPhaseStart, _collect$PresentPhaseStart),
+        DeclarationCollector(PresentPhaseStart, _collect$PresentPhaseStart),
         DeclarationCollector(_RenderPhaseStart, _collect$RenderPhaseStart),
         DeclarationCollector(_RenderPhaseEnd, _collect$RenderPhaseEnd),
         DeclarationCollector(DemoStats, _collect$DemoStats),

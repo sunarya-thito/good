@@ -35,6 +35,7 @@ List<ScannableField> _collect$PadSystem(Object object) {
 List<ScannableField> _collect$PadGameState(Object object) {
   final owner = object as _PadGameState;
   return <ScannableField>[
+    owner.padSystem,
     owner.fixedTickEvent,
     owner.tickEvent,
     owner.gameMountedEvent,

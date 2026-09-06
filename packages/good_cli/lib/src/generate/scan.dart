@@ -1968,8 +1968,13 @@ bool isDeclarationField(
 /// sub-entity. A declaration value that is not itself scanned has no life
 /// outside the field that holds it, and nothing to be mistaken for.
 ///
-/// `EntityStruct` is the only type in the engine that is both today, which is
-/// the same statement as "`@sub` is the only marker the rule reaches".
+/// `EntityStruct` and `GameSystem` are the two types in the engine that are
+/// both, which is the same statement as "`@sub` and `@system` are the markers
+/// the rule reaches". A system is the second because it is exactly the same
+/// shape of thing: `MovementSystem()` builds a complete object with its own
+/// queries, actions and dispatchers, and one held in a field of a `GameState`
+/// is either that state's declared system or a spare, by the same
+/// construction and with the same type.
 ///
 /// [markers] is [scannableAnnotationNames] over the same walk.
 bool isCollectedDeclarationField(
@@ -2360,8 +2365,9 @@ DeclarationScan scanDeclarations(ScanSources sources) {
           unmarked['${type.name}.${field.name}'] =
               'a bare constructor call holds it and nothing at the line says '
               'it declares anything - `$valueType()` is spelled the way a '
-              'field holding an ordinary object is. Write `@sub` on it to '
-              'declare it, or leave it as it is if it is a spare';
+              'field holding an ordinary object is. Write the marker that '
+              'says so - `@sub` for a child prefab, `@system` for a system - '
+              'or leave it as it is if it is a spare';
           continue;
         }
         if (field.isPrivate) {

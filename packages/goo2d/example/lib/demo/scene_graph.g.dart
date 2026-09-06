@@ -159,6 +159,15 @@ List<ScannableField> _collect$CritterSystem(Object object) {
 List<ScannableField> _collect$SceneGraphState(Object object) {
   final owner = object as SceneGraphState;
   return <ScannableField>[
+    owner.fixedPhaseStart,
+    owner.presentPhaseStart,
+    owner.critterSystem,
+    owner.fixedPhaseEnd,
+    owner.renderPhaseStart,
+    owner.renderPhaseEnd,
+    owner.demoStats,
+    owner.worldTransform,
+    owner.renderer,
     owner.fixedTickEvent,
     owner.tickEvent,
     owner.gameMountedEvent,

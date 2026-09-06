@@ -50,11 +50,8 @@ class Ground extends EntityStruct with Transform3D, Collider3D, RigidBody3D {
 Then declare the system once, and that is the whole opt-in:
 
 ```dart
-@override
-void describeSystems(SystemDescriptor descriptor) {
-  super.describeSystems(descriptor);
-  descriptor.has(() => Physics3DSystem(gravityY: -9.81));
-}
+@system
+final physics = Physics3DSystem(gravityY: -9.81);
 ```
 
 Bodies appear as entities spawn and go away as they despawn. The system listens

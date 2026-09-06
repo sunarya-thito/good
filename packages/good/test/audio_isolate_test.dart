@@ -134,11 +134,8 @@ class _Reporter extends GameSystem with FixedTickable {
 }
 
 class _IsolateAudioState extends GameState<_IsolateAudioGame> {
-  @override
-  void describeSystems(SystemDescriptor descriptor) {
-    super.describeSystems(descriptor);
-    descriptor.has(_Reporter.new);
-  }
+  @system
+  final reporter = _Reporter();
 
   @override
   void onMounted() {

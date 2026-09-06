@@ -130,21 +130,31 @@ abstract class DemoState<G extends DemoGame> extends GameState2D<G> {
   /// engine. Read by [DemoStats], which is the last thing in the advance.
   final DemoProfile profile = DemoProfile();
 
-  @override
-  void describeSystems(SystemDescriptor descriptor) {
-    super.describeSystems(descriptor);
-    // Declaration order matters for the two render probes and for nothing
-    // else here: they agree about `GameRenderer2D` and have no opinion about
-    // each other, so the tie between them breaks on the order they were
-    // declared in. Every other probe states its position outright.
-    descriptor
-      ..has(_FixedPhaseStart.new)
-      ..has(_FixedPhaseEnd.new)
-      ..has(_PresentPhaseStart.new)
-      ..has(_RenderPhaseStart.new)
-      ..has(_RenderPhaseEnd.new)
-      ..has(DemoStats.new);
-  }
+  // Declaration order matters for the two render probes and for nothing
+  // else here: they agree about `GameRenderer2D` and have no opinion about
+  // each other, so the tie between them breaks on the order they were
+  // declared in, which is now the order these fields are written in. Every
+  // other probe states its position outright.
+  //
+  // **[FixedPhaseStart] and [PresentPhaseStart] are not here, and that is the
+  // one thing about this base class worth reading twice.** Each of them
+  // claims to run before *everything*, and a case may declare a system that
+  // claims the same - `Box2DPhysicsSystem` does, on purpose. Two blanket
+  // claims contradict each other and the pair falls back to declaration
+  // order, so which one wins is decided by where the two are written. A
+  // subclass's fields are initialised before its superclass's, so a probe
+  // declared here would always lose to a case's solver - and with a third
+  // system naming the solver specifically, the three answers formed a cycle
+  // and the game refused to boot. The case declares both probes, first, and
+  // that is the only place the order of the two can be written.
+  @system
+  final fixedPhaseEnd = _FixedPhaseEnd();
+  @system
+  final renderPhaseStart = _RenderPhaseStart();
+  @system
+  final renderPhaseEnd = _RenderPhaseEnd();
+  @system
+  final demoStats = DemoStats();
 
   @override
   void describeCommands(CommandDescriptor descriptor) {
@@ -256,7 +266,11 @@ class DemoProfile {
 
 /// Sorts ahead of every other `FixedTickable`, so its stamp is the moment the
 /// fixed dispatch begins.
-class _FixedPhaseStart extends GameSystem with FixedTickable {
+///
+/// Declared by the **case**, as its first `@system` field - see [DemoState].
+/// The claim here is blanket, and a blanket claim only beats another blanket
+/// claim by being declared first.
+class FixedPhaseStart extends GameSystem with FixedTickable {
   @override
   int compareTo(GameSystem other) => -1;
 
@@ -290,7 +304,10 @@ class _FixedPhaseEnd extends GameSystem with FixedTickable {
 /// Sorts ahead of every other `Tickable`. Fires once per `advance` and on
 /// *every* advance, including one that afforded no fixed step - which is what
 /// makes it the right place to measure the gap between two of them.
-class _PresentPhaseStart extends GameSystem with Tickable {
+///
+/// Declared by the **case**, beside [FixedPhaseStart] and for the same
+/// reason - see [DemoState].
+class PresentPhaseStart extends GameSystem with Tickable {
   @override
   int compareTo(GameSystem other) => -1;
 

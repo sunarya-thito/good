@@ -10,7 +10,7 @@ import 'package:goo2d_physics_box2d/goo2d_physics_box2d.dart';
 part 'query_test.g.dart';
 
 late Game run;
-late Box2DPhysicsSystem physics;
+Box2DPhysicsSystem get physics => run.state.getSystem<Box2DPhysicsSystem>();
 
 /// A static wall, so nothing moves while a query runs.
 class _Wall extends EntityStruct with Transform2D, Collider2D, RigidBody2D {
@@ -51,11 +51,8 @@ class _GameState extends GameState<_Game> {
   @override
   void onMounted() => loadScene(_Scene());
 
-  @override
-  void describeSystems(SystemDescriptor d) {
-    super.describeSystems(d);
-    physics = d.has(Box2DPhysicsSystem.new);
-  }
+  @system
+  final physics = Box2DPhysicsSystem();
 }
 
 class _Game extends Game {

@@ -89,6 +89,7 @@ List<ScannableField> _collect$NetGame(Object object) {
 List<ScannableField> _collect$NetState(Object object) {
   final owner = object as _NetState;
   return <ScannableField>[
+    owner.network,
     owner.peerJoinedEvent,
     owner.peerLeftEvent,
     owner.sessionOpenedEvent,
@@ -130,6 +131,7 @@ List<ScannableField> _collect$FireByHook(Object object) {
 List<ScannableField> _collect$OneMessageState(Object object) {
   final owner = object as _OneMessageState;
   return <ScannableField>[
+    owner.network,
     owner.peerJoinedEvent,
     owner.peerLeftEvent,
     owner.sessionOpenedEvent,
@@ -155,6 +157,7 @@ List<ScannableField> _collect$OneMessageGame(Object object) {
 List<ScannableField> _collect$CollidingState(Object object) {
   final owner = object as _CollidingState;
   return <ScannableField>[
+    owner.network,
     owner.peerJoinedEvent,
     owner.peerLeftEvent,
     owner.sessionOpenedEvent,
@@ -180,6 +183,8 @@ List<ScannableField> _collect$CollidingGame(Object object) {
 List<ScannableField> _collect$WatchedState(Object object) {
   final owner = object as _WatchedState;
   return <ScannableField>[
+    owner.watcher,
+    owner.network,
     owner.peerJoinedEvent,
     owner.peerLeftEvent,
     owner.sessionOpenedEvent,
@@ -210,6 +215,7 @@ List<ScannableField> _collect$Emote(Object object) {
 List<ScannableField> _collect$SkewedState(Object object) {
   final owner = object as _SkewedState;
   return <ScannableField>[
+    owner.network,
     owner.peerJoinedEvent,
     owner.peerLeftEvent,
     owner.sessionOpenedEvent,
