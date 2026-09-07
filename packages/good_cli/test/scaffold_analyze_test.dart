@@ -134,6 +134,9 @@ good:
       ..parent.createSync(recursive: true)
       ..writeAsBytesSync(png);
     File('${dir.path}/assets/theme.ogg').writeAsBytesSync(<int>[0]);
+    File('${dir.path}/assets/balance.json').writeAsStringSync('{}');
+    File('${dir.path}/assets/credits.txt').writeAsStringSync('thanks');
+    File('${dir.path}/assets/autosave.sav').writeAsBytesSync(<int>[0]);
 
     final scan = scanAssets(dir);
     final lib = Directory('${dir.path}/lib')..createSync(recursive: true);
@@ -143,12 +146,28 @@ good:
     File(
       '${lib.path}/audios.dart',
     ).writeAsStringSync(emitAudios(scan, command: 'good generate'));
+    File(
+      '${lib.path}/jsons.dart',
+    ).writeAsStringSync(emitJsons(scan, command: 'good generate'));
+    File(
+      '${lib.path}/texts.dart',
+    ).writeAsStringSync(emitTexts(scan, command: 'good generate'));
+    // `blobs.dart` is the one generated file that imports anything but the
+    // engine - `Uint8List` is a `dart:typed_data` type - so it is the one that
+    // can fail on `directives_ordering` or on an import the pubspec does not
+    // declare.
+    File(
+      '${lib.path}/blobs.dart',
+    ).writeAsStringSync(emitBlobs(scan, command: 'good generate'));
     // The constants where the guide puts them: inside a const expression, in a
     // file that names goo2d's own API. `TextureSize.sheetWidth` compiles here
     // and `Textures.sheet.width` would not.
     File('${lib.path}/use.dart').writeAsStringSync('''
 import 'package:goo2d/goo2d.dart';
 
+import 'blobs.dart';
+import 'jsons.dart';
+import 'texts.dart';
 import 'textures.dart';
 
 const List<SpriteFrame> frames = <SpriteFrame>[
@@ -169,6 +188,13 @@ const NineSliceBorder border = NineSliceBorder.pixels(
 );
 
 int get pixels => Textures.sheet.width * Textures.sheet.height;
+
+// Each of the three new kinds read through the handle its payload type names,
+// which is what says the generated key is an `AssetKey` of that type and not
+// of some other one that happens to compile.
+final JsonAsset balance = JsonAsset.of(Jsons.balance);
+final TextAsset credits = TextAsset.of(Texts.credits);
+final UnknownAsset autosave = UnknownAsset.of(Blobs.autosave);
 ''');
 
     final config = absolutePackageConfig(root, 'goo2d');
@@ -246,6 +272,9 @@ good:
         0, 0, 1, 0,
       ]);
     File('${dir.path}/assets/theme.ogg').writeAsBytesSync(<int>[0]);
+    File('${dir.path}/assets/balance.json').writeAsStringSync('{}');
+    File('${dir.path}/assets/credits.txt').writeAsStringSync('thanks');
+    File('${dir.path}/assets/autosave.sav').writeAsBytesSync(<int>[0]);
 
     // Stubs, so the entry package is resolved out of a graph the way a
     // `pub get` leaves one, and the struct scan has nothing to walk.

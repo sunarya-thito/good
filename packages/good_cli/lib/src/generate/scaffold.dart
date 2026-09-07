@@ -850,9 +850,10 @@ void main() {
 
 String _gitkeep(String command, String bundle) =>
     '''
-# Drop images here, list them under `good: assets:` in pubspec.yaml, then
+# Drop files here, list them under `good: assets:` in pubspec.yaml, then
 # run `$command`'s sibling: `good generate`. That writes ../$bundle/, where
-# each asset becomes a value of the `Textures` enum.
+# each file becomes a value of the enum for its kind: `Textures`, `Audios`,
+# `Jsons`, `Texts`, or `Blobs` for anything else.
 #
 # The package good generates sits beside lib/, not in it. The one exception
 # is lib/src/declarations.g.dart, which holds the list of what each of your

@@ -315,7 +315,7 @@ void main() {
   });
 
   group('what it writes', () {
-    test('the four generated files, the marker and a generated pubspec', () async {
+    test('every generated file, the marker and a generated pubspec', () async {
       final project = _project();
       final bundle = (await _generate(project)).bundle;
 

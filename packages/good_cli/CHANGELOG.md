@@ -1,6 +1,67 @@
 ## Unreleased
 
+### Added
+
+* **JSON, text and raw-byte assets go through the pipeline.** A file that was
+  neither a texture nor an audio file had nowhere to go: normalisation
+  reported it, left it in `assets_src/`, and told you to copy it into the
+  asset directory yourself. Nothing then keyed it, so it reached no chunk -
+  a level layout, a dialogue file or a save blob shipped loose and legible
+  beside sealed art (#357).
+
+  `good generate` now writes three more enums into the bundle package, beside
+  `textures.dart` and `audios.dart`:
+
+  ```dart
+  final balance  = JsonAsset.of(Jsons.balance);       // assets/balance.json
+  final credits  = TextAsset.of(Texts.credits);       // assets/credits.txt
+  final autosave = UnknownAsset.of(Blobs.autosave);   // assets/autosave.sav
+  ```
+
+  Five enums and not one, because a generated enum mixes in
+  `LocalEnumAssetKey<T>` and `Asset.of<T>` takes an `AssetKey<T>`: one enum
+  carries one payload type and one loader, so three payload types is three
+  enums.
+
+  Which enum a file lands in is its extension, the way it already was for
+  textures and audio:
+
+  | extension | enum | payload |
+  |---|---|---|
+  | `.json` | `Jsons` | `JsonValue` |
+  | `.txt` `.md` `.csv` `.tsv` `.xml` `.yaml` `.yml` `.ini` `.cfg` `.glsl` `.frag` `.vert` | `Texts` | `String` |
+  | anything else | `Blobs` | `Uint8List` |
+
+  `Blobs` is the fallback, so there is no longer such a thing as a file the
+  pipeline has no rule for. `Texts` is deliberately short: `TextLoader`
+  decodes strictly as UTF-8, so a file wrongly in it throws at load, while a
+  file left out of it is a `Blobs` value the project decodes itself. Adding an
+  extension to that list later moves files from `Blobs` to `Texts` and breaks
+  the code naming them.
+
+  There is no normalisation step for any of the three. A texture becomes WebP
+  and audio becomes Ogg because there is one sensible container per kind, and
+  a JSON document has none to convert to - so the file is copied under its own
+  name, and chunked, compressed and encrypted from there.
+
 ### Changed
+
+* **Everything in the source directory reaches the asset directory now.**
+  Normalisation used to copy across only what it recognised, so a working file
+  kept beside the art - a `.psd`, an `.aseprite`, a spreadsheet an exporter
+  reads - stayed put. Every extension is a kind now, so all of it is copied,
+  keyed and packed into the build (#357). Keep working files outside
+  `asset-source:`. Dotfiles are still left where they are: `flutter: assets:`
+  lists the asset directory and flutter_tools expands a directory entry by
+  listing every file in it, dotfiles included, so a `.DS_Store` copied across
+  would ship.
+
+* **`good generate` refuses an undeclared file whatever its extension.** The
+  check that stops a build when a file under the asset directory is in no
+  `good: assets:` entry skipped anything that was not a texture or audio,
+  because nothing was going to name it. A font, a save blob and a level layout
+  are all keys now, so a subdirectory holding one needs a line of its own like
+  any other (#357).
 
 * **A scaffolded 3D project extends `Game3D`.** `good create --3d` wrote a
   `describeCameras` override for the view `main.dart` shows and a

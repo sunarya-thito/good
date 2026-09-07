@@ -106,14 +106,53 @@ void main() {
       expect(other.copyOnly, isFalse);
     });
 
-    test('an unrecognised file is reported, not silently dropped', () {
-      final source = _sourceTree(['notes.txt', 'a.png']);
+    test('a file with no container to normalize to is copied, not skipped', () {
+      // What this used to do: report the file and leave it in the source
+      // directory, so a level layout, a dialogue file or a save blob reached
+      // no chunk and shipped in the clear beside the sealed art (#357). There
+      // is no container to convert any of them to, so the step is a copy and
+      // the output keeps the name and the extension it came in with.
+      final source = _sourceTree([
+        'balance.json',
+        'credits.txt',
+        'autosave.sav',
+        'a.png',
+      ]);
       final plan = planCompaction(
         sourceDir: source,
         config: GoodConfig.defaults,
       );
-      expect(plan.steps, hasLength(1));
-      expect(plan.skipped.keys, ['notes.txt']);
+      expect(plan.skipped, isEmpty);
+      expect(plan.steps.map((s) => '${s.source} -> ${s.output}'), <String>[
+        'a.png -> a.webp',
+        'autosave.sav -> autosave.sav',
+        'balance.json -> balance.json',
+        'credits.txt -> credits.txt',
+      ]);
+      expect(
+        plan.steps.where((s) => s.source != 'a.png').every((s) => s.copyOnly),
+        isTrue,
+        reason: 'there is no encoder to run over any of them',
+      );
+      expect(plan.steps.map((s) => s.kind), <AssetKind>[
+        AssetKind.texture,
+        AssetKind.blob,
+        AssetKind.json,
+        AssetKind.text,
+      ]);
+    });
+
+    test('a dotfile in the source tree is not copied across', () {
+      // flutter_tools expands a directory entry by listing every file in it,
+      // dotfiles included, so a `.DS_Store` copied into the output directory
+      // ships. Nothing else keeps it out now that every extension is a kind.
+      final source = _sourceTree(['.DS_Store', 'ui/.gitkeep', 'a.png']);
+      final plan = planCompaction(
+        sourceDir: source,
+        config: GoodConfig.defaults,
+      );
+      expect(plan.steps.map((s) => s.source), ['a.png']);
+      expect(plan.skipped.keys, ['.DS_Store', 'ui/.gitkeep']);
     });
 
     test('a source directory with a trailing slash keeps whole filenames', () {

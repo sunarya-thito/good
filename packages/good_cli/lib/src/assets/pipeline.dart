@@ -233,7 +233,10 @@ Future<void> _normalize({
 
   final plan = normalize.planCompaction(sourceDir: sourceDir, config: config);
   for (final entry in plan.skipped.entries) {
-    out.printf('Skipped %s - %s\n', [entry.key, entry.value]);
+    // Verbose, not out. What lands here is a `.gitkeep` or a
+    // `.DS_Store`, and a line about one on every run of every project
+    // is noise.
+    verbose.printf('Skipped %s - %s\n', [entry.key, entry.value]);
   }
   if (plan.isEmpty) {
     _sayThereIsNothingToConvert(
@@ -364,10 +367,10 @@ Future<void> _pack({
   required bool dryRun,
 }) async {
   final scan = scanAssets(projectDir);
-  final paths = <String>[
-    for (final asset in scan.textures) asset.path,
-    for (final asset in scan.audio) asset.path,
-  ]..sort();
+  // Every kind, not the two the pipeline started with. A file good declares
+  // and does not pack is a file that ships in the clear beside the chunks
+  // holding everything else (#357).
+  final paths = <String>[for (final asset in scan.all) asset.path]..sort();
   if (paths.isEmpty) {
     verbose.println('  no declared assets - nothing to pack');
     return;

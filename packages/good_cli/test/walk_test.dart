@@ -4,6 +4,7 @@ library;
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:good_cli/src/assets/pack.dart';
 import 'package:good_cli/src/generate/bundle.dart';
 import 'package:good_cli/src/generate/scaffold.dart';
 import 'package:test/test.dart';
@@ -100,6 +101,25 @@ void _asPubGetWritesIt(Directory project, String name) {
   );
 }
 
+/// A string nothing else in the pipeline writes, so finding it in a chunk is
+/// proof the chunk is not sealed.
+const String _secret = 'plaintext-canary-357';
+
+/// Whether [haystack] holds [needle] anywhere.
+bool _contains(List<int> haystack, List<int> needle) {
+  for (var i = 0; i + needle.length <= haystack.length; i++) {
+    var match = true;
+    for (var j = 0; j < needle.length; j++) {
+      if (haystack[i + j] != needle[j]) {
+        match = false;
+        break;
+      }
+    }
+    if (match) return true;
+  }
+  return false;
+}
+
 void main() {
   test('art dropped in assets_src reaches the enum and the chunk', () async {
     final project = await scaffoldProject(
@@ -157,6 +177,101 @@ void main() {
           'a chunk it cannot name:\n$log',
     );
   }, skip: _hasFfmpeg ? null : 'ffmpeg is not installed');
+
+  test('a json, a text file and a blob reach their enums and a sealed chunk',
+      () async {
+    // The half of #357 that is not the runtime handles. A file that is neither
+    // a texture nor audio used to be reported by normalisation and dropped: no
+    // enum value, no chunk, no encryption, and the file left in `assets_src/`
+    // for the project to copy across by hand. So a level layout, a dialogue
+    // file or a save blob shipped in the clear beside sealed art.
+    //
+    // Needs no ffmpeg, and that is the point - there is no container to
+    // normalize any of these to, so the step is a copy.
+    final project = await scaffoldProject(
+      name: 'walk_data_probe',
+      engine: GoodEngine.twoD,
+      generate: false,
+    );
+    final source = Directory('${project.path}/assets_src')
+      ..createSync(recursive: true);
+    File('${source.path}/balance.json').writeAsStringSync('{"lives": 3}');
+    File('${source.path}/credits.txt').writeAsStringSync(_secret);
+    File('${source.path}/autosave.sav').writeAsStringSync('save blob');
+
+    final run = _generate(project);
+    final log = '${run.stdout}${run.stderr}';
+    expect(run.exitCode, 0, reason: log);
+
+    for (final name in <String>[
+      'balance.json',
+      'credits.txt',
+      'autosave.sav',
+    ]) {
+      expect(
+        File('${project.path}/assets/$name').existsSync(),
+        isTrue,
+        reason:
+            '$name never left assets_src/, so nothing downstream can see '
+            'it:\n$log',
+      );
+    }
+
+    final bundle = resolveBundle(project);
+    String generated(String file) =>
+        File('${bundle.libDir.path}/$file').readAsStringSync();
+    expect(generated('jsons.dart'), contains('assets/balance.json'));
+    expect(
+      generated('jsons.dart'),
+      contains('LocalEnumAssetKey<JsonValue>'),
+      reason:
+          'the payload type is what makes JsonAsset.of accept the key at '
+          'all:\n$log',
+    );
+    expect(generated('texts.dart'), contains('assets/credits.txt'));
+    expect(generated('texts.dart'), contains('LocalEnumAssetKey<String>'));
+    expect(generated('blobs.dart'), contains('assets/autosave.sav'));
+    expect(generated('blobs.dart'), contains('LocalEnumAssetKey<Uint8List>'));
+
+    final keys = bundle.assetKeyFile.readAsStringSync();
+    for (final path in <String>[
+      'assets/balance.json',
+      'assets/credits.txt',
+      'assets/autosave.sav',
+    ]) {
+      expect(
+        keys,
+        contains("'$path':"),
+        reason:
+            '$path is in no chunk, so a release build would read it loose or '
+            'not at all:\n$log',
+      );
+    }
+
+    final chunks = Directory('${project.path}/assets/packed')
+        .listSync()
+        .whereType<File>()
+        .where((file) => file.path.endsWith('.dat'))
+        .toList();
+    expect(chunks, isNotEmpty, reason: log);
+    for (final chunk in chunks) {
+      final bytes = chunk.readAsBytesSync();
+      expect(
+        bytes[5] & chunkFlagEncrypted,
+        chunkFlagEncrypted,
+        reason: 'chunk ${chunk.path} is not sealed:\n$log',
+      );
+      // The strongest form of "not in the clear": the text file's contents are
+      // a string nothing else writes, and it must not appear in any chunk.
+      // Asserting on the header alone would pass a chunk carrying the flag and
+      // the plaintext both.
+      expect(
+        _contains(bytes, utf8.encode(_secret)),
+        isFalse,
+        reason: 'the text file is legible inside ${chunk.path}:\n$log',
+      );
+    }
+  });
 
   test('--no-normalize is the whole of what turns a stage off', () async {
     // The counterpart to the test above, and the reason the flag is not just
