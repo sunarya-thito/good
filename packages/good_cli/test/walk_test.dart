@@ -1,6 +1,7 @@
 @Timeout(Duration(minutes: 10))
 library;
 
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:good_cli/src/generate/bundle.dart';
@@ -72,6 +73,32 @@ ProcessResult _generate(Directory project, [List<String> extra = const []]) =>
       '--no-pub-get',
       ...extra,
     ]);
+
+/// Repoints [name]'s entry in [project]'s package config at the relative
+/// `rootUri` a `pub get` would have left there.
+///
+/// `_scaffolded.dart` borrows this repository's resolution and writes every
+/// entry absolute, and an absolute `rootUri` is the one form the resolve check
+/// never got wrong: it means the same thing whatever it is resolved against.
+/// What pub writes for a path dependency inside the project is `../<name>`,
+/// which only names a directory once it is read against the directory holding
+/// the file - and that is the reading #395 is about.
+void _asPubGetWritesIt(Directory project, String name) {
+  final file = File('${project.path}/.dart_tool/package_config.json');
+  final config = jsonDecode(file.readAsStringSync()) as Map<String, Object?>;
+  file.writeAsStringSync(
+    jsonEncode(<String, Object?>{
+      ...config,
+      'packages': <Object?>[
+        for (final entry in config['packages']! as List<Object?>)
+          if ((entry as Map<String, Object?>)['name'] != name)
+            entry
+          else
+            <String, Object?>{...entry, 'rootUri': '../$name'},
+      ],
+    }),
+  );
+}
 
 void main() {
   test('art dropped in assets_src reaches the enum and the chunk', () async {
@@ -158,6 +185,43 @@ void main() {
       reason: 'skipping one stage stopped the others:\n$log',
     );
   }, skip: _hasFfmpeg ? null : 'ffmpeg is not installed');
+
+  test('generate run from inside the project takes `.` as the project', () async {
+    // The documented invocation, and the one every other test here avoids by
+    // passing an absolute `--project-dir`. With a relative project directory
+    // the resolve check read the package config against a base that had no
+    // scheme, answered no for a project that was fully resolved, and the run
+    // ended at exit 65 saying the package config did not point at the bundle.
+    //
+    // `pubGet` is left on, because that is what makes the check run at all.
+    // The project is already resolved, so a run that answers correctly has
+    // nothing to resolve and never reaches the stub `flutter`. (#395)
+    final project = await scaffoldProject(
+      name: 'walk_cwd_probe',
+      engine: GoodEngine.twoD,
+    );
+    _asPubGetWritesIt(project, 'walk_cwd_probe_bundle');
+
+    final run = GoodCli.instance.run(const <String>[
+      'generate',
+    ], workingDirectory: project.path);
+    final log = '${run.stdout}${run.stderr}';
+
+    expect(run.exitCode, 0, reason: log);
+    expect(
+      log,
+      isNot(contains('resolved package config')),
+      reason:
+          'the bundle this project resolves was reported as unresolved:\n$log',
+    );
+    expect(
+      log,
+      isNot(contains('flutter pub get')),
+      reason:
+          'a project whose bundle already resolves was sent to pub anyway, '
+          'which is the same wrong answer arriving one step earlier:\n$log',
+    );
+  });
 
   test('good build --no-generate runs no stage of the pipeline', () async {
     // `good build` runs `good generate` first, the way `flutter build` runs

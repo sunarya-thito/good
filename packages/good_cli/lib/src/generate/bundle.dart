@@ -18,10 +18,10 @@
 ///    deleted. Absent, every command refuses and names the path.
 library;
 
-import 'dart:convert';
 import 'dart:io';
 
 import 'package:good_cli/src/config.dart';
+import 'package:good_cli/src/generate/engine_dependency.dart';
 import 'package:meta/meta.dart';
 import 'package:path/path.dart' as p;
 import 'package:yaml/yaml.dart';
@@ -623,33 +623,19 @@ List<String> _rewriteGeneratedImports(
 /// was never resolved, or was resolved and then had its directory removed,
 /// builds green and ships nothing from it. Asking the resolved config directly
 /// is the only answer that does not depend on a timestamp.
+///
+/// Through [resolvedPackages] and not a second reading of the same file. This
+/// had one of its own, which resolved each `rootUri` as a URI against the
+/// directory holding the config - and [projectDir] is `.` whenever somebody
+/// runs the command from inside their project, which is the default and the
+/// documented way. A relative directory makes that base a relative URI, a
+/// relative base resolves the `../<bundle>` pub writes to a URI with no
+/// scheme, and the check answered no for a project that was resolved (#395).
 bool bundleIsResolved(Directory projectDir, BundlePackage bundle) {
-  final file = File(
-    p.join(projectDir.path, '.dart_tool', 'package_config.json'),
-  );
-  if (!file.existsSync()) return false;
-  final Object? doc;
-  try {
-    doc = jsonDecode(file.readAsStringSync());
-  } on FormatException {
-    return false;
-  }
-  if (doc is! Map<String, Object?>) return false;
-  final packages = doc['packages'];
-  if (packages is! List<Object?>) return false;
-  for (final entry in packages) {
-    if (entry is! Map<String, Object?>) continue;
-    if (entry['name'] != bundle.name) continue;
-    final rootUri = entry['rootUri'];
-    if (rootUri is! String) return false;
-    final resolved = file.parent.uri.resolve(
-      rootUri.endsWith('/') ? rootUri : '$rootUri/',
-    );
-    if (!resolved.isScheme('file')) return false;
-    return p.canonicalize(resolved.toFilePath()) ==
-        p.canonicalize(bundle.directory.path);
-  }
-  return false;
+  final resolved = resolvedPackages(projectDir)[bundle.name];
+  if (resolved == null) return false;
+  return p.canonicalize(resolved.root.path) ==
+      p.canonicalize(bundle.directory.path);
 }
 
 /// Runs `flutter pub get` in [projectDir]. Returns null on success, or what
