@@ -16,50 +16,36 @@ import 'package:good/src/asset.dart';
 /// could play a sound: it is uniform over asset *kinds*, because `Asset<T>`
 /// does not care what `T` is. Nothing above this line changed when the mixer
 /// landed.
+///
+/// # A clip records no container
+///
+/// Bytes and their length, and nothing about what container they are in.
+/// Carrying one would need two things to be true, and neither is.
+///
+/// Nothing reads it. `AudioMixer` hands the bytes and a name to
+/// `AudioBackend.upload`, and a backend identifies the container from the
+/// bytes it was given - SoLoud's `loadMem` does, and that is the one backend
+/// there is.
+///
+/// And a key could not answer for it in any case. `good generate` converts
+/// every audio file to the single container the project configures, and a
+/// development build ships the originals while a production build ships the
+/// converted bytes - so one key resolves to two containers by design, and
+/// #357 states the rule that follows: no code may read a container off a key.
+/// It used to be read off the extension here, which additionally labelled
+/// anything carrying no extension - a `MemorySource`, and so every
+/// procedurally generated or network-delivered clip - Ogg Vorbis whatever it
+/// held (#257).
 class AudioClip {
-  AudioClip(this.bytes, this.format);
+  AudioClip(this.bytes);
 
-  /// The file's bytes, in [format]. Whatever `good generate` normalised them
-  /// to - Ogg Vorbis by default.
+  /// The file's bytes, in whatever `good generate` normalised them to - Ogg
+  /// Vorbis by default.
   final Uint8List bytes;
-
-  /// The container the bytes are in, from the source path's extension.
-  ///
-  /// Carried, never re-sniffed: the loader already knows it, and a backend
-  /// would otherwise have to guess from a header. `AudioContainer.of` reads it
-  /// off the source's extension, and answers [AudioContainer.ogg] for a source
-  /// that has none - which a `MemorySource` generally does not, so a
-  /// procedurally generated clip is labelled Ogg whatever it holds (#17).
-  final AudioContainer format;
 
   /// How many bytes the clip occupies. The one thing that can be answered
   /// without a decoder, and enough for a budget report.
   int get byteLength => bytes.length;
-}
-
-/// The audio containers the pipeline recognises.
-enum AudioContainer {
-  ogg('.ogg'),
-  wav('.wav'),
-  mp3('.mp3'),
-  flac('.flac');
-
-  const AudioContainer(this.extension);
-
-  final String extension;
-
-  /// The container [path]'s extension names, or [AudioContainer.ogg] when it
-  /// names none - which is what a packed asset resolved through a manifest
-  /// looks like.
-  static AudioContainer of(String path) {
-    final dot = path.lastIndexOf('.');
-    if (dot == -1) return AudioContainer.ogg;
-    final extension = path.substring(dot).toLowerCase();
-    for (final container in values) {
-      if (container.extension == extension) return container;
-    }
-    return AudioContainer.ogg;
-  }
 }
 
 /// The handle a component field points at.
@@ -74,10 +60,9 @@ typedef AudioKey = AssetKey<AudioClip>;
 /// inventing them from a header would be a guess reported as a fact - when a
 /// backend lands it can publish them here, which is what [AssetInfo] is for.
 class AudioInfo extends AssetInfo {
-  const AudioInfo(this.byteLength, this.format);
+  const AudioInfo(this.byteLength);
 
   final int byteLength;
-  final AudioContainer format;
 }
 
 /// Reads an audio file's bytes.
@@ -90,12 +75,9 @@ class AudioLoader extends AssetLoader<AudioClip> {
   const AudioLoader();
 
   @override
-  Future<AudioClip> load(AssetKey<AudioClip> key) async => AudioClip(
-    await key.source.load(),
-    AudioContainer.of(key.source.description),
-  );
+  Future<AudioClip> load(AssetKey<AudioClip> key) async =>
+      AudioClip(await key.source.load());
 
   @override
-  AssetInfo describe(AudioClip value) =>
-      AudioInfo(value.byteLength, value.format);
+  AssetInfo describe(AudioClip value) => AudioInfo(value.byteLength);
 }

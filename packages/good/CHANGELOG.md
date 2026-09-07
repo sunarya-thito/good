@@ -697,6 +697,43 @@
   both `@internal`, and nothing but the registry that allocates the buffer
   ever asked how long it was.
 
+* **`AudioClip.format`, `AudioInfo.format` and the `AudioContainer` enum are
+  gone.** A clip is bytes and their length; nothing records what container
+  they are in (#257, #357).
+
+  The label was read off the source description's extension, and answered
+  `AudioContainer.ogg` for anything that named an extension the enum did not
+  carry - including a name with no dot in it at all, which is what
+  `MemorySource.description` is and what every procedurally generated or
+  network-delivered clip therefore got.
+
+  This completes the audio half of #357, whose rule is that no code reads a
+  container off a key: `good generate` normalises every audio file to one
+  container per kind, and a development build ships the originals where a
+  production build ships the converted bytes, so one key resolves to two
+  containers by design. Nothing read the field in any case - `AudioMixer`
+  hands the bytes and a name to `AudioBackend.upload`, and a backend
+  identifies the container from the bytes, which is what `good_audio_soloud`
+  passes to SoLoud's `loadMem`.
+
+  What says what an asset is, is its Dart type, which is the shape the rest of
+  #357 already shipped - `AudioAsset` beside `TextureAsset`, `JsonAsset`,
+  `TextAsset` and `UnknownAsset`:
+
+  ```dart
+  final theme = AudioAsset.of(Audios.theme);   // an AudioClip, no label needed
+  ```
+
+  Two constructors lose their second argument with the field:
+
+  ```dart
+  AudioClip(bytes);            // was AudioClip(bytes, format)
+  AudioInfo(clip.byteLength);  // was AudioInfo(byteLength, format)
+  ```
+
+  A backend that has to know which container a build produced reads that from
+  the project's audio configuration. It is not a fact about a clip.
+
 ### Added
 
 * **A dot shorthand for every binding, so an action names its source without
