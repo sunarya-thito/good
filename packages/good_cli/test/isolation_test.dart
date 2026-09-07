@@ -52,11 +52,16 @@ void main() {
     test('the kernel is under .dart_tool, not in a directory of its own', () {
       // Where it lives is the mechanism. A kernel in a fresh temp directory
       // cannot be found by the next isolate however it is keyed.
+      //
+      // The path is absolute, so this asks where it is rather than how it is
+      // spelled: a test that starts the CLI in a fixture gives the child a
+      // working directory of its own, and a kernel named relative to this one
+      // is not there from inside it.
+      final root = File(
+        '.dart_tool/good_cli_test',
+      ).absolute.path.replaceAll(r'\', '/');
       final build = GoodCli.sharedBuild();
-      expect(
-        build.snapshot.replaceAll(r'\', '/'),
-        startsWith('.dart_tool/good_cli_test/'),
-      );
+      expect(build.snapshot.replaceAll(r'\', '/'), startsWith('$root/'));
       expect(
         build.snapshot.replaceAll(r'\', '/'),
         isNot(startsWith(Directory.systemTemp.path.replaceAll(r'\', '/'))),
