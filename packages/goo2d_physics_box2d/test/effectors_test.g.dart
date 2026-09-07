@@ -43,8 +43,6 @@ List<ScannableField> _collect$Box(Object object) {
     owner.transformScaleX,
     owner.transformScaleY,
     owner.transformRotation,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -52,17 +50,12 @@ List<ScannableField> _collect$Scene(Object object) {
   final owner = object as _Scene;
   return <ScannableField>[
     owner.box,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
 List<ScannableField> _collect$EffectorSystem(Object object) {
-  final owner = object as _EffectorSystem;
-  return <ScannableField>[
-    owner.mountEvent,
-    owner.unmountEvent,
-  ];
+  object as _EffectorSystem;
+  return const <ScannableField>[];
 }
 
 List<ScannableField> _collect$GameState(Object object) {

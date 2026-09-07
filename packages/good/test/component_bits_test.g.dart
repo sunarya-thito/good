@@ -25,8 +25,6 @@ List<ScannableField> _collect$Player(Object object) {
   return <ScannableField>[
     owner.betaValue,
     owner.alphaValue,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -34,17 +32,12 @@ List<ScannableField> _collect$Prop(Object object) {
   final owner = object as _Prop;
   return <ScannableField>[
     owner.alphaValue,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
 List<ScannableField> _collect$Level(Object object) {
-  final owner = object as _Level;
-  return <ScannableField>[
-    owner.mountedEvent,
-    owner.unmountedEvent,
-  ];
+  object as _Level;
+  return const <ScannableField>[];
 }
 
 List<ScannableField> _collect$SeededState(Object object) {

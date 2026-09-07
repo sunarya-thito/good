@@ -21,27 +21,18 @@
 part of 'game_buffer_test.dart';
 
 List<ScannableField> _collect$Empty(Object object) {
-  final owner = object as _Empty;
-  return <ScannableField>[
-    owner.mountedEvent,
-    owner.unmountedEvent,
-  ];
+  object as _Empty;
+  return const <ScannableField>[];
 }
 
 List<ScannableField> _collect$EmptyScene(Object object) {
-  final owner = object as _EmptyScene;
-  return <ScannableField>[
-    owner.mountedEvent,
-    owner.unmountedEvent,
-  ];
+  object as _EmptyScene;
+  return const <ScannableField>[];
 }
 
 List<ScannableField> _collect$PingSystem(Object object) {
-  final owner = object as _PingSystem;
-  return <ScannableField>[
-    owner.mountEvent,
-    owner.unmountEvent,
-  ];
+  object as _PingSystem;
+  return const <ScannableField>[];
 }
 
 List<ScannableField> _collect$BufferState(Object object) {

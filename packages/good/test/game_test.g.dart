@@ -25,8 +25,6 @@ List<ScannableField> _collect$Unit(Object object) {
   return <ScannableField>[
     owner.x,
     owner.marker,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -34,25 +32,17 @@ List<ScannableField> _collect$TestScene(Object object) {
   final owner = object as _TestScene;
   return <ScannableField>[
     owner.unit,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
 List<ScannableField> _collect$PresentSystem(Object object) {
-  final owner = object as _PresentSystem;
-  return <ScannableField>[
-    owner.mountEvent,
-    owner.unmountEvent,
-  ];
+  object as _PresentSystem;
+  return const <ScannableField>[];
 }
 
 List<ScannableField> _collect$BothPhases(Object object) {
-  final owner = object as _BothPhases;
-  return <ScannableField>[
-    owner.mountEvent,
-    owner.unmountEvent,
-  ];
+  object as _BothPhases;
+  return const <ScannableField>[];
 }
 
 List<ScannableField> _collect$PhaseState(Object object) {
@@ -79,19 +69,13 @@ List<ScannableField> _collect$PhaseGame(Object object) {
 }
 
 List<ScannableField> _collect$ThrowingSystem(Object object) {
-  final owner = object as _ThrowingSystem;
-  return <ScannableField>[
-    owner.mountEvent,
-    owner.unmountEvent,
-  ];
+  object as _ThrowingSystem;
+  return const <ScannableField>[];
 }
 
 List<ScannableField> _collect$AfterThrowerSystem(Object object) {
-  final owner = object as _AfterThrowerSystem;
-  return <ScannableField>[
-    owner.mountEvent,
-    owner.unmountEvent,
-  ];
+  object as _AfterThrowerSystem;
+  return const <ScannableField>[];
 }
 
 List<ScannableField> _collect$ThrowState(Object object) {
@@ -128,11 +112,8 @@ List<ScannableField> _collect$BadReportGame(Object object) {
 }
 
 List<ScannableField> _collect$VisibilitySystem(Object object) {
-  final owner = object as _VisibilitySystem;
-  return <ScannableField>[
-    owner.mountEvent,
-    owner.unmountEvent,
-  ];
+  object as _VisibilitySystem;
+  return const <ScannableField>[];
 }
 
 List<ScannableField> _collect$VisibilityState(Object object) {
@@ -163,75 +144,48 @@ List<ScannableField> _collect$AlwaysTickingGame(Object object) {
 }
 
 List<ScannableField> _collect$SystemA(Object object) {
-  final owner = object as _SystemA;
-  return <ScannableField>[
-    owner.mountEvent,
-    owner.unmountEvent,
-  ];
+  object as _SystemA;
+  return const <ScannableField>[];
 }
 
 List<ScannableField> _collect$SystemB(Object object) {
-  final owner = object as _SystemB;
-  return <ScannableField>[
-    owner.mountEvent,
-    owner.unmountEvent,
-  ];
+  object as _SystemB;
+  return const <ScannableField>[];
 }
 
 List<ScannableField> _collect$InertSystem(Object object) {
-  final owner = object as _InertSystem;
-  return <ScannableField>[
-    owner.mountEvent,
-    owner.unmountEvent,
-  ];
+  object as _InertSystem;
+  return const <ScannableField>[];
 }
 
 List<ScannableField> _collect$SortsFirst(Object object) {
-  final owner = object as _SortsFirst;
-  return <ScannableField>[
-    owner.mountEvent,
-    owner.unmountEvent,
-  ];
+  object as _SortsFirst;
+  return const <ScannableField>[];
 }
 
 List<ScannableField> _collect$Indifferent1(Object object) {
-  final owner = object as _Indifferent1;
-  return <ScannableField>[
-    owner.mountEvent,
-    owner.unmountEvent,
-  ];
+  object as _Indifferent1;
+  return const <ScannableField>[];
 }
 
 List<ScannableField> _collect$Indifferent2(Object object) {
-  final owner = object as _Indifferent2;
-  return <ScannableField>[
-    owner.mountEvent,
-    owner.unmountEvent,
-  ];
+  object as _Indifferent2;
+  return const <ScannableField>[];
 }
 
 List<ScannableField> _collect$AlsoSortsFirst(Object object) {
-  final owner = object as _AlsoSortsFirst;
-  return <ScannableField>[
-    owner.mountEvent,
-    owner.unmountEvent,
-  ];
+  object as _AlsoSortsFirst;
+  return const <ScannableField>[];
 }
 
 List<ScannableField> _collect$Composer(Object object) {
-  final owner = object as _Composer;
-  return <ScannableField>[
-    owner.mountEvent,
-    owner.unmountEvent,
-  ];
+  object as _Composer;
+  return const <ScannableField>[];
 }
 
 List<ScannableField> _collect$Spawner(Object object) {
-  final owner = object as _Spawner;
-  return <ScannableField>[
-    owner.mountEvent,
-    owner.unmountEvent,
-  ];
+  object as _Spawner;
+  return const <ScannableField>[];
 }
 
 List<ScannableField> _collect$OrderingState(Object object) {
@@ -261,27 +215,18 @@ List<ScannableField> _collect$OrderingState(Object object) {
 }
 
 List<ScannableField> _collect$CycleA(Object object) {
-  final owner = object as _CycleA;
-  return <ScannableField>[
-    owner.mountEvent,
-    owner.unmountEvent,
-  ];
+  object as _CycleA;
+  return const <ScannableField>[];
 }
 
 List<ScannableField> _collect$CycleB(Object object) {
-  final owner = object as _CycleB;
-  return <ScannableField>[
-    owner.mountEvent,
-    owner.unmountEvent,
-  ];
+  object as _CycleB;
+  return const <ScannableField>[];
 }
 
 List<ScannableField> _collect$CycleC(Object object) {
-  final owner = object as _CycleC;
-  return <ScannableField>[
-    owner.mountEvent,
-    owner.unmountEvent,
-  ];
+  object as _CycleC;
+  return const <ScannableField>[];
 }
 
 List<ScannableField> _collect$CyclicState(Object object) {
@@ -317,8 +262,6 @@ List<ScannableField> _collect$CensusSystem(Object object) {
   final owner = object as _CensusSystem;
   return <ScannableField>[
     owner.query,
-    owner.mountEvent,
-    owner.unmountEvent,
   ];
 }
 
@@ -562,11 +505,8 @@ List<ScannableField> _collect$ReadOnlyRead(Object object) {
 }
 
 List<ScannableField> _collect$MarkerSystem(Object object) {
-  final owner = object as _MarkerSystem;
-  return <ScannableField>[
-    owner.mountEvent,
-    owner.unmountEvent,
-  ];
+  object as _MarkerSystem;
+  return const <ScannableField>[];
 }
 
 List<ScannableField> _collect$WindowState(Object object) {
@@ -606,19 +546,13 @@ List<ScannableField> _collect$MuteReadOnlyMainGame(Object object) {
 }
 
 List<ScannableField> _collect$DrawsFromA(Object object) {
-  final owner = object as _DrawsFromA;
-  return <ScannableField>[
-    owner.mountEvent,
-    owner.unmountEvent,
-  ];
+  object as _DrawsFromA;
+  return const <ScannableField>[];
 }
 
 List<ScannableField> _collect$DrawsFromB(Object object) {
-  final owner = object as _DrawsFromB;
-  return <ScannableField>[
-    owner.mountEvent,
-    owner.unmountEvent,
-  ];
+  object as _DrawsFromB;
+  return const <ScannableField>[];
 }
 
 List<ScannableField> _collect$RandomState(Object object) {
@@ -725,11 +659,8 @@ List<ScannableField> _collect$DuplicateSystemGame(Object object) {
 }
 
 List<ScannableField> _collect$UndeclaredSystem(Object object) {
-  final owner = object as _UndeclaredSystem;
-  return <ScannableField>[
-    owner.mountEvent,
-    owner.unmountEvent,
-  ];
+  object as _UndeclaredSystem;
+  return const <ScannableField>[];
 }
 
 List<ScannableField> _collect$ScenelessState(Object object) {

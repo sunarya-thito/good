@@ -32,8 +32,6 @@ List<ScannableField> _worldTransformSystem(Object object) {
   final owner = object as WorldTransformSystem;
   return <ScannableField>[
     owner.roots,
-    owner.mountEvent,
-    owner.unmountEvent,
   ];
 }
 
@@ -46,8 +44,6 @@ List<ScannableField> _pointerPickingSystem(Object object) {
     owner.pressables,
     owner.hoverables,
     owner.cameras,
-    owner.mountEvent,
-    owner.unmountEvent,
   ];
 }
 
@@ -58,8 +54,6 @@ List<ScannableField> _gameRenderer2D(Object object) {
     owner.screenRenderables,
     owner.labels,
     owner.cameras,
-    owner.mountEvent,
-    owner.unmountEvent,
   ];
 }
 

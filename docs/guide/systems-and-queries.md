@@ -262,8 +262,7 @@ the answer.
 ## Lifecycle
 
 ```dart
-class SpawnSystem extends GameSystem
-    with FixedTickable, GameSystemLifecycleListener {
+class SpawnSystem extends GameSystem with FixedTickable {
   @override
   void onMounted() {
     super.onMounted();

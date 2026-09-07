@@ -31,8 +31,6 @@ List<ScannableField> _collect$Player(Object object) {
     owner.transformScaleX,
     owner.transformScaleY,
     owner.transformRotation,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -45,8 +43,6 @@ List<ScannableField> _collect$Wall(Object object) {
     owner.transformScaleX,
     owner.transformScaleY,
     owner.transformRotation,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -59,8 +55,6 @@ List<ScannableField> _collect$Polygon(Object object) {
     owner.transformScaleX,
     owner.transformScaleY,
     owner.transformRotation,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -74,8 +68,6 @@ List<ScannableField> _collect$Capsule(Object object) {
     owner.transformScaleX,
     owner.transformScaleY,
     owner.transformRotation,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -88,8 +80,6 @@ List<ScannableField> _collect$Concave(Object object) {
     owner.transformScaleX,
     owner.transformScaleY,
     owner.transformRotation,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -101,8 +91,6 @@ List<ScannableField> _collect$Scene(Object object) {
     owner.polygon,
     owner.capsule,
     owner.concave,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -115,8 +103,6 @@ List<ScannableField> _collect$WidePolygon(Object object) {
     owner.transformScaleX,
     owner.transformScaleY,
     owner.transformRotation,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -124,8 +110,6 @@ List<ScannableField> _collect$WidePolygonScene(Object object) {
   final owner = object as _WidePolygonScene;
   return <ScannableField>[
     owner.polygon,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 

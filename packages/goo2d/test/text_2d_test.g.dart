@@ -40,8 +40,6 @@ List<ScannableField> _collect$Back(Object object) {
     owner.transformScaleX,
     owner.transformScaleY,
     owner.transformRotation,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -65,8 +63,6 @@ List<ScannableField> _collect$Enemy(Object object) {
     owner.transformScaleX,
     owner.transformScaleY,
     owner.transformRotation,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -103,8 +99,6 @@ List<ScannableField> _collect$Damage(Object object) {
     owner.transformScaleX,
     owner.transformScaleY,
     owner.transformRotation,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -140,8 +134,6 @@ List<ScannableField> _collect$Silent(Object object) {
     owner.transformScaleX,
     owner.transformScaleY,
     owner.transformRotation,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -165,8 +157,6 @@ List<ScannableField> _collect$Front(Object object) {
     owner.transformScaleX,
     owner.transformScaleY,
     owner.transformRotation,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -191,8 +181,6 @@ List<ScannableField> _collect$Eye(Object object) {
     owner.transformScaleX,
     owner.transformScaleY,
     owner.transformRotation,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -205,8 +193,6 @@ List<ScannableField> _collect$Scene(Object object) {
     owner.silent,
     owner.front,
     owner.eye,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 

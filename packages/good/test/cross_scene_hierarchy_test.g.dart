@@ -29,8 +29,6 @@ List<ScannableField> _collect$Body(Object object) {
     owner.childParent,
     owner.childNextSibling,
     owner.childPrevSibling,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -38,8 +36,6 @@ List<ScannableField> _collect$Level(Object object) {
   final owner = object as _Level;
   return <ScannableField>[
     owner.body,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 

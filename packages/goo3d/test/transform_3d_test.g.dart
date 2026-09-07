@@ -33,8 +33,6 @@ List<ScannableField> _collect$Turret(Object object) {
     owner.transformRotationY,
     owner.transformRotationZ,
     owner.transformRotationW,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -52,8 +50,6 @@ List<ScannableField> _collect$Enemy(Object object) {
     owner.transformRotationY,
     owner.transformRotationZ,
     owner.transformRotationW,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -62,8 +58,6 @@ List<ScannableField> _collect$Scene(Object object) {
   return <ScannableField>[
     owner.turret,
     owner.enemy,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 

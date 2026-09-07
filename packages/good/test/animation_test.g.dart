@@ -36,8 +36,6 @@ List<ScannableField> _collect$Enemy(Object object) {
   return <ScannableField>[
     owner.startedAt,
     owner.px,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -52,8 +50,6 @@ List<ScannableField> _collect$Scene(Object object) {
   final owner = object as _Scene;
   return <ScannableField>[
     owner.enemy,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 

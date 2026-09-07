@@ -5,8 +5,6 @@ import 'package:good/src/coroutine/coroutine.dart';
 import 'package:good/src/game_state.dart';
 import 'package:good/src/asset.dart';
 import 'package:good/src/data.dart';
-import 'package:good/src/event.dart';
-import 'package:good/src/event/lifecycle.dart';
 import 'package:good/src/scannable.dart';
 import 'package:good/src/scene.dart';
 import 'package:good/src/system.dart';
@@ -69,57 +67,42 @@ abstract interface class MultiComponent implements Component {}
 // allocate memory for the game object and its components, and manage the data
 // of the game object
 //
-// It is also a [GameListener] and an [EventBus], which is the bottom of the
-// composition walk: a `GameState` offers its scenes, a `SceneStruct` offers the
-// prefabs it registered, and here it stops - a prefab composes nothing further.
-// That is what lets an event declared on the state reach every entity struct in
-// the game, and one declared *here* reach this prefab and nothing else, which
-// is the scoping that makes a per-struct mount hook possible at all.
+// It is not a [GameListener]. A prefab hears about its own entities through
+// [EntityStruct.onEntityMounted] and [EntityStruct.onEntityUnmounted], which
+// the engine calls directly, and it hears about nothing else at all. Something
+// that wants to watch the world is a `GameSystem` mixing in
+// `EntitySpawnListener`.
 
 // NOTE: No longer carries <T>
 // <T> was used to describe the type of the prefab, but it is no longer needed
 // because .has on the describeType now accepts direct Type as parameter.
 @Describes(EntityStruct)
-abstract class EntityStruct extends GameListenerBase
-    with EventBus, Coroutines, Animations
+abstract class EntityStruct
+    with Coroutines, Animations
     implements MultiComponent, ScannableField {
-  /// An entity of **this** struct was created.
+  /// An entity of **this** struct has been created, and its declared field
+  /// defaults are already stamped into the row - by the storage layer at
+  /// creation, not by a write on this tick, so a struct that only needs its
+  /// defaults needs no override here at all.
   ///
-  /// Declared here, so the collect pass fills it from this prefab's own
-  /// composition and nothing wider - the narrowest scope in the engine, and
-  /// the reason a listener never has to ask "is this event about my
-  /// archetype". One level up it would be a single list told about every
-  /// entity in the game.
-  ///
-  /// A struct hears its own entities by mixing in `EntityLifecycleListener`,
-  /// which this dispatcher then collects - there is no separate virtual. The
-  /// same mixin on a `GameSystem` hears **nothing**: this is the only kind of
-  /// dispatcher that delivers it, and it collects the struct. A system wanting
-  /// every entity in the game mixes in `EntitySpawnListener`, which
-  /// `GameState` declares - the scope is decided by which dispatcher collects
-  /// the listener, not by which method it overrides.
-  ///
-  /// These two were the last pair in the engine still declared from the hook,
-  /// and the reason they were is gone. `SceneDescriptor.has` takes a
-  /// `T Function()` and a closure may hand back an object that already
-  /// existed - `descriptor.has(() => _prefab)` is how a fixture keeps a
-  /// reference to the prefab it is about to register - so no binder was open
-  /// around that construction and a dispatcher on a field here would have
-  /// thrown for every one of them. Nothing is open around a declaration now:
-  /// `Event.of` builds the dispatcher, and `EventBinder.bind` reads it off
-  /// whatever object it was given. `archetype_test`'s `_Rock().archetype`,
-  /// an `EntityStruct` with no scene at all, is unaffected for the same
-  /// reason - a dispatcher nobody bound holds no listeners and says so.
-  final mountedEvent = Event.of<EntityLifecycleListener, Entity>(
-    (listener, entity) => listener.onEntityMounted(entity),
-  );
+  /// Called for this struct's own entities and no others, so an override never
+  /// has to ask whether the entity was one of its own. A system that wants
+  /// every entity in the game mixes in `EntitySpawnListener` and expects to
+  /// filter.
+  void onEntityMounted(Entity entity) {}
 
-  /// An entity of this struct is going away, because `Entity.destroy()` was
-  /// called on it or because the scene holding it is being unloaded - both
-  /// paths fire this. Its row is still readable during dispatch.
-  final unmountedEvent = Event.of<EntityLifecycleListener, Entity>(
-    (listener, entity) => listener.onEntityUnmounted(entity),
-  );
+  /// An entity of this struct is going away, either because `Entity.destroy()`
+  /// was called on it (or on an ancestor, which destroys the subtree) or
+  /// because the scene holding it is being unloaded. Both paths call this, and
+  /// both call `EntitySpawnListener.onEntityDespawned` first, so the two are
+  /// indistinguishable from in here.
+  ///
+  /// Its row is still readable during the call and released immediately
+  /// afterwards. Rows **are** recycled: after a destroy the next entity of the
+  /// same archetype can be handed that row, and `Entity` has no generation
+  /// counter, so a handle kept past this point silently starts naming
+  /// something else instead of reading as dead.
+  void onEntityUnmounted(Entity entity) {}
 
   late SceneStruct _associatedScene; // <- scene holds memory pool
   late ArchetypeStorage _archetype;

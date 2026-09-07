@@ -45,10 +45,6 @@ List<ScannableField> _collect$ShooterState(Object object) {
   final owner = object as ShooterState;
   return <ScannableField>[
     owner.network,
-    owner.peerJoinedEvent,
-    owner.peerLeftEvent,
-    owner.sessionOpenedEvent,
-    owner.sessionClosedEvent,
     owner.fixedTickEvent,
     owner.tickEvent,
     owner.gameMountedEvent,

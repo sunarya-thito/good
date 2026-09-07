@@ -29,8 +29,10 @@ import 'package:good_net/src/system.dart';
 List<ScannableField> _networkSystem(Object object) {
   final owner = object as NetworkSystem;
   return <ScannableField>[
-    owner.mountEvent,
-    owner.unmountEvent,
+    owner.peerJoinedEvent,
+    owner.peerLeftEvent,
+    owner.sessionOpenedEvent,
+    owner.sessionClosedEvent,
   ];
 }
 

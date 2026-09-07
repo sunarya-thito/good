@@ -27,8 +27,6 @@ List<ScannableField> _collect$CompositeSystem(Object object) {
     owner.mixed,
     owner.attack,
     owner.throttle,
-    owner.mountEvent,
-    owner.unmountEvent,
   ];
 }
 
@@ -58,8 +56,6 @@ List<ScannableField> _collect$RestoreSystem(Object object) {
   final owner = object as _RestoreSystem;
   return <ScannableField>[
     owner.attack,
-    owner.mountEvent,
-    owner.unmountEvent,
   ];
 }
 

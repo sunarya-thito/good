@@ -43,8 +43,6 @@ List<ScannableField> _collect$Wall(Object object) {
     owner.transformScaleX,
     owner.transformScaleY,
     owner.transformRotation,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -71,8 +69,6 @@ List<ScannableField> _collect$Hidden(Object object) {
     owner.transformScaleX,
     owner.transformScaleY,
     owner.transformRotation,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -81,8 +77,6 @@ List<ScannableField> _collect$Scene(Object object) {
   return <ScannableField>[
     owner.wall,
     owner.hidden,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 

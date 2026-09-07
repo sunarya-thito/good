@@ -21,11 +21,8 @@
 part of 'draw_canvas_2d_test.dart';
 
 List<ScannableField> _collect$TextureScene(Object object) {
-  final owner = object as _TextureScene;
-  return <ScannableField>[
-    owner.mountedEvent,
-    owner.unmountedEvent,
-  ];
+  object as _TextureScene;
+  return const <ScannableField>[];
 }
 
 /// Every fixture this library declares, and how to read one.

@@ -29,8 +29,6 @@ List<ScannableField> _collect$Player(Object object) {
     owner.hitPoints,
     owner.x,
     owner.y,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -39,8 +37,6 @@ List<ScannableField> _collect$Rock(Object object) {
   return <ScannableField>[
     owner.x,
     owner.y,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -48,8 +44,6 @@ List<ScannableField> _collect$Trigger(Object object) {
   final owner = object as _Trigger;
   return <ScannableField>[
     owner.hitPoints,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -59,8 +53,6 @@ List<ScannableField> _collect$Level(Object object) {
     owner.player,
     owner.rock,
     owner.trigger,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 

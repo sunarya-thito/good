@@ -38,19 +38,13 @@ List<ScannableField> _collect$BareState(Object object) {
 }
 
 List<ScannableField> _collect$BareScene(Object object) {
-  final owner = object as _BareScene;
-  return <ScannableField>[
-    owner.mountedEvent,
-    owner.unmountedEvent,
-  ];
+  object as _BareScene;
+  return const <ScannableField>[];
 }
 
 List<ScannableField> _collect$TickingSystem(Object object) {
-  final owner = object as _TickingSystem;
-  return <ScannableField>[
-    owner.mountEvent,
-    owner.unmountEvent,
-  ];
+  object as _TickingSystem;
+  return const <ScannableField>[];
 }
 
 List<ScannableField> _collect$ViewGame(Object object) {
@@ -64,11 +58,8 @@ List<ScannableField> _collect$SilentGame(Object object) {
 }
 
 List<ScannableField> _collect$VisibilitySystem(Object object) {
-  final owner = object as _VisibilitySystem;
-  return <ScannableField>[
-    owner.mountEvent,
-    owner.unmountEvent,
-  ];
+  object as _VisibilitySystem;
+  return const <ScannableField>[];
 }
 
 List<ScannableField> _collect$VisibilityState(Object object) {

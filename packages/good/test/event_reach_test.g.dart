@@ -18,48 +18,34 @@
 // package's lib/ holds privately. That is another library,
 // so nothing here can read it - it keeps its place so that
 // what the row is missing, and where, is visible.
-part of 'event_scope_test.dart';
+part of 'event_reach_test.dart';
 
 List<ScannableField> _collect$PingSystem(Object object) {
-  final owner = object as _PingSystem;
-  return <ScannableField>[
-    owner.mountEvent,
-    owner.unmountEvent,
-  ];
+  object as _PingSystem;
+  return const <ScannableField>[];
 }
 
 List<ScannableField> _collect$DeafSystem(Object object) {
-  final owner = object as _DeafSystem;
+  object as _DeafSystem;
+  return const <ScannableField>[];
+}
+
+List<ScannableField> _collect$SelfishSystem(Object object) {
+  final owner = object as _SelfishSystem;
   return <ScannableField>[
-    owner.mountEvent,
-    owner.unmountEvent,
+    owner.ping,
   ];
 }
 
 List<ScannableField> _collect$PingUnit(Object object) {
-  final owner = object as _PingUnit;
-  return <ScannableField>[
-    owner.mountedEvent,
-    owner.unmountedEvent,
-  ];
-}
-
-List<ScannableField> _collect$SelfishUnit(Object object) {
-  final owner = object as _SelfishUnit;
-  return <ScannableField>[
-    owner.ping,
-    owner.mountedEvent,
-    owner.unmountedEvent,
-  ];
+  object as _PingUnit;
+  return const <ScannableField>[];
 }
 
 List<ScannableField> _collect$PingScene(Object object) {
   final owner = object as _PingScene;
   return <ScannableField>[
     owner.unit,
-    owner.selfish,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -69,6 +55,7 @@ List<ScannableField> _collect$PingState(Object object) {
     owner.ping,
     owner.pingSystem,
     owner.deafSystem,
+    owner.selfishSystem,
     owner.fixedTickEvent,
     owner.tickEvent,
     owner.gameMountedEvent,
@@ -92,14 +79,14 @@ List<ScannableField> _collect$PingGame(Object object) {
 /// It carries the package's own generated table as a
 /// dependency, so installing this installs the collectors for
 /// the engine classes a fixture is built on as well.
-const GeneratedDeclarations _eventScopeTestDeclarations =
+const GeneratedDeclarations _eventReachTestDeclarations =
     GeneratedDeclarations(
-      package: 'good/test/event_scope_test.dart',
+      package: 'good/test/event_reach_test.dart',
       collectors: <DeclarationCollector>[
         DeclarationCollector(_PingSystem, _collect$PingSystem),
         DeclarationCollector(_DeafSystem, _collect$DeafSystem),
+        DeclarationCollector(_SelfishSystem, _collect$SelfishSystem),
         DeclarationCollector(_PingUnit, _collect$PingUnit),
-        DeclarationCollector(_SelfishUnit, _collect$SelfishUnit),
         DeclarationCollector(_PingScene, _collect$PingScene),
         DeclarationCollector(_PingState, _collect$PingState),
         DeclarationCollector(_PingGame, _collect$PingGame),
@@ -109,12 +96,12 @@ const GeneratedDeclarations _eventScopeTestDeclarations =
       ],
     );
 
-/// Installs [_eventScopeTestDeclarations].
+/// Installs [_eventReachTestDeclarations].
 ///
 /// Called first thing in this library's `main`. Nothing runs
 /// on import in Dart, so a table that is never installed is a
 /// table nothing has - and the first registration says so by
 /// naming the class it could not collect.
 void _installDeclarations() => DeclarationRegistry.installGenerated(
-  const <GeneratedDeclarations>[_eventScopeTestDeclarations],
+  const <GeneratedDeclarations>[_eventReachTestDeclarations],
 );

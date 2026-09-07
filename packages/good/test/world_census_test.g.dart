@@ -24,8 +24,6 @@ List<ScannableField> _collect$Rock(Object object) {
   final owner = object as _Rock;
   return <ScannableField>[
     owner.weight,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -33,8 +31,6 @@ List<ScannableField> _collect$Bird(Object object) {
   final owner = object as _Bird;
   return <ScannableField>[
     owner.span,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -43,25 +39,17 @@ List<ScannableField> _collect$Habitat(Object object) {
   return <ScannableField>[
     owner.rock,
     owner.bird,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
 List<ScannableField> _collect$AlphaSystem(Object object) {
-  final owner = object as _AlphaSystem;
-  return <ScannableField>[
-    owner.mountEvent,
-    owner.unmountEvent,
-  ];
+  object as _AlphaSystem;
+  return const <ScannableField>[];
 }
 
 List<ScannableField> _collect$BetaSystem(Object object) {
-  final owner = object as _BetaSystem;
-  return <ScannableField>[
-    owner.mountEvent,
-    owner.unmountEvent,
-  ];
+  object as _BetaSystem;
+  return const <ScannableField>[];
 }
 
 List<ScannableField> _collect$TakeCensus(Object object) {

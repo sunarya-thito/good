@@ -24,8 +24,6 @@ List<ScannableField> _collect$Probe(Object object) {
   final owner = object as _Probe;
   return <ScannableField>[
     owner.hits,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -33,17 +31,12 @@ List<ScannableField> _collect$StateScene(Object object) {
   final owner = object as _StateScene;
   return <ScannableField>[
     owner.probe,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
 List<ScannableField> _collect$StateSystem(Object object) {
-  final owner = object as _StateSystem;
-  return <ScannableField>[
-    owner.mountEvent,
-    owner.unmountEvent,
-  ];
+  object as _StateSystem;
+  return const <ScannableField>[];
 }
 
 List<ScannableField> _collect$StateGameState(Object object) {
@@ -76,19 +69,13 @@ List<ScannableField> _collect$StateGame(Object object) {
 }
 
 List<ScannableField> _collect$GameSceneStub(Object object) {
-  final owner = object as GameSceneStub;
-  return <ScannableField>[
-    owner.mountedEvent,
-    owner.unmountedEvent,
-  ];
+  object as GameSceneStub;
+  return const <ScannableField>[];
 }
 
 List<ScannableField> _collect$OrphanScene(Object object) {
-  final owner = object as _OrphanScene;
-  return <ScannableField>[
-    owner.mountedEvent,
-    owner.unmountedEvent,
-  ];
+  object as _OrphanScene;
+  return const <ScannableField>[];
 }
 
 List<ScannableField> _collect$WidthState(Object object) {

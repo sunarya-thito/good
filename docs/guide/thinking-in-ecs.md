@@ -186,8 +186,7 @@ own entities and nothing else:
 double _spread() => 0;
 -->
 ```dart
-class Orc extends EntityStruct
-    with Transform2D, Renderable2D, EntityLifecycleListener {
+class Orc extends EntityStruct with Transform2D, Renderable2D {
   // ... `speed` as above
 
   @override
@@ -198,13 +197,10 @@ class Orc extends EntityStruct
 }
 ```
 
-`onEntityMounted` is not a method the engine calls on your prefab class. It is
-an **event**. `EntityStruct` declares a dispatcher for it, your prefab mixes in
-`EntityLifecycleListener`, and the boot pass collects the prefab into that
-dispatcher as a listener. Two things follow from that. The mixin is not
-decoration — leave it off and the override compiles, is never collected, and
-never fires. And `super.onEntityMounted(entity)` matters, because another mixin
-further down the chain may be overriding the same hook on the same object.
+`onEntityMounted` is a method the engine calls on your prefab class, about that
+prefab's own entities. `super.onEntityMounted(entity)` matters, because another
+mixin further down the chain may be overriding the same hook on the same
+object.
 
 The effect is close enough to virtual dispatch that you can think of it that
 way while you write gameplay: per-*kind* polymorphism survives the move intact.
@@ -361,8 +357,7 @@ across ticks. Where you genuinely need a link that outlives a tick, put a
 number beside it that only the intended entity carries:
 
 ```dart
-class Orc extends EntityStruct
-    with Transform2D, Renderable2D, Health, EntityLifecycleListener {
+class Orc extends EntityStruct with Transform2D, Renderable2D, Health {
   final stamp = Field.int64();
 
   int _nextStamp = 1;   // per-prefab counter, not per-entity state — this is fine
@@ -484,12 +479,11 @@ only orcs, or a separate system. Virtual dispatch per entity per tick is
 precisely the cost the layout exists to remove, so it is not coming back.
 
 Per-kind hooks are the exception, and they cover more ground than you would
-guess. `onEntityMounted` and `onEntityUnmounted` are events your prefab hears
-by mixing in `EntityLifecycleListener`; `onCollisionEnter2D` and its five
-siblings arrive through `CollisionListener`, which the physics system resolves
-at the contact with `entity<CollisionListener>().component`. Different
-machinery, same result at the call site: one override on the prefab class, run
-once per event. Polymorphism survives at prefab granularity. It does not
+guess. `onEntityMounted` and `onEntityUnmounted` are methods on the prefab;
+`onCollisionEnter2D` and its five siblings arrive through `CollisionListener`,
+which the physics system resolves at the contact with
+`entity<CollisionListener>().component`. Different machinery, same result at
+the call site: one override on the prefab class, run once per event. Polymorphism survives at prefab granularity. It does not
 survive inside the walk.
 
 **Shared code needs a shared mixin.** A helper that works over "anything with
@@ -788,11 +782,10 @@ There is no `EventEmitter` to instantiate and no event class to write. What the
 engine gives you is three widths of listener, and you pick one by asking how
 wide the question is.
 
-A prefab that only wants to hear about *its own* entities mixes in
-`EntityLifecycleListener` and overrides `onEntityMounted`. A system that wants
-to hear about **every** entity in the game mixes in `EntitySpawnListener` and
-filters by archetype itself, which is what a spatial index or a replication
-table wants:
+A prefab that only wants to hear about *its own* entities overrides
+`onEntityMounted`. A system that wants to hear about **every** entity in the
+game mixes in `EntitySpawnListener` and filters by archetype itself, which is
+what a spatial index or a replication table wants:
 
 <!-- snippet-setup
 final _index = given<SpatialIndex>();
@@ -809,14 +802,14 @@ class SpatialIndexSystem extends GameSystem with EntitySpawnListener {
 }
 ```
 
-The same split exists for scenes — `SceneLifecycleListener` for your own,
+The same split exists for scenes — `onSceneMounted` for your own,
 `SceneLoadListener` for all of them — and `GameLifecycleListener` covers the
 game coming up and going down.
 
 For an event of your own — "wave cleared", "player levelled up" — you hold a
-dispatcher in a field on the owner whose reach you want, declare it there with
-`Event.of`, and write a listener mixin bound `on GameListener` that anything
-can apply. It is
+dispatcher in a field on your `GameState` or on a `GameSystem`, declare it
+there with `Event.of`, and write a listener mixin bound `on GameListener` that
+any system can apply. It is
 the same three-piece shape every built-in event above is built from, and
 [Events and listeners](events.md) walks one through end to end.
 

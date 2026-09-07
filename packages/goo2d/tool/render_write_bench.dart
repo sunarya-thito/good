@@ -82,8 +82,7 @@ const Duration _step = Duration(milliseconds: 16);
 ///
 /// No `WorldTransform2D` and no `Child`, exactly as in the demo - a particle is
 /// never parented, so the renderer reads its local `Transform2D` directly.
-class _Mote extends EntityStruct
-    with Transform2D, Renderable2D, EntityLifecycleListener {
+class _Mote extends EntityStruct with Transform2D, Renderable2D {
   final body = Sprite.of(width: 14, height: 14);
 
   final angle = Field.float64();

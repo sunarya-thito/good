@@ -21,19 +21,13 @@
 part of 'data_layout_test.dart';
 
 List<ScannableField> _collect$AdHoc(Object object) {
-  final owner = object as _AdHoc;
-  return <ScannableField>[
-    owner.mountedEvent,
-    owner.unmountedEvent,
-  ];
+  object as _AdHoc;
+  return const <ScannableField>[];
 }
 
 List<ScannableField> _collect$AdHocScene(Object object) {
-  final owner = object as _AdHocScene;
-  return <ScannableField>[
-    owner.mountedEvent,
-    owner.unmountedEvent,
-  ];
+  object as _AdHocScene;
+  return const <ScannableField>[];
 }
 
 /// Every fixture this library declares, and how to read one.

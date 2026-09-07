@@ -166,10 +166,10 @@ Dart field on a prefab is shared by every entity of that kind — see
 ### There is no `Update()` per entity
 
 Behaviour lives in systems that walk many entities at once, not in a method on
-each entity. A prefab can carry lifecycle hooks for setup — `onEntityMounted`,
-which it hears by mixing in `EntityLifecycleListener` — but the per-frame loop
-belongs in a `GameSystem`. Those hooks are events, not virtual methods the
-engine calls on your class; see [Events and listeners](events.md).
+each entity. A prefab can carry lifecycle hooks for setup — `onEntityMounted`
+and `onEntityUnmounted` — but the per-frame loop belongs in a `GameSystem`.
+Something that wants to hear about every entity in the game is a system mixing
+in `EntitySpawnListener`; see [Events and listeners](events.md).
 
 ### `Start()`/`Awake()` ordering is explicit
 

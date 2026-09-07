@@ -29,8 +29,6 @@ List<ScannableField> _collect$Enemy(Object object) {
   final owner = object as _Enemy;
   return <ScannableField>[
     owner.hp,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -38,8 +36,6 @@ List<ScannableField> _collect$Pickup(Object object) {
   final owner = object as _Pickup;
   return <ScannableField>[
     owner.value,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -48,8 +44,6 @@ List<ScannableField> _collect$Spawner(Object object) {
   return <ScannableField>[
     owner.rate,
     owner.budget,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -57,8 +51,6 @@ List<ScannableField> _collect$Base(Object object) {
   final owner = object as _Base;
   return <ScannableField>[
     owner.base,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -67,8 +59,6 @@ List<ScannableField> _collect$Derived(Object object) {
   return <ScannableField>[
     owner.derived,
     owner.base,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 

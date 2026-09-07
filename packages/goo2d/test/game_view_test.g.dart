@@ -40,8 +40,6 @@ List<ScannableField> _collect$Sprite(Object object) {
     owner.transformScaleX,
     owner.transformScaleY,
     owner.transformRotation,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -49,8 +47,6 @@ List<ScannableField> _collect$Scene(Object object) {
   final owner = object as _Scene;
   return <ScannableField>[
     owner.sprite,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 

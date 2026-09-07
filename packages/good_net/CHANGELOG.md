@@ -11,6 +11,24 @@
 
 ### Breaking
 
+* **The four network dispatchers moved from `MultiplayerState` to
+  `NetworkSystem`** (#384). `peerJoinedEvent`, `peerLeftEvent`,
+  `sessionOpenedEvent` and `sessionClosedEvent` are fields of the system that
+  fires them; reach them as `getSystem<NetworkSystem>().peerJoinedEvent` if you
+  were reading one off the state. Hearing them is unchanged - mix
+  `NetPeerListener` or `NetSessionListener` into a `GameSystem` or your
+  `GameState`, as before.
+
+  An event now reaches every listener in the game whoever declared it, so the
+  state gained nothing by holding a dispatcher it never fired. The five call
+  sites inside `NetworkSystem` used to spell `getState<MultiplayerState>()`
+  first.
+
+* **`NetPeerListener` and `NetSessionListener` cannot go on a `SceneStruct` or
+  an `EntityStruct`** (#384). Neither is a `GameListener` any more. The
+  `NetPeerListener` doc showed `class Lobby extends SceneStruct with
+  NetPeerListener`, which compiled and never fired; it is a `GameSystem` now.
+
 * **`NetDescriptor.has` takes a constructor, not an instance.**
   `descriptor.has(Fire(), id: 'fire')` becomes
   `descriptor.has(Fire.new, id: 'fire')`. `id`, `to` and `channel` stay on the

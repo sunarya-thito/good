@@ -30,8 +30,6 @@ List<ScannableField> _collect$Zone(Object object) {
     owner.transformScaleX,
     owner.transformScaleY,
     owner.transformRotation,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -45,8 +43,6 @@ List<ScannableField> _collect$Pool(Object object) {
     owner.transformScaleX,
     owner.transformScaleY,
     owner.transformRotation,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -73,8 +69,6 @@ List<ScannableField> _collect$Box(Object object) {
     owner.transformScaleX,
     owner.transformScaleY,
     owner.transformRotation,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -87,8 +81,6 @@ List<ScannableField> _collect$Loose(Object object) {
     owner.transformScaleX,
     owner.transformScaleY,
     owner.transformRotation,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -96,8 +88,6 @@ List<ScannableField> _collect$LooseScene(Object object) {
   final owner = object as _LooseScene;
   return <ScannableField>[
     owner.zone,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -107,25 +97,17 @@ List<ScannableField> _collect$Scene(Object object) {
     owner.box,
     owner.zone,
     owner.waterZone,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
 List<ScannableField> _collect$Setup(Object object) {
-  final owner = object as _Setup;
-  return <ScannableField>[
-    owner.mountEvent,
-    owner.unmountEvent,
-  ];
+  object as _Setup;
+  return const <ScannableField>[];
 }
 
 List<ScannableField> _collect$OneShot(Object object) {
-  final owner = object as _OneShot;
-  return <ScannableField>[
-    owner.mountEvent,
-    owner.unmountEvent,
-  ];
+  object as _OneShot;
+  return const <ScannableField>[];
 }
 
 List<ScannableField> _collect$GameState(Object object) {

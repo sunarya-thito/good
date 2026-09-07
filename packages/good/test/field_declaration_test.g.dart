@@ -26,8 +26,6 @@ List<ScannableField> _collect$Declared(Object object) {
     owner.speed,
     owner.hp,
     owner.alive,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -35,8 +33,6 @@ List<ScannableField> _collect$Mixed(Object object) {
   final owner = object as _Mixed;
   return <ScannableField>[
     owner.own,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -44,8 +40,6 @@ List<ScannableField> _collect$OwnOnly(Object object) {
   final owner = object as _OwnOnly;
   return <ScannableField>[
     owner.own,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -55,8 +49,6 @@ List<ScannableField> _collect$Twin(Object object) {
     owner.speed,
     owner.hp,
     owner.alive,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -64,8 +56,6 @@ List<ScannableField> _collect$Throws(Object object) {
   final owner = object as _Throws;
   return <ScannableField>[
     owner.declaredBeforeTheThrow,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -73,8 +63,6 @@ List<ScannableField> _collect$After(Object object) {
   final owner = object as _After;
   return <ScannableField>[
     owner.mark,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -82,8 +70,6 @@ List<ScannableField> _collect$Broken(Object object) {
   final owner = object as _Broken;
   return <ScannableField>[
     owner.after,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -94,8 +80,6 @@ List<ScannableField> _collect$Level(Object object) {
     owner.mixed,
     owner.ownOnly,
     owner.twin,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -103,8 +87,6 @@ List<ScannableField> _collect$FromConstructor(Object object) {
   final owner = object as _FromConstructor;
   return <ScannableField>[
     owner.speed,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -112,8 +94,6 @@ List<ScannableField> _collect$FromNowhere(Object object) {
   final owner = object as _FromNowhere;
   return <ScannableField>[
     owner.speed,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 

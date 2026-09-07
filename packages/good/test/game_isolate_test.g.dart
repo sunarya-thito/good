@@ -26,8 +26,6 @@ List<ScannableField> _collect$Mover(Object object) {
     owner.x,
     owner.census,
     owner.marker,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -35,8 +33,6 @@ List<ScannableField> _collect$MoverScene(Object object) {
   final owner = object as _MoverScene;
   return <ScannableField>[
     owner.mover,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -44,8 +40,6 @@ List<ScannableField> _collect$MoverSystem(Object object) {
   final owner = object as _MoverSystem;
   return <ScannableField>[
     owner.query,
-    owner.mountEvent,
-    owner.unmountEvent,
   ];
 }
 
@@ -96,11 +90,8 @@ List<ScannableField> _collect$IsolateState(Object object) {
 }
 
 List<ScannableField> _collect$DyingSystem(Object object) {
-  final owner = object as _DyingSystem;
-  return <ScannableField>[
-    owner.mountEvent,
-    owner.unmountEvent,
-  ];
+  object as _DyingSystem;
+  return const <ScannableField>[];
 }
 
 List<ScannableField> _collect$DyingState(Object object) {
@@ -126,11 +117,8 @@ List<ScannableField> _collect$DyingGame(Object object) {
 }
 
 List<ScannableField> _collect$RandomReporter(Object object) {
-  final owner = object as _RandomReporter;
-  return <ScannableField>[
-    owner.mountEvent,
-    owner.unmountEvent,
-  ];
+  object as _RandomReporter;
+  return const <ScannableField>[];
 }
 
 List<ScannableField> _collect$RandomIsolateState(Object object) {
@@ -168,11 +156,8 @@ List<ScannableField> _collect$IsolateGame(Object object) {
 }
 
 List<ScannableField> _collect$PingSystem(Object object) {
-  final owner = object as _PingSystem;
-  return <ScannableField>[
-    owner.mountEvent,
-    owner.unmountEvent,
-  ];
+  object as _PingSystem;
+  return const <ScannableField>[];
 }
 
 List<ScannableField> _collect$PingState(Object object) {
@@ -198,11 +183,8 @@ List<ScannableField> _collect$PingGame(Object object) {
 }
 
 List<ScannableField> _collect$CounterSystem(Object object) {
-  final owner = object as _CounterSystem;
-  return <ScannableField>[
-    owner.mountEvent,
-    owner.unmountEvent,
-  ];
+  object as _CounterSystem;
+  return const <ScannableField>[];
 }
 
 List<ScannableField> _collect$ChannelState(Object object) {
@@ -235,8 +217,6 @@ List<ScannableField> _collect$InputProbeSystem(Object object) {
   return <ScannableField>[
     owner.fire,
     owner.move,
-    owner.mountEvent,
-    owner.unmountEvent,
   ];
 }
 
@@ -273,8 +253,6 @@ List<ScannableField> _collect$Textured(Object object) {
     owner.texture,
     owner.seenAddress,
     owner.seenLoaded,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -282,8 +260,6 @@ List<ScannableField> _collect$TexturedScene(Object object) {
   final owner = object as _TexturedScene;
   return <ScannableField>[
     owner.textured,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -291,8 +267,6 @@ List<ScannableField> _collect$TexturedSystem(Object object) {
   final owner = object as _TexturedSystem;
   return <ScannableField>[
     owner.query,
-    owner.mountEvent,
-    owner.unmountEvent,
   ];
 }
 
@@ -325,8 +299,6 @@ List<ScannableField> _collect$LateProp(Object object) {
   final owner = object as _LateProp;
   return <ScannableField>[
     owner.texture,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -334,8 +306,6 @@ List<ScannableField> _collect$LateScene(Object object) {
   final owner = object as _LateScene;
   return <ScannableField>[
     owner.prop,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -418,11 +388,8 @@ List<ScannableField> _collect$StartAsking(Object object) {
 }
 
 List<ScannableField> _collect$AskingSystem(Object object) {
-  final owner = object as _AskingSystem;
-  return <ScannableField>[
-    owner.mountEvent,
-    owner.unmountEvent,
-  ];
+  object as _AskingSystem;
+  return const <ScannableField>[];
 }
 
 List<ScannableField> _collect$AskingState(Object object) {
@@ -502,8 +469,6 @@ List<ScannableField> _collect$Pebble(Object object) {
   final owner = object as _Pebble;
   return <ScannableField>[
     owner.weight,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -511,25 +476,17 @@ List<ScannableField> _collect$CensusScene(Object object) {
   final owner = object as _CensusScene;
   return <ScannableField>[
     owner.pebble,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
 List<ScannableField> _collect$IdleSystem(Object object) {
-  final owner = object as _IdleSystem;
-  return <ScannableField>[
-    owner.mountEvent,
-    owner.unmountEvent,
-  ];
+  object as _IdleSystem;
+  return const <ScannableField>[];
 }
 
 List<ScannableField> _collect$SleepySystem(Object object) {
-  final owner = object as _SleepySystem;
-  return <ScannableField>[
-    owner.mountEvent,
-    owner.unmountEvent,
-  ];
+  object as _SleepySystem;
+  return const <ScannableField>[];
 }
 
 List<ScannableField> _collect$TakeWorldCensus(Object object) {
@@ -568,11 +525,8 @@ List<ScannableField> _collect$CensusIsolateGame(Object object) {
 }
 
 List<ScannableField> _collect$RegistrarSystem(Object object) {
-  final owner = object as _RegistrarSystem;
-  return <ScannableField>[
-    owner.mountEvent,
-    owner.unmountEvent,
-  ];
+  object as _RegistrarSystem;
+  return const <ScannableField>[];
 }
 
 List<ScannableField> _collect$RegistrarState(Object object) {

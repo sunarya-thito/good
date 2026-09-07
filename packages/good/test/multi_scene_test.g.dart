@@ -24,8 +24,6 @@ List<ScannableField> _collect$Unit(Object object) {
   final owner = object as _Unit;
   return <ScannableField>[
     owner.mark,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -33,8 +31,6 @@ List<ScannableField> _collect$Level(Object object) {
   final owner = object as _Level;
   return <ScannableField>[
     owner.unit,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -42,8 +38,6 @@ List<ScannableField> _collect$Census(Object object) {
   final owner = object as _Census;
   return <ScannableField>[
     owner.query,
-    owner.mountEvent,
-    owner.unmountEvent,
   ];
 }
 

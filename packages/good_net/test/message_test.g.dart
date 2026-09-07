@@ -90,10 +90,6 @@ List<ScannableField> _collect$NetState(Object object) {
   final owner = object as _NetState;
   return <ScannableField>[
     owner.network,
-    owner.peerJoinedEvent,
-    owner.peerLeftEvent,
-    owner.sessionOpenedEvent,
-    owner.sessionClosedEvent,
     owner.fixedTickEvent,
     owner.tickEvent,
     owner.gameMountedEvent,
@@ -108,11 +104,8 @@ List<ScannableField> _collect$NetState(Object object) {
 }
 
 List<ScannableField> _collect$Watcher(Object object) {
-  final owner = object as _Watcher;
-  return <ScannableField>[
-    owner.mountEvent,
-    owner.unmountEvent,
-  ];
+  object as _Watcher;
+  return const <ScannableField>[];
 }
 
 List<ScannableField> _collect$FireRenamed(Object object) {
@@ -132,10 +125,6 @@ List<ScannableField> _collect$OneMessageState(Object object) {
   final owner = object as _OneMessageState;
   return <ScannableField>[
     owner.network,
-    owner.peerJoinedEvent,
-    owner.peerLeftEvent,
-    owner.sessionOpenedEvent,
-    owner.sessionClosedEvent,
     owner.fixedTickEvent,
     owner.tickEvent,
     owner.gameMountedEvent,
@@ -158,10 +147,6 @@ List<ScannableField> _collect$CollidingState(Object object) {
   final owner = object as _CollidingState;
   return <ScannableField>[
     owner.network,
-    owner.peerJoinedEvent,
-    owner.peerLeftEvent,
-    owner.sessionOpenedEvent,
-    owner.sessionClosedEvent,
     owner.fixedTickEvent,
     owner.tickEvent,
     owner.gameMountedEvent,
@@ -185,10 +170,6 @@ List<ScannableField> _collect$WatchedState(Object object) {
   return <ScannableField>[
     owner.watcher,
     owner.network,
-    owner.peerJoinedEvent,
-    owner.peerLeftEvent,
-    owner.sessionOpenedEvent,
-    owner.sessionClosedEvent,
     owner.fixedTickEvent,
     owner.tickEvent,
     owner.gameMountedEvent,
@@ -216,10 +197,6 @@ List<ScannableField> _collect$SkewedState(Object object) {
   final owner = object as _SkewedState;
   return <ScannableField>[
     owner.network,
-    owner.peerJoinedEvent,
-    owner.peerLeftEvent,
-    owner.sessionOpenedEvent,
-    owner.sessionClosedEvent,
     owner.fixedTickEvent,
     owner.tickEvent,
     owner.gameMountedEvent,

@@ -45,8 +45,6 @@ List<ScannableField> _collect$Sprite(Object object) {
     owner.transformScaleX,
     owner.transformScaleY,
     owner.transformRotation,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -59,8 +57,6 @@ List<ScannableField> _collect$Flat(Object object) {
     owner.transformScaleX,
     owner.transformScaleY,
     owner.transformRotation,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -75,8 +71,6 @@ List<ScannableField> _collect$Invisible(Object object) {
     owner.transformScaleX,
     owner.transformScaleY,
     owner.transformRotation,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -88,8 +82,6 @@ List<ScannableField> _collect$Group(Object object) {
     owner.childParent,
     owner.childNextSibling,
     owner.childPrevSibling,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -114,8 +106,6 @@ List<ScannableField> _collect$TwoSprite(Object object) {
     owner.transformScaleX,
     owner.transformScaleY,
     owner.transformRotation,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -140,8 +130,6 @@ List<ScannableField> _collect$HalfHidden(Object object) {
     owner.transformScaleX,
     owner.transformScaleY,
     owner.transformRotation,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -166,8 +154,6 @@ List<ScannableField> _collect$Stack(Object object) {
     owner.transformScaleX,
     owner.transformScaleY,
     owner.transformRotation,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -191,8 +177,6 @@ List<ScannableField> _collect$TopLeft(Object object) {
     owner.transformScaleX,
     owner.transformScaleY,
     owner.transformRotation,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -220,8 +204,6 @@ List<ScannableField> _collect$Eye(Object object) {
     owner.transformScaleX,
     owner.transformScaleY,
     owner.transformRotation,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -247,8 +229,6 @@ List<ScannableField> _collect$Textured(Object object) {
     owner.transformScaleX,
     owner.transformScaleY,
     owner.transformRotation,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -273,8 +253,6 @@ List<ScannableField> _collect$Panel(Object object) {
     owner.transformScaleX,
     owner.transformScaleY,
     owner.transformRotation,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -298,8 +276,6 @@ List<ScannableField> _collect$UnsizedPanel(Object object) {
     owner.transformScaleX,
     owner.transformScaleY,
     owner.transformRotation,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -323,8 +299,6 @@ List<ScannableField> _collect$PlainPanel(Object object) {
     owner.transformScaleX,
     owner.transformScaleY,
     owner.transformRotation,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -348,8 +322,6 @@ List<ScannableField> _collect$HorizontalBar(Object object) {
     owner.transformScaleX,
     owner.transformScaleY,
     owner.transformRotation,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -373,8 +345,6 @@ List<ScannableField> _collect$SingleCellPanel(Object object) {
     owner.transformScaleX,
     owner.transformScaleY,
     owner.transformRotation,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -398,8 +368,6 @@ List<ScannableField> _collect$BorderedUntextured(Object object) {
     owner.transformScaleX,
     owner.transformScaleY,
     owner.transformRotation,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -424,8 +392,6 @@ List<ScannableField> _collect$PivotBody(Object object) {
     owner.transformScaleX,
     owner.transformScaleY,
     owner.transformRotation,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -449,8 +415,6 @@ List<ScannableField> _collect$SpriteScene(Object object) {
     owner.plainPanel,
     owner.horizontalBar,
     owner.singleCellPanel,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 

@@ -21,35 +21,24 @@
 part of 'asset_test.dart';
 
 List<ScannableField> _collect$Prop(Object object) {
-  final owner = object as _Prop;
-  return <ScannableField>[
-    owner.mountedEvent,
-    owner.unmountedEvent,
-  ];
+  object as _Prop;
+  return const <ScannableField>[];
 }
 
 List<ScannableField> _collect$Bare(Object object) {
-  final owner = object as _Bare;
-  return <ScannableField>[
-    owner.mountedEvent,
-    owner.unmountedEvent,
-  ];
+  object as _Bare;
+  return const <ScannableField>[];
 }
 
 List<ScannableField> _collect$PropScene(Object object) {
-  final owner = object as _PropScene;
-  return <ScannableField>[
-    owner.mountedEvent,
-    owner.unmountedEvent,
-  ];
+  object as _PropScene;
+  return const <ScannableField>[];
 }
 
 List<ScannableField> _collect$Ambient(Object object) {
   final owner = object as _Ambient;
   return <ScannableField>[
     owner.texture,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -57,8 +46,6 @@ List<ScannableField> _collect$AmbientTwin(Object object) {
   final owner = object as _AmbientTwin;
   return <ScannableField>[
     owner.texture,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -68,8 +55,6 @@ List<ScannableField> _collect$AmbientPacked(Object object) {
     owner.sprite,
     owner.optionalSprite,
     owner.emptySprite,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -80,8 +65,6 @@ List<ScannableField> _collect$AmbientParent(Object object) {
     owner.texture,
     owner.parentFirstChild,
     owner.parentLastChild,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -92,42 +75,29 @@ List<ScannableField> _collect$AmbientChild(Object object) {
     owner.childParent,
     owner.childNextSibling,
     owner.childPrevSibling,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
 List<ScannableField> _collect$AmbientScene(Object object) {
-  final owner = object as _AmbientScene;
-  return <ScannableField>[
-    owner.mountedEvent,
-    owner.unmountedEvent,
-  ];
+  object as _AmbientScene;
+  return const <ScannableField>[];
 }
 
 List<ScannableField> _collect$SceneFieldAmbient(Object object) {
   final owner = object as _SceneFieldAmbient;
   return <ScannableField>[
     owner.texture,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
 List<ScannableField> _collect$BareScene(Object object) {
-  final owner = object as _BareScene;
-  return <ScannableField>[
-    owner.mountedEvent,
-    owner.unmountedEvent,
-  ];
+  object as _BareScene;
+  return const <ScannableField>[];
 }
 
 List<ScannableField> _collect$GameSceneStub(Object object) {
-  final owner = object as GameSceneStub;
-  return <ScannableField>[
-    owner.mountedEvent,
-    owner.unmountedEvent,
-  ];
+  object as GameSceneStub;
+  return const <ScannableField>[];
 }
 
 List<ScannableField> _collect$DiffGame(Object object) {

@@ -43,8 +43,6 @@ List<ScannableField> _collect$Crate(Object object) {
     owner.transformScaleX,
     owner.transformScaleY,
     owner.transformRotation,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -71,8 +69,6 @@ List<ScannableField> _collect$Floor(Object object) {
     owner.transformScaleX,
     owner.transformScaleY,
     owner.transformRotation,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -99,8 +95,6 @@ List<ScannableField> _collect$Zone(Object object) {
     owner.transformScaleX,
     owner.transformScaleY,
     owner.transformRotation,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -110,8 +104,6 @@ List<ScannableField> _collect$Scene(Object object) {
     owner.crate,
     owner.floor,
     owner.zone,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 

@@ -40,8 +40,6 @@ List<ScannableField> _collect$Sprite(Object object) {
     owner.transformScaleX,
     owner.transformScaleY,
     owner.transformRotation,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -66,8 +64,6 @@ List<ScannableField> _collect$Eye(Object object) {
     owner.transformScaleX,
     owner.transformScaleY,
     owner.transformRotation,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -92,8 +88,6 @@ List<ScannableField> _collect$Target(Object object) {
     owner.transformScaleX,
     owner.transformScaleY,
     owner.transformRotation,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -103,8 +97,6 @@ List<ScannableField> _collect$Level(Object object) {
     owner.sprite,
     owner.eye,
     owner.target,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -114,8 +106,6 @@ List<ScannableField> _collect$Overlay(Object object) {
     owner.sprite,
     owner.eye,
     owner.target,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 

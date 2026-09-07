@@ -2,6 +2,23 @@
 
 ### Added
 
+* **A `GameSystem` may declare an event, and it reaches the whole game**
+  (#384). There is one binder for the run: every dispatcher is created first,
+  then the composition is walked once and each listener offered to all of
+  them. Which object holds the field decides nothing about who hears the
+  event.
+
+  ```dart
+  class ScoreSystem extends GameSystem {
+    final scored = Event.of<ScoreListener, int>(
+      (listener, points) => listener.onScored(points),
+    );
+  }
+  ```
+
+  Before this, a dispatcher only saw what its own owner offered, so a package
+  shipping an event had to ship a mixin for the user's `GameState`.
+
 * **An asset is declarable in the field that holds it.** `Asset.of(key)` reads
   the descriptor `SceneStruct.initializeScene` opens around a scene's
   declaration passes, so a prefab names a texture where it uses it instead of
@@ -93,6 +110,50 @@
   own repository; a component in your game's `lib/` is not in it.
 
 ### Breaking
+
+* **Events have no scope, and the local lifecycle pairs are methods** (#384).
+  `EntityLifecycleListener`, `SceneLifecycleListener` and
+  `GameSystemLifecycleListener` are deleted. Their hooks keep their names and
+  signatures on the class that used to hear them through a dispatcher, so a
+  struct that overrode one drops the mixin and keeps the body:
+
+  ```dart
+  // before
+  class Bullet extends EntityStruct with Transform2D, EntityLifecycleListener {
+    @override
+    void onEntityMounted(Entity e) { ... }
+  }
+
+  // after
+  class Bullet extends EntityStruct with Transform2D {
+    @override
+    void onEntityMounted(Entity e) { ... }
+  }
+  ```
+
+  Six dispatchers went: `SceneStruct.mountedEvent`/`unmountedEvent`,
+  `EntityStruct.mountedEvent`/`unmountedEvent` and
+  `GameSystem.mountEvent`/`unmountEvent`. Each collected one object - itself -
+  because a dispatcher's audience was its declaring owner's composition, so
+  each was a method call with a listener list around it. The observation half
+  is untouched: `EntitySpawnListener`, `SceneLoadListener`,
+  `GameLifecycleListener` and `AppVisibilityListener` still answer "something
+  happened in the world", still live on `GameState`, and are still what a
+  system mixes in.
+
+* **`SceneStruct` and `EntityStruct` are no longer `GameListener`s** (#384).
+  Neither carries an `EventBus`, neither declares a dispatcher, and neither is
+  offered to one - `GameState.collectListeners` now stops at its own declared
+  systems instead of walking down into scenes and prefabs. A listener mixin on
+  a struct is a compile error rather than a hook that compiles and never fires,
+  which was the point: three sites in this repository were exactly that shape.
+  Move the behaviour to a `GameSystem`.
+
+* **`EventBinder.bind` takes a list of owners** (#384). It is internal - not
+  exported from `good.dart` - and listed here because a test driving the binder
+  by hand calls it. `EventBinder.bind(owner)` becomes
+  `EventBinder.bind([owner])`, and the double-bind guard is checked over the
+  whole list before any of it is touched.
 
 * **`entity<T?>()` is gone. `Entity.call` takes `T extends Component` and
   `entity.has<T>()` answers whether the component is there** (#302):

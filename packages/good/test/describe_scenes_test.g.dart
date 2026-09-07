@@ -24,8 +24,6 @@ List<ScannableField> _collect$Unit(Object object) {
   final owner = object as _Unit;
   return <ScannableField>[
     owner.mark,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -33,8 +31,6 @@ List<ScannableField> _collect$Prop(Object object) {
   final owner = object as _Prop;
   return <ScannableField>[
     owner.tag,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -42,17 +38,12 @@ List<ScannableField> _collect$Level(Object object) {
   final owner = object as _Level;
   return <ScannableField>[
     owner.unit,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
 List<ScannableField> _collect$Menu(Object object) {
-  final owner = object as _Menu;
-  return <ScannableField>[
-    owner.mountedEvent,
-    owner.unmountedEvent,
-  ];
+  object as _Menu;
+  return const <ScannableField>[];
 }
 
 List<ScannableField> _collect$Mixed(Object object) {
@@ -60,8 +51,6 @@ List<ScannableField> _collect$Mixed(Object object) {
   return <ScannableField>[
     owner.unit,
     owner.prop,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -69,8 +58,6 @@ List<ScannableField> _collect$SecondCensusSystem(Object object) {
   final owner = object as _SecondCensusSystem;
   return <ScannableField>[
     owner.marked,
-    owner.mountEvent,
-    owner.unmountEvent,
   ];
 }
 
@@ -97,19 +84,14 @@ List<ScannableField> _collect$SecondCensusGame(Object object) {
 }
 
 List<ScannableField> _collect$Bare(Object object) {
-  final owner = object as _Bare;
-  return <ScannableField>[
-    owner.mountedEvent,
-    owner.unmountedEvent,
-  ];
+  object as _Bare;
+  return const <ScannableField>[];
 }
 
 List<ScannableField> _collect$CensusSystem(Object object) {
   final owner = object as _CensusSystem;
   return <ScannableField>[
     owner.query,
-    owner.mountEvent,
-    owner.unmountEvent,
   ];
 }
 

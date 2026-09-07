@@ -40,8 +40,6 @@ List<ScannableField> _collect$First(Object object) {
     owner.transformScaleX,
     owner.transformScaleY,
     owner.transformRotation,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -65,8 +63,6 @@ List<ScannableField> _collect$Second(Object object) {
     owner.transformScaleX,
     owner.transformScaleY,
     owner.transformRotation,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -90,8 +86,6 @@ List<ScannableField> _collect$Panel(Object object) {
     owner.transformScaleX,
     owner.transformScaleY,
     owner.transformRotation,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -115,8 +109,6 @@ List<ScannableField> _collect$Bar(Object object) {
     owner.transformScaleX,
     owner.transformScaleY,
     owner.transformRotation,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -140,8 +132,6 @@ List<ScannableField> _collect$Column(Object object) {
     owner.transformScaleX,
     owner.transformScaleY,
     owner.transformRotation,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -153,8 +143,6 @@ List<ScannableField> _collect$BudgetScene(Object object) {
     owner.second,
     owner.bar,
     owner.column,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 

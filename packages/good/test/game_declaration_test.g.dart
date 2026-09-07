@@ -83,11 +83,8 @@ List<ScannableField> _collect$InputOnly(Object object) {
 }
 
 List<ScannableField> _collect$GameBuildingSystem(Object object) {
-  final owner = object as _GameBuildingSystem;
-  return <ScannableField>[
-    owner.mountEvent,
-    owner.unmountEvent,
-  ];
+  object as _GameBuildingSystem;
+  return const <ScannableField>[];
 }
 
 List<ScannableField> _collect$SystemHostGame(Object object) {
@@ -159,11 +156,8 @@ List<ScannableField> _collect$CrossingState(Object object) {
 }
 
 List<ScannableField> _collect$CrossingSystem(Object object) {
-  final owner = object as _CrossingSystem;
-  return <ScannableField>[
-    owner.mountEvent,
-    owner.unmountEvent,
-  ];
+  object as _CrossingSystem;
+  return const <ScannableField>[];
 }
 
 /// Every fixture this library declares, and how to read one.

@@ -31,8 +31,6 @@ List<ScannableField> _box2DPhysicsSystem(Object object) {
   return <ScannableField>[
     owner.bodies,
     owner.effectorZones,
-    owner.mountEvent,
-    owner.unmountEvent,
   ];
 }
 

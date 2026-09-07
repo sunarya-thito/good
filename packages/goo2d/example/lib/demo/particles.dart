@@ -65,8 +65,7 @@ int _hsv(double hue, double saturation, double value) {
 /// renderer reads whichever transform an archetype actually has, so a flat
 /// prefab costs nothing for the hierarchy it is not using. Compare against the
 /// scene-graph case, which does use one.
-class Mote extends EntityStruct
-    with Transform2D, Renderable2D, EntityLifecycleListener {
+class Mote extends EntityStruct with Transform2D, Renderable2D {
   final body = Sprite.of(width: 14, height: 14, texture: discTexture);
 
   /// Polar coordinates, kept per entity because the movement is a function of

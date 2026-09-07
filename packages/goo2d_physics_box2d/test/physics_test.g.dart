@@ -43,8 +43,6 @@ List<ScannableField> _collect$Crate(Object object) {
     owner.transformScaleX,
     owner.transformScaleY,
     owner.transformRotation,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -71,8 +69,6 @@ List<ScannableField> _collect$Floor(Object object) {
     owner.transformScaleX,
     owner.transformScaleY,
     owner.transformRotation,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -99,8 +95,6 @@ List<ScannableField> _collect$Ball(Object object) {
     owner.transformScaleX,
     owner.transformScaleY,
     owner.transformRotation,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -127,8 +121,6 @@ List<ScannableField> _collect$Platform(Object object) {
     owner.transformScaleX,
     owner.transformScaleY,
     owner.transformRotation,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -155,8 +147,6 @@ List<ScannableField> _collect$Pinned(Object object) {
     owner.transformScaleX,
     owner.transformScaleY,
     owner.transformRotation,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -168,8 +158,6 @@ List<ScannableField> _collect$Marker(Object object) {
     owner.transformScaleX,
     owner.transformScaleY,
     owner.transformRotation,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -182,17 +170,12 @@ List<ScannableField> _collect$Scene(Object object) {
     owner.pinned,
     owner.platform,
     owner.marker,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
 List<ScannableField> _collect$GameplaySystem(Object object) {
-  final owner = object as _GameplaySystem;
-  return <ScannableField>[
-    owner.mountEvent,
-    owner.unmountEvent,
-  ];
+  object as _GameplaySystem;
+  return const <ScannableField>[];
 }
 
 List<ScannableField> _collect$GameState(Object object) {

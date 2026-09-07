@@ -24,75 +24,40 @@ List<ScannableField> _collect$Unit(Object object) {
   final owner = object as _Unit;
   return <ScannableField>[
     owner.mark,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
 List<ScannableField> _collect$Watcher(Object object) {
-  final owner = object as _Watcher;
-  return <ScannableField>[
-    owner.mountEvent,
-    owner.unmountEvent,
-  ];
+  object as _Watcher;
+  return const <ScannableField>[];
 }
 
 List<ScannableField> _collect$Bystander(Object object) {
-  final owner = object as _Bystander;
-  return <ScannableField>[
-    owner.mountEvent,
-    owner.unmountEvent,
-  ];
+  object as _Bystander;
+  return const <ScannableField>[];
 }
 
-List<ScannableField> _collect$Deaf(Object object) {
-  final owner = object as _Deaf;
-  return <ScannableField>[
-    owner.mountEvent,
-    owner.unmountEvent,
-  ];
+List<ScannableField> _collect$Observing(Object object) {
+  object as _Observing;
+  return const <ScannableField>[];
 }
 
 List<ScannableField> _collect$Level(Object object) {
   final owner = object as _Level;
   return <ScannableField>[
     owner.unit,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
 List<ScannableField> _collect$Observer(Object object) {
-  final owner = object as _Observer;
-  return <ScannableField>[
-    owner.mountedEvent,
-    owner.unmountedEvent,
-  ];
-}
-
-List<ScannableField> _collect$SceneAware(Object object) {
-  final owner = object as _SceneAware;
-  return <ScannableField>[
-    owner.mountedEvent,
-    owner.unmountedEvent,
-  ];
-}
-
-List<ScannableField> _collect$Nosy(Object object) {
-  final owner = object as _Nosy;
-  return <ScannableField>[
-    owner.mountedEvent,
-    owner.unmountedEvent,
-  ];
+  object as _Observer;
+  return const <ScannableField>[];
 }
 
 List<ScannableField> _collect$NosyScene(Object object) {
   final owner = object as _NosyScene;
   return <ScannableField>[
-    owner.nosy,
-    owner.aware,
-    owner.mountedEvent,
-    owner.unmountedEvent,
+    owner.unit,
   ];
 }
 
@@ -100,8 +65,6 @@ List<ScannableField> _collect$Tracked(Object object) {
   final owner = object as _Tracked;
   return <ScannableField>[
     owner.mark,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -109,17 +72,12 @@ List<ScannableField> _collect$Indexed(Object object) {
   final owner = object as _Indexed;
   return <ScannableField>[
     owner.mark,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
 List<ScannableField> _collect$Census(Object object) {
-  final owner = object as _Census;
-  return <ScannableField>[
-    owner.mountEvent,
-    owner.unmountEvent,
-  ];
+  object as _Census;
+  return const <ScannableField>[];
 }
 
 List<ScannableField> _collect$TrackedScene(Object object) {
@@ -127,8 +85,6 @@ List<ScannableField> _collect$TrackedScene(Object object) {
   return <ScannableField>[
     owner.tracked,
     owner.indexed,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -138,7 +94,7 @@ List<ScannableField> _collect$LifecycleState(Object object) {
     owner.watcher,
     owner.census,
     owner.bystander,
-    owner.deaf2,
+    owner.observing,
     owner.fixedTickEvent,
     owner.tickEvent,
     owner.gameMountedEvent,
@@ -169,11 +125,9 @@ const GeneratedDeclarations _eventLifecycleTestDeclarations =
         DeclarationCollector(_Unit, _collect$Unit),
         DeclarationCollector(_Watcher, _collect$Watcher),
         DeclarationCollector(_Bystander, _collect$Bystander),
-        DeclarationCollector(_Deaf, _collect$Deaf),
+        DeclarationCollector(_Observing, _collect$Observing),
         DeclarationCollector(_Level, _collect$Level),
         DeclarationCollector(_Observer, _collect$Observer),
-        DeclarationCollector(_SceneAware, _collect$SceneAware),
-        DeclarationCollector(_Nosy, _collect$Nosy),
         DeclarationCollector(_NosyScene, _collect$NosyScene),
         DeclarationCollector(_Tracked, _collect$Tracked),
         DeclarationCollector(_Indexed, _collect$Indexed),

@@ -76,9 +76,9 @@ export 'src/data.dart';
 // inside the package to compile is not made safer by living outside it.
 export 'src/debug/world_census.dart';
 export 'src/data/hierarchy.dart';
-// EventBinder is the machinery behind the two declare/collect passes - `Game`
-// and `SceneStruct` drive it; nothing outside the kernel has a reason to name
-// it, and `@internal` says so.
+// EventBinder is the machinery behind the two declare/collect passes, and
+// `Game` is the one thing that drives it; nothing outside the kernel has a
+// reason to name it, and `@internal` says so.
 export 'src/event.dart' hide EventBinder;
 export 'src/event/fixed_loop.dart';
 export 'src/event/lifecycle.dart';

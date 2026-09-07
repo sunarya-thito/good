@@ -28,51 +28,33 @@ List<ScannableField> _collect$SetPopulation(Object object) {
 }
 
 List<ScannableField> _collect$FixedPhaseStart(Object object) {
-  final owner = object as FixedPhaseStart;
-  return <ScannableField>[
-    owner.mountEvent,
-    owner.unmountEvent,
-  ];
+  object as FixedPhaseStart;
+  return const <ScannableField>[];
 }
 
 List<ScannableField> _collect$FixedPhaseEnd(Object object) {
-  final owner = object as _FixedPhaseEnd;
-  return <ScannableField>[
-    owner.mountEvent,
-    owner.unmountEvent,
-  ];
+  object as _FixedPhaseEnd;
+  return const <ScannableField>[];
 }
 
 List<ScannableField> _collect$PresentPhaseStart(Object object) {
-  final owner = object as PresentPhaseStart;
-  return <ScannableField>[
-    owner.mountEvent,
-    owner.unmountEvent,
-  ];
+  object as PresentPhaseStart;
+  return const <ScannableField>[];
 }
 
 List<ScannableField> _collect$RenderPhaseStart(Object object) {
-  final owner = object as _RenderPhaseStart;
-  return <ScannableField>[
-    owner.mountEvent,
-    owner.unmountEvent,
-  ];
+  object as _RenderPhaseStart;
+  return const <ScannableField>[];
 }
 
 List<ScannableField> _collect$RenderPhaseEnd(Object object) {
-  final owner = object as _RenderPhaseEnd;
-  return <ScannableField>[
-    owner.mountEvent,
-    owner.unmountEvent,
-  ];
+  object as _RenderPhaseEnd;
+  return const <ScannableField>[];
 }
 
 List<ScannableField> _collect$DemoStats(Object object) {
-  final owner = object as DemoStats;
-  return <ScannableField>[
-    owner.mountEvent,
-    owner.unmountEvent,
-  ];
+  object as DemoStats;
+  return const <ScannableField>[];
 }
 
 /// Every fixture this library declares, and how to read one.

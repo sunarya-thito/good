@@ -40,8 +40,6 @@ List<ScannableField> _collect$Box(Object object) {
     owner.transformScaleX,
     owner.transformScaleY,
     owner.transformRotation,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -66,8 +64,6 @@ List<ScannableField> _collect$Eye(Object object) {
     owner.transformScaleX,
     owner.transformScaleY,
     owner.transformRotation,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
@@ -76,17 +72,12 @@ List<ScannableField> _collect$Scene(Object object) {
   return <ScannableField>[
     owner.box,
     owner.eye,
-    owner.mountedEvent,
-    owner.unmountedEvent,
   ];
 }
 
 List<ScannableField> _collect$Painter(Object object) {
-  final owner = object as _Painter;
-  return <ScannableField>[
-    owner.mountEvent,
-    owner.unmountEvent,
-  ];
+  object as _Painter;
+  return const <ScannableField>[];
 }
 
 List<ScannableField> _collect$State(Object object) {

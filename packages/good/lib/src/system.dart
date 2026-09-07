@@ -12,11 +12,6 @@ import 'package:good/src/struct.dart';
 import 'package:good/src/scene.dart';
 import 'package:good/src/scene_handle.dart';
 
-mixin GameSystemLifecycleListener on GameListener {
-  void onMounted() {}
-  void onUnmounted() {}
-}
-
 /// Systems run in declaration order by default. A subclass wanting to run
 /// relative to specific other systems overrides [compareTo] and type-checks
 /// [other] (`if (other is PhysicsSystem) return -1;` to sort before it, `1`
@@ -143,34 +138,29 @@ abstract class GameSystem extends GameListenerBase
     }
   }
 
-  final mountEvent = Event.signal<GameSystemLifecycleListener>(
-    (listener) => listener.onMounted(),
-  );
-  final unmountEvent = Event.signal<GameSystemLifecycleListener>(
-    (listener) => listener.onUnmounted(),
-    reverse: true,
-  );
+  /// This system has come up, after every scene the state's `onMounted`
+  /// loaded. Systems are told in declaration order.
+  ///
+  /// A method and not an event, for the reason `GameState.onMounted` is one:
+  /// there is a single receiver, the framework is the only caller, and the
+  /// receiver is the system the call is about. It was a dispatcher whose only
+  /// listener was the system holding it, which is the shape that stopped
+  /// existing when events went global - one list per system, each holding one
+  /// object, is a method call with extra steps.
+  ///
+  /// Something *else* wanting to know the game has come up mixes in
+  /// `GameLifecycleListener`, which is an event and reaches everything.
+  void onMounted() {}
 
-  // These two stayed in `describeEvents` for as long as a dispatcher had to be
-  // created inside somebody's binder, and the failure was worse here than
-  // anywhere else. The pass that declared a system took a `T Function()`, and
-  // a closure could hand back a system that already existed -
-  // `descriptor.has(() => _spawner)`, where `_spawner` is a field of the
-  // `GameState`. A prefab written that way threw, because nothing was open
-  // above it. A system did not: the state's own binder was open while its
-  // field initialisers ran, so the system's dispatcher was created against
-  // the state and collected the state's entire composition - every sibling
-  // system, every scene, every prefab. Measured, not reasoned: two listeners
-  // belonging to two unrelated systems, and none of its own.
-  //
-  // That shape is unwritable now: a system is a field of the state, so the
-  // spare and the declared one are told apart by `@system` and not by a
-  // closure the framework calls.
-  //
-  // Nothing is open around a construction now. A dispatcher is built by the
-  // field initialiser that declares it and read off the system it belongs to,
-  // so the audience is decided by which object holds the field and cannot be
-  // decided by anything else.
+  /// This system is going down. Systems are told in reverse declaration
+  /// order, after every scene has been unloaded and while the pool is still
+  /// alive, so a system holding a native resource releases it here.
+  ///
+  /// Called on a **disabled** system too. Skipping it is how a system that
+  /// threw once and was switched off would leak whatever it had allocated,
+  /// and teardown is the one place that is not survivable.
+  void onUnmounted() {}
+
   @override
   int compareTo(GameSystem other) => 0; // no opinion by default
 
