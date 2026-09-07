@@ -44,17 +44,37 @@
   a JSON document has none to convert to - so the file is copied under its own
   name, and chunked, compressed and encrypted from there.
 
+  **This is not yet a secrecy guarantee, and it is worth being exact about
+  what changed.** Your save blob is in a sealed chunk now, and a legible copy
+  of it still ships beside that chunk. `good create` writes the asset
+  directory into `flutter: assets:` as well as `good: assets:`, and an entry
+  with no `flavors:` on it ships in every build, so Flutter's own bundler
+  carries the plaintext: `assets/autosave.sav` sits beside the chunk in
+  `assets/packed/`, and the first one opens in any text editor. What closes it
+  is `good generate` writing the `flutter: assets:` list itself, which is
+  #270.
+
+  Before this change those files reached no chunk at all, so there was one
+  copy of each and it was legible. There are two now and one of them is
+  sealed. Treat anything a player must not read as readable until #270 lands.
+
 ### Changed
 
-* **Everything in the source directory reaches the asset directory now.**
-  Normalisation used to copy across only what it recognised, so a working file
-  kept beside the art - a `.psd`, an `.aseprite`, a spreadsheet an exporter
-  reads - stayed put. Every extension is a kind now, so all of it is copied,
-  keyed and packed into the build (#357). Keep working files outside
-  `asset-source:`. Dotfiles are still left where they are: `flutter: assets:`
-  lists the asset directory and flutter_tools expands a directory entry by
-  listing every file in it, dotfiles included, so a `.DS_Store` copied across
-  would ship.
+* **A `.psd` or an `.aseprite` in the source directory now ships. Move your
+  working files out of `asset-source:` before the next build.** Normalisation
+  copied across only what it recognised, so a layered source file kept beside
+  the exported art stayed where it was. Every extension is a kind now, so all
+  of it is copied into the asset directory, keyed as a `Blobs` value and
+  packed (#357).
+
+  The first sign otherwise is a bundle a hundred megabytes larger than the one
+  before it, which is a long way from the directory that caused it.
+  `assets_src/` is what to check.
+
+  Dotfiles are the one exception, and they had to be: `flutter: assets:` lists
+  the asset directory and flutter_tools expands a directory entry by listing
+  every file in it, dotfiles included, so a `.DS_Store` copied across would
+  ship. They are left where they are.
 
 * **`good generate` refuses an undeclared file whatever its extension.** The
   check that stops a build when a file under the asset directory is in no
