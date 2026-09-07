@@ -95,6 +95,7 @@ its subject, the subject should have been the receiver.
 
 The fix is an extension on `Accessor<T>`, named `<Component>Accessor`:
 
+<!-- snippet: skip goo2d declares this extension, so a second one of the name is ambiguous -->
 ```dart
 // yes
 extension Transform2DAccessor on Accessor<Transform2D> {
@@ -103,7 +104,12 @@ extension Transform2DAccessor on Accessor<Transform2D> {
     ...
   }
 }
+```
 
+`goo2d` declares `Transform2DAccessor` and the kernel declares
+`ParentAccessor`, so both of these calls are the real API:
+
+```dart
 a<Transform2D>().distanceTo(b);
 parent<Parent>().addChild(child);
 ```

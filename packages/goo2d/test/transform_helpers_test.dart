@@ -53,18 +53,20 @@ void main() {
       scene.pool.beginTick();
       final turret = scene.addEntity(scene.turret);
       final enemy = scene.addEntity(scene.enemy);
-      scene.turret.transformOffsetX[turret] = 0;
-      scene.turret.transformOffsetY[turret] = 0;
-      scene.enemy.transformOffsetX[enemy] = 3;
-      scene.enemy.transformOffsetY[enemy] = 4;
+      scene.turret.transformOffsetX[turret] = 10;
+      scene.turret.transformOffsetY[turret] = 20;
+      scene.enemy.transformOffsetX[enemy] = 13;
+      scene.enemy.transformOffsetY[enemy] = 24;
       scene.pool.commitTick();
 
       // 3-4-5 triangle, and turret/enemy are genuinely different archetypes
       // (Enemy has an extra leading `health` field) - proof this reads each
-      // entity's own storage, not the receiver's.
-      expect(scene.turret.distanceTo(turret, enemy), 5.0);
+      // entity's own storage, not the receiver's. Neither entity is at the
+      // origin, so an implementation that dropped one of the two terms would
+      // report a different number rather than the right one by accident.
+      expect(turret<Transform2D>().distanceTo(enemy), 5.0);
       expect(
-        scene.enemy.distanceTo(enemy, turret),
+        enemy<Transform2D>().distanceTo(turret),
         5.0,
         reason: 'symmetric regardless of which side is the receiver',
       );
@@ -76,19 +78,21 @@ void main() {
       final turret = scene.addEntity(scene.turret);
       scene.turret.transformOffsetX[turret] = 42;
       scene.pool.commitTick();
-      expect(scene.turret.distanceTo(turret, turret), 0.0);
+      expect(turret<Transform2D>().distanceTo(turret), 0.0);
     });
 
     test('lookAt sets rotation via atan2, matching the renderer\'s own rotation convention', () {
       final scene = _scene();
       scene.pool.beginTick();
       final turret = scene.addEntity(scene.turret);
-      scene.turret.transformOffsetX[turret] = 0;
-      scene.turret.transformOffsetY[turret] = 0;
+      // Away from the origin, so the angle is of the vector from the turret to
+      // the target and not of the target's own coordinates.
+      scene.turret.transformOffsetX[turret] = 5;
+      scene.turret.transformOffsetY[turret] = -5;
       scene.pool.commitTick();
 
       scene.pool.beginTick();
-      scene.turret.lookAt(turret, 0, 10); // straight up (+y)
+      turret<Transform2D>().lookAt(5, 5); // straight up (+y)
       scene.pool.commitTick();
       expect(
         scene.turret.transformRotation[turret],
@@ -96,7 +100,7 @@ void main() {
       );
 
       scene.pool.beginTick();
-      scene.turret.lookAt(turret, 10, 0); // straight along +x
+      turret<Transform2D>().lookAt(15, -5); // straight along +x
       scene.pool.commitTick();
       expect(scene.turret.transformRotation[turret], closeTo(0, 1e-9));
     });
@@ -108,14 +112,14 @@ void main() {
         scene.pool.beginTick();
         final turret = scene.addEntity(scene.turret);
         final enemy = scene.addEntity(scene.enemy);
-        scene.turret.transformOffsetX[turret] = 0;
-        scene.turret.transformOffsetY[turret] = 0;
-        scene.enemy.transformOffsetX[enemy] = 0;
-        scene.enemy.transformOffsetY[enemy] = 5;
+        scene.turret.transformOffsetX[turret] = 2;
+        scene.turret.transformOffsetY[turret] = 3;
+        scene.enemy.transformOffsetX[enemy] = 2;
+        scene.enemy.transformOffsetY[enemy] = 8;
         scene.pool.commitTick();
 
         scene.pool.beginTick();
-        scene.turret.lookAtEntity(turret, enemy);
+        turret<Transform2D>().lookAtEntity(enemy);
         scene.pool.commitTick();
         expect(
           scene.turret.transformRotation[turret],
@@ -132,14 +136,14 @@ void main() {
         final turret = scene.addEntity(scene.turret);
         scene.turret.transformRotation[turret] = 0;
         scene.pool.commitTick();
-        expect(scene.turret.forwardX(turret), closeTo(1, 1e-9));
-        expect(scene.turret.forwardY(turret), closeTo(0, 1e-9));
+        expect(turret<Transform2D>().forwardX, closeTo(1, 1e-9));
+        expect(turret<Transform2D>().forwardY, closeTo(0, 1e-9));
 
         scene.pool.beginTick();
         scene.turret.transformRotation[turret] = math.pi / 2;
         scene.pool.commitTick();
-        expect(scene.turret.forwardX(turret), closeTo(0, 1e-9));
-        expect(scene.turret.forwardY(turret), closeTo(1, 1e-9));
+        expect(turret<Transform2D>().forwardX, closeTo(0, 1e-9));
+        expect(turret<Transform2D>().forwardY, closeTo(1, 1e-9));
       },
     );
   });

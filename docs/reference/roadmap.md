@@ -90,10 +90,12 @@ Deferred, and documented in place instead of left as silent gaps.
   choice stops being a second method on the pointer. Most of the 47 read what
   *another* caller wrote earlier in the same tick, so a buffer scoped to one
   caller does not serve them, and `readPending` cannot be deleted (#258)
-- **`goo2d`'s transform helpers are still on the mixin.** `Transform2D.lookAt`,
-  `distanceTo` and the rest take the entity as an argument
-  (`transform.lookAt(entity, x, y)`). The accessor form the guide teaches,
-  `entity<Transform2D>().lookAt(x, y)`, is `goo3d` only so far.
+- **`goo2d_physics_box2d`'s rigid-body helpers are still on the mixin.**
+  `RigidBody2D.applyForce`, `applyImpulse`, `applyTorque`, `setVelocity`,
+  `setAngularVelocity` and `setSimulated` take the entity as an argument
+  (`body.applyImpulse(entity, ix, iy)`). `Transform2D` and `Transform3D` are
+  both on the accessor form the guide teaches; these six are the last group
+  that is not (#87).
 - **Audio beyond levels and a budget.** A clip plays and stops through
   `state.audio`, and a playing voice holds a claim on its asset so a track
   survives the scene that started it unloading. Five buses - master, music,

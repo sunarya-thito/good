@@ -60,17 +60,17 @@ scale would be invisible with nothing anywhere saying why.
 ### Helpers
 
 `Transform2D` carries Unity-`Transform`-style helpers that operate on **local**
-values:
+values. They live on the entity, as `Accessor<Transform2D>`:
 
 ```dart
-final d = transform.distanceTo(a, b);   // local-space distance
-transform.lookAt(entity, targetX, targetY);
+final d = a<Transform2D>().distanceTo(b);   // local-space distance
+entity<Transform2D>().lookAt(targetX, targetY);
 ```
 
-Each resolves every `Entity` argument's own `Transform2D` fresh, instead of
-reading through the receiver — a second entity may belong to a different
-archetype with a different row layout entirely, and reading it through the wrong
-one would silently address the wrong storage.
+A helper that names a second entity resolves that one's own `Transform2D`
+fresh, instead of reading it through the receiver's — the two may belong to
+different archetypes with different row layouts entirely, and reading one
+through the other would silently address the wrong storage.
 
 For world-space equivalents, use `WorldTransform2D`'s fields.
 

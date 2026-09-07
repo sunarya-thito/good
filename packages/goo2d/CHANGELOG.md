@@ -122,6 +122,29 @@
   reached through it, and nothing about the columns themselves moves - names,
   order, widths and `strideBytes` are unchanged.
 
+* **`Transform2D`'s helpers are on `Accessor<Transform2D>`.** `distanceTo`,
+  `lookAt`, `lookAtEntity`, `forwardX` and `forwardY` move off the component
+  mixin, so the entity a helper acts on is the receiver rather than an argument
+  (#87). `forwardX` and `forwardY` are getters, as they are on
+  `Transform3DAccessor`.
+
+  ```dart
+  // before - the prefab is the receiver, the entity is an argument
+  final d = transform.distanceTo(a, b);
+  transform.lookAt(entity, targetX, targetY);
+  final fx = transform.forwardX(entity);
+
+  // after
+  final d = a<Transform2D>().distanceTo(b);
+  entity<Transform2D>().lookAt(targetX, targetY);
+  final fx = entity<Transform2D>().forwardX;
+  ```
+
+  A second entity stays an argument and is still resolved through its own
+  component, because it may be a different archetype with a different row
+  layout. The columns are untouched - names, order and defaults are where they
+  were.
+
 
 ### Fixed
 

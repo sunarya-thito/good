@@ -2,6 +2,11 @@ import 'dart:math' as math;
 
 import 'package:good/good.dart';
 
+/// The columns a 2D transform is stored in - position, scale and rotation,
+/// relative to the parent.
+///
+/// The columns are here; what a game does with them is on
+/// [Transform2DAccessor], reached as `entity<Transform2D>()`.
 mixin Transform2D on Component {
   final transformOffsetX = Field.float64();
   final transformOffsetY = Field.float64();
@@ -21,54 +26,49 @@ mixin Transform2D on Component {
     super.describeType(component);
     component.has<Transform2D>();
   }
+}
 
-  // --- Unity-Transform-inspired helpers -----------------------------------
-  //
-  // These operate on *local* values (what the raw fields hold) - a
-  // world-space equivalent (accounting for ancestors) goes through
-  // WorldTransform2D's fields instead (world_transform.dart).
-  //
-  // Every helper resolves each Entity argument's own Transform2D instance
-  // fresh via entity<Transform2D>().component, and never reads a second entity
-  // through `this` (the receiver). `this` is bound to whichever *concrete*
-  // archetype's Transform2D declared it, and a second Entity argument may
-  // well belong to a different archetype (a different prefab class) with a
-  // different row layout entirely. Resolving fresh per-argument is correct
-  // whether or not the two entities share an archetype; reading a foreign
-  // entity through the wrong archetype's DataPointer would silently address
-  // the wrong storage.
-
+/// What a game does with a [Transform2D], on the **entity** and not on the
+/// component: `entity<Transform2D>().lookAt(x, y)`.
+///
+/// These operate on *local* values (what the raw fields hold) - a world-space
+/// equivalent, accounting for ancestors, goes through [WorldTransform2D]'s
+/// fields instead. The typed accessor makes the entity the receiver, so a
+/// helper cannot index one archetype's columns with a row from another.
+///
+/// `Accessor<Transform2D>` erases to [Entity], which erases to `int`, so
+/// reaching a helper allocates nothing. [Accessor.component] inside one is an
+/// archetype lookup, so a body that reads it twice holds it in a local.
+extension Transform2DAccessor on Accessor<Transform2D> {
   /// Local-space (no ancestors, no `WorldTransform2D`) distance between
-  /// [a]'s and [b]'s offsets.
-  double distanceTo(Entity a, Entity b) {
-    final ta = a<Transform2D>().component;
-    final tb = b<Transform2D>().component;
-    final dx = tb.transformOffsetX[b] - ta.transformOffsetX[a];
-    final dy = tb.transformOffsetY[b] - ta.transformOffsetY[a];
+  /// this entity's and [other]'s offsets.
+  double distanceTo(Entity other) {
+    final ta = component;
+    final tb = other<Transform2D>().component;
+    final dx = tb.transformOffsetX[other] - ta.transformOffsetX[this];
+    final dy = tb.transformOffsetY[other] - ta.transformOffsetY[this];
     return math.sqrt(dx * dx + dy * dy);
   }
 
-  /// Sets [entity]'s `transformRotation` so it faces the local-space point
+  /// Sets this entity's `transformRotation` so it faces the local-space point
   /// ([targetX], [targetY]). Rotation 0 already means "facing +x" (see
   /// [forwardX]/[forwardY]), so this is exactly `atan2(dy, dx)`.
-  void lookAt(Entity entity, double targetX, double targetY) {
-    final t = entity<Transform2D>().component;
-    final dx = targetX - t.transformOffsetX[entity];
-    final dy = targetY - t.transformOffsetY[entity];
-    t.transformRotation[entity] = math.atan2(dy, dx);
+  void lookAt(double targetX, double targetY) {
+    final t = component;
+    final dx = targetX - t.transformOffsetX[this];
+    final dy = targetY - t.transformOffsetY[this];
+    t.transformRotation[this] = math.atan2(dy, dx);
   }
 
   /// [lookAt], sugar for facing [target]'s own local-space offset.
-  void lookAtEntity(Entity entity, Entity target) {
+  void lookAtEntity(Entity target) {
     final tt = target<Transform2D>().component;
-    lookAt(entity, tt.transformOffsetX[target], tt.transformOffsetY[target]);
+    lookAt(tt.transformOffsetX[target], tt.transformOffsetY[target]);
   }
 
-  /// The unit direction [entity]'s current local rotation points, as two
+  /// The unit direction this entity's current local rotation points, as two
   /// separate scalar getters and not one record: the engine allocates nothing
   /// per tick, and a record here would be betting on Dart to unbox it.
-  double forwardX(Entity entity) =>
-      math.cos(entity<Transform2D>().component.transformRotation[entity]);
-  double forwardY(Entity entity) =>
-      math.sin(entity<Transform2D>().component.transformRotation[entity]);
+  double get forwardX => math.cos(component.transformRotation[this]);
+  double get forwardY => math.sin(component.transformRotation[this]);
 }
