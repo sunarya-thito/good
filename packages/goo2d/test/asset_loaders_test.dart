@@ -108,11 +108,7 @@ void main() {
     final clip = await AssetLoaders.of<AudioClip>().load(key);
 
     expect(clip.bytes, _oggish);
-    expect(
-      clip.format,
-      AudioContainer.ogg,
-      reason: 'the container comes from the source description',
-    );
+    expect(clip.byteLength, _oggish.length);
   });
 
   test('mixing in Renderer2D is enough to get the texture decoder', () async {

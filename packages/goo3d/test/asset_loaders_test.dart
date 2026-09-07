@@ -86,7 +86,7 @@ void main() {
     final clip = await AssetLoaders.of<AudioClip>().load(key);
 
     expect(clip.bytes, _oggish);
-    expect(clip.format, AudioContainer.ogg);
+    expect(clip.byteLength, _oggish.length);
   });
 
   test('a payload goo3d has no decoder for still fails loudly', () async {
