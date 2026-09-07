@@ -2,6 +2,11 @@ import 'dart:math' as math;
 
 import 'package:good/good.dart';
 
+/// The columns a 2D transform is stored in - position, scale and rotation,
+/// relative to the parent.
+///
+/// The columns are here; what a game does with them is on
+/// [Transform2DAccessor], reached as `entity<Transform2D>()`.
 mixin Transform2D on Component {
   final transformOffsetX = Field.float64();
   final transformOffsetY = Field.float64();
@@ -29,9 +34,11 @@ mixin Transform2D on Component {
 /// These operate on *local* values (what the raw fields hold) - a world-space
 /// equivalent, accounting for ancestors, goes through [WorldTransform2D]'s
 /// fields instead. The typed accessor makes the entity the receiver, so a
-/// helper cannot accidentally index one archetype's columns with a row from
-/// another. It erases to [Entity], so this spelling adds no allocation or
-/// indirection to the tick path.
+/// helper cannot index one archetype's columns with a row from another.
+///
+/// `Accessor<Transform2D>` erases to [Entity], which erases to `int`, so
+/// reaching a helper allocates nothing. [Accessor.component] inside one is an
+/// archetype lookup, so a body that reads it twice holds it in a local.
 extension Transform2DAccessor on Accessor<Transform2D> {
   /// Local-space (no ancestors, no `WorldTransform2D`) distance between
   /// this entity's and [other]'s offsets.
