@@ -42,6 +42,45 @@
   own repository; a component in your game's `lib/` is not in it.
 
 ### Breaking
+* **`CollisionListener` is `on GameListener`, not `on Component`.** It goes on a
+  `GameSystem` (or the `GameState`), and mixing it into a prefab no longer
+  compiles (#384, #381). The six dispatchers are declared on
+  `Box2DPhysicsSystem`, and an event reaches every listener in the game whoever
+  declared it, so a system mixing this in hears every contact in the world and
+  says which ones it wants:
+
+  ```dart
+  // before - the prefab heard contacts involving its own colliders
+  class Crate extends EntityStruct with Transform2D, Collider2D, CollisionListener {
+    final flash = Field.float64();
+
+    @override
+    void onCollisionEnter2D(Collision2DEvent event) {
+      flash[event.sourceEntity] = 0.12;
+    }
+  }
+
+  // after - a system hears every contact and asks the entity
+  class FlashSystem extends GameSystem with CollisionListener {
+    @override
+    void onCollisionEnter2D(Collision2DEvent event) {
+      final entity = event.sourceEntity;
+      if (!entity.has<Crate>()) return;
+      entity<Crate>().component.flash[entity] = 0.12;
+    }
+  }
+  ```
+
+  Filtering by archetype is what a listener at this scope is for - the same
+  thing `EntitySpawnListener` says about itself. A contact still arrives twice,
+  once from each side, each delivery naming its own collider as
+  `Collision2DEvent.source`, so a filter written against `sourceEntity` alone
+  sees every contact its entities are in.
+
+  `CollisionListener` leaves the component set with this. It was the one mixin
+  on `Component` in these packages that registered no bit, and nothing a
+  scanner can see separated it from `ScreenTransform2D`, which does - which is
+  what blocked deriving the bit order in #381.
 
 * **`entity<T?>()` is gone; `entity.has<T>()` answers whether the component is
   there.** `Entity.call` takes `T extends Component` in `good` 0.3.0-dev and

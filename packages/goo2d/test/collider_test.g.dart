@@ -34,6 +34,11 @@ List<ScannableField> _collect$Player(Object object) {
   ];
 }
 
+List<ScannableField> _collect$Watcher(Object object) {
+  object as _Watcher;
+  return const <ScannableField>[];
+}
+
 List<ScannableField> _collect$Wall(Object object) {
   final owner = object as _Wall;
   return <ScannableField>[
@@ -123,6 +128,7 @@ const GeneratedDeclarations _colliderTestDeclarations =
       package: 'goo2d/test/collider_test.dart',
       collectors: <DeclarationCollector>[
         DeclarationCollector(_Player, _collect$Player),
+        DeclarationCollector(_Watcher, _collect$Watcher),
         DeclarationCollector(_Wall, _collect$Wall),
         DeclarationCollector(_Polygon, _collect$Polygon),
         DeclarationCollector(_Capsule, _collect$Capsule),

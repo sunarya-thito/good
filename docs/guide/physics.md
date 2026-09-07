@@ -205,8 +205,7 @@ body.setSimulated(entity, false);
 ## Collisions and triggers
 
 ```dart
-class Player extends EntityStruct
-    with Transform2D, Collider2D, RigidBody2D, CollisionListener {
+class PlayerContacts extends GameSystem with CollisionListener {
   @override
   void onCollisionEnter2D(Collision2DEvent event) { }
   @override

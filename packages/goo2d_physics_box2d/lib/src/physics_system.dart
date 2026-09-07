@@ -144,8 +144,14 @@ class Box2DPhysicsSystem extends GameSystem
   /// to both sides. A resting pile of a few thousand bodies is tens of
   /// thousands of dispatches per tick that most games never read.
   ///
-  /// Left on by default for parity with Unity, but turn it off if nothing
-  /// overrides those two methods - it costs nothing to keep enter/exit.
+  /// Left on by default for parity with Unity, but turn it off when a game
+  /// has `CollisionListener` systems that read enter and exit only - it costs
+  /// nothing to keep those two.
+  ///
+  /// A game with no `CollisionListener` at all does not need this: the stay
+  /// loop is skipped on the dispatcher's own listener count, which is settled
+  /// at boot. This is for the case where somebody is listening and the stay
+  /// phase is still not wanted.
   bool dispatchStayEvents = true;
 
   /// Rotation difference below which a body is considered not to have been
@@ -276,6 +282,61 @@ class Box2DPhysicsSystem extends GameSystem
 
   /// One reused event for every dispatch - see `Collision2DEvent`'s doc.
   final Collision2DEvent _event = Collision2DEvent();
+
+  // --- the six collision dispatchers -----------------------------------------
+  //
+  // One per `CollisionListener` method, and not fewer with the phase carried
+  // on the payload. Three reasons, in order of weight:
+  //
+  //  * The six method names are Unity's, and `CollisionListener` says they are
+  //    kept exactly. A dispatcher that picked the method from a value on the
+  //    event would either lose those names or route to them through a switch
+  //    inside the delivery closure - which is `EventDispatcher`'s own job,
+  //    written again by hand and run once per listener instead of once per
+  //    contact.
+  //  * It is what every other event in this engine looks like: a callback has
+  //    a dispatcher, and no dispatcher in the tree reads its payload to decide
+  //    which method to call.
+  //  * The phase and the sensor flag are already in hand at the drain, so
+  //    picking a dispatcher there costs the branch the old `_Phase` switch was
+  //    costing anyway - and `_dispatchPair` then takes the dispatcher as a
+  //    handle, which is what let that enum and its six-arm switch go.
+  //
+  // All six take the same listener type, so a `CollisionListener` is in all
+  // six lists. That is what makes `listenerCount` on any one of them the right
+  // thing to check before doing a phase's work.
+
+  /// Two colliders began touching. See [CollisionListener].
+  final collisionEnter2DEvent = Event.of<CollisionListener, Collision2DEvent>(
+    (listener, event) => listener.onCollisionEnter2D(event),
+  );
+
+  /// Two colliders stopped touching. See [CollisionListener].
+  final collisionExit2DEvent = Event.of<CollisionListener, Collision2DEvent>(
+    (listener, event) => listener.onCollisionExit2D(event),
+  );
+
+  /// Two colliders are still touching, this tick. See [CollisionListener] and
+  /// [dispatchStayEvents].
+  final collisionStay2DEvent = Event.of<CollisionListener, Collision2DEvent>(
+    (listener, event) => listener.onCollisionStay2D(event),
+  );
+
+  /// A collider entered a trigger. See [CollisionListener].
+  final triggerEnter2DEvent = Event.of<CollisionListener, Collision2DEvent>(
+    (listener, event) => listener.onTriggerEnter2D(event),
+  );
+
+  /// A collider left a trigger. See [CollisionListener].
+  final triggerExit2DEvent = Event.of<CollisionListener, Collision2DEvent>(
+    (listener, event) => listener.onTriggerExit2D(event),
+  );
+
+  /// A collider is still inside a trigger, this tick. See [CollisionListener]
+  /// and [dispatchStayEvents].
+  final triggerStay2DEvent = Event.of<CollisionListener, Collision2DEvent>(
+    (listener, event) => listener.onTriggerStay2D(event),
+  );
 
   /// How many pairs are currently touching, as tracked for the stay events.
   ///
@@ -733,13 +794,7 @@ class Box2DPhysicsSystem extends GameSystem
     }
     // Overwrites whatever previously held this slot, which is correct:
     // Box2D only reuses an index after the old shape is destroyed.
-    _shapeOwners[slot] = _ShapeOwner(
-      entity,
-      shape,
-      entity.has<CollisionListener>()
-          ? entity<CollisionListener>().component
-          : null,
-    );
+    _shapeOwners[slot] = _ShapeOwner(entity, shape);
   }
 
   _ShapeOwner? _ownerOf(int shapeHandle) {
@@ -1695,17 +1750,23 @@ class Box2DPhysicsSystem extends GameSystem
         ? box2d.gooWorldDrainSensors(world, _events, _eventCapacity)
         : box2d.gooWorldDrainContacts(world, _events, _eventCapacity);
 
+    final enter = sensors ? triggerEnter2DEvent : collisionEnter2DEvent;
+    final exit = sensors ? triggerExit2DEvent : collisionExit2DEvent;
+
     for (var i = 0; i < count; i++) {
       final kind = _events[i * 3];
       final shapeA = _events[i * 3 + 1];
       final shapeB = _events[i * 3 + 2];
 
+      // The touching set is maintained whether or not anybody is listening. It
+      // is what the stay phase is derived from, and a system enabled later
+      // would otherwise start from a set that had missed every begin so far.
       if (kind == _touchBegin) {
         _remember(shapeA, shapeB, sensors);
-        _dispatchPair(shapeA, shapeB, sensors, _Phase.enter);
+        _dispatchPair(shapeA, shapeB, enter);
       } else {
         _forget(shapeA, shapeB);
-        _dispatchPair(shapeA, shapeB, sensors, _Phase.exit);
+        _dispatchPair(shapeA, shapeB, exit);
       }
     }
   }
@@ -1717,18 +1778,32 @@ class Box2DPhysicsSystem extends GameSystem
   /// part of `CollisionListener` that costs a data structure instead of a
   /// translation.
   void _dispatchStay() {
+    // The one loop that is O(contacts) on every tick, so it is the one worth
+    // not entering at all. Both stay dispatchers take `CollisionListener`, so
+    // one of them being empty means both are.
+    if (collisionStay2DEvent.listenerCount == 0) return;
     for (var i = 0; i < _touchingCount; i++) {
       _dispatchPair(
         _touchingA[i],
         _touchingB[i],
-        _touchingSensor[i] == 1,
-        _Phase.stay,
+        _touchingSensor[i] == 1 ? triggerStay2DEvent : collisionStay2DEvent,
       );
     }
   }
 
-  /// Delivers one collision to both sides, each hearing itself as `source`.
-  void _dispatchPair(int shapeA, int shapeB, bool sensor, _Phase phase) {
+  /// Delivers one contact through [event] twice - once from each side, each
+  /// delivery naming its own collider as `source`.
+  void _dispatchPair(
+    int shapeA,
+    int shapeB,
+    EventDispatcher<CollisionListener, Collision2DEvent> event,
+  ) {
+    // Nobody is listening, so the two owner lookups below would be work for
+    // no one. This is what keeps a game that reads no collisions paying
+    // nothing for the ones it has - the same question the per-shape listener
+    // cache used to answer, asked once for the pair instead of once per side.
+    if (event.listenerCount == 0) return;
+
     final a = _ownerOf(shapeA);
     final b = _ownerOf(shapeB);
     // A shape destroyed in the same step that reported it - its owner slot
@@ -1736,49 +1811,30 @@ class Box2DPhysicsSystem extends GameSystem
     if (a == null || b == null) return;
 
     // BOTH directions, sensors included, so a listener always reads `source`
-    // as its own collider and `target` as the other.
+    // as the side the delivery is about and `target` as the other. That used
+    // to be about which side held the listener; it is now about what a filter
+    // can be written against. A listener that tests `sourceEntity` sees every
+    // contact its own entities are in, because every contact arrives from both
+    // ends. Fire once and that same filter misses the contacts where Box2D
+    // happened to name the other shape first - about half of them, silently,
+    // in an order nothing in the game decides.
     //
     // Sensors are not an exception, though an earlier draft made them one on
-    // the reasoning that Box2D guarantees sensor-then-visitor ordering.
-    // That confused *who Box2D names first* with *who wants to be told*: the
-    // object walking into a trigger is usually the one with the listener -
-    // a pickup, a checkpoint, a damage volume - and it heard nothing at all.
-    // Unity fires OnTriggerEnter2D on both sides too.
-    _deliver(a, b, sensor, phase);
-    _deliver(b, a, sensor, phase);
+    // the reasoning that Box2D guarantees sensor-then-visitor ordering. That
+    // confused who Box2D names first with who wants to be told. Unity fires
+    // OnTriggerEnter2D on both sides too.
+    _deliver(a, b, event);
+    _deliver(b, a, event);
   }
 
   void _deliver(
     _ShapeOwner source,
     _ShapeOwner target,
-    bool sensor,
-    _Phase phase,
+    EventDispatcher<CollisionListener, Collision2DEvent> event,
   ) {
-    final listener = source.listener;
-    if (listener == null) return;
-
     // Repointed, never reallocated - a step can produce hundreds of these.
     _event.set(source.body, source.entity, target.body, target.entity);
-
-    if (sensor) {
-      switch (phase) {
-        case _Phase.enter:
-          listener.onTriggerEnter2D(_event);
-        case _Phase.exit:
-          listener.onTriggerExit2D(_event);
-        case _Phase.stay:
-          listener.onTriggerStay2D(_event);
-      }
-    } else {
-      switch (phase) {
-        case _Phase.enter:
-          listener.onCollisionEnter2D(_event);
-        case _Phase.exit:
-          listener.onCollisionExit2D(_event);
-        case _Phase.stay:
-          listener.onCollisionStay2D(_event);
-      }
-    }
+    event(_event);
   }
 
   void _remember(int shapeA, int shapeB, bool sensor) {
@@ -1943,31 +1999,19 @@ class Box2DPhysicsSystem extends GameSystem
   }
 }
 
-/// Which entity and which declared collider a Box2D shape belongs to, plus
-/// that entity's collision listener if it has one.
+/// Which entity and which declared collider a Box2D shape belongs to.
 ///
-/// [listener] is resolved **once, at shape creation**, and that is a real
-/// optimisation, not tidiness. Resolving it costs an archetype lookup and a
-/// subtype test - two of them here, since the listener may be absent and
-/// `has` asks the same question first - and dispatch would pay that twice per
-/// touching pair per tick - a settled pile of 20 000 bodies is tens of
-/// thousands of contacts, so resolving on the fly is tens of thousands of
-/// resolves every tick. The answer cannot change: the lookup returns the
-/// *prefab*, which is one
-/// object per archetype, and a shape's entity never changes archetype.
+/// It used to cache that entity's `CollisionListener` as well, resolved once
+/// at shape creation so dispatch could skip a non-listening side on a null
+/// check. Nothing resolves a listener off an entity any more: a collision is
+/// an event, its listeners were collected at boot, and a dispatcher's own list
+/// is what says whether there is anybody to tell.
 class _ShapeOwner {
-  const _ShapeOwner(this.entity, this.body, this.listener);
+  const _ShapeOwner(this.entity, this.body);
 
   final Entity entity;
   final ColliderBody body;
-
-  /// Null when this entity's prefab does not mix in `CollisionListener` - so
-  /// dispatch skips it with a null check instead of a type test.
-  final CollisionListener? listener;
 }
-
-/// Which of `CollisionListener`'s three phases a dispatch is.
-enum _Phase { enter, exit, stay }
 
 /// Mirrors GOO_TOUCH_BEGIN in goo_box2d.h.
 const int _touchBegin = 0;

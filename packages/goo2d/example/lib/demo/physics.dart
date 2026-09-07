@@ -158,19 +158,9 @@ int defaultSolverWorkers() {
 /// to make the *event path* visible, not just plausible.
 const double _flashSeconds = 0.12;
 
-/// A falling crate, lit by its own `CollisionListener`.
-///
-/// Mixes in `CollisionListener` directly on the prefab, which is the narrow
-/// scope: this hears collisions involving *its own* colliders, and needs no
-/// filtering. A system wanting every collision in the game would instead be a
-/// broad observer.
+/// A falling crate, lit when [FlashSystem] hears it hit something.
 class Crate extends EntityStruct
-    with
-        Transform2D,
-        Renderable2D,
-        Collider2D,
-        RigidBody2D,
-        CollisionListener {
+    with Transform2D, Renderable2D, Collider2D, RigidBody2D {
   // 1 m x 1 m, in WORLD units - the same units the collider below uses,
   // and the same units Box2D simulates in. `Sprite.width` is world units,
   // not pixels; the camera's `zoom` is the only thing that converts to
@@ -189,14 +179,6 @@ class Crate extends EntityStruct
   /// state on the prefab, because it is per *entity* - the prefab is one
   /// object shared by every crate.
   final flash = Field.float64();
-
-  /// Enter only, not stay: a resting crate collides every single tick, so
-  /// lighting on stay would leave the whole pile permanently lit and show
-  /// nothing.
-  @override
-  void onCollisionEnter2D(Collision2DEvent event) {
-    flash[event.sourceEntity] = _flashSeconds;
-  }
 
   /// Plain Dart state on the prefab - it lives on the game isolate and is
   /// never shared, exactly as the Galaxy case's own spawn counter is.
@@ -242,12 +224,7 @@ class Crate extends EntityStruct
 
 /// A bouncier ball, so the case shows restitution and the circle shape.
 class Ball extends EntityStruct
-    with
-        Transform2D,
-        Renderable2D,
-        Collider2D,
-        RigidBody2D,
-        CollisionListener {
+    with Transform2D, Renderable2D, Collider2D, RigidBody2D {
   // Matches the 0.4 m collider radius below.
   final body = Sprite.of(width: 0.8, height: 0.8, color: _ballColor);
   final circle = ColliderBody.circle(
@@ -257,11 +234,6 @@ class Ball extends EntityStruct
   );
 
   final flash = Field.float64();
-
-  @override
-  void onCollisionEnter2D(Collision2DEvent event) {
-    flash[event.sourceEntity] = _flashSeconds;
-  }
 
   /// Plain Dart state on the prefab - it lives on the game isolate and is
   /// never shared, exactly as the Galaxy case's own spawn counter is.
@@ -503,6 +475,35 @@ class _PhysicsPhaseEnd extends GameSystem with FixedTickable {
     final state = getState<PhysicsState>();
     state.physicsMicros =
         state.profile.clock.elapsedMicroseconds - state.physicsStartedAt;
+  }
+}
+
+/// Lights whatever just hit something.
+///
+/// A system and not an override on the prefabs, because that is the only shape
+/// there is: `CollisionListener` is `on GameListener`, the six dispatchers are
+/// declared on `Box2DPhysicsSystem`, and an event reaches every listener in the
+/// game. So this hears **every** contact in the sandbox - crate on ball, ball
+/// on wall, crate on ground - and asks each one whether it is a body that
+/// flashes. Filtering by archetype is what a listener at this scope is for.
+///
+/// The contact arrives twice, once from each side, so the crate half of a
+/// crate-on-ball contact and the ball half are two separate calls and each
+/// lights its own `sourceEntity`. Nothing here has to look at `targetEntity`.
+///
+/// Enter only, not stay: a resting crate collides every single tick, so
+/// lighting on stay would leave the whole pile permanently lit and show
+/// nothing.
+class FlashSystem extends GameSystem with CollisionListener {
+  @override
+  void onCollisionEnter2D(Collision2DEvent event) {
+    final entity = event.sourceEntity;
+    // The ground and the walls reach here too and have no `flash` field.
+    if (entity.has<Crate>()) {
+      entity<Crate>().component.flash[entity] = _flashSeconds;
+    } else if (entity.has<Ball>()) {
+      entity<Ball>().component.flash[entity] = _flashSeconds;
+    }
   }
 }
 
@@ -779,6 +780,12 @@ class PhysicsState extends DemoState<PhysicsGame> {
   final physicsPhaseEnd = _PhysicsPhaseEnd();
   @system
   final sandboxSystem = SandboxSystem();
+
+  // Last, and its position does not matter: it never ticks. It is called from
+  // inside the physics step, by the dispatcher the physics system fired, which
+  // is already before `sandboxSystem` ages the flash it just set.
+  @system
+  final flashSystem = FlashSystem();
 }
 
 class PhysicsGame extends DemoGame {

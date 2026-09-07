@@ -175,6 +175,11 @@ List<ScannableField> _collect$PhysicsPhaseEnd(Object object) {
   return const <ScannableField>[];
 }
 
+List<ScannableField> _collect$FlashSystem(Object object) {
+  object as FlashSystem;
+  return const <ScannableField>[];
+}
+
 List<ScannableField> _collect$SandboxSystem(Object object) {
   final owner = object as SandboxSystem;
   return <ScannableField>[
@@ -191,6 +196,7 @@ List<ScannableField> _collect$PhysicsState(Object object) {
     owner.physics,
     owner.physicsPhaseEnd,
     owner.sandboxSystem,
+    owner.flashSystem,
     owner.fixedPhaseEnd,
     owner.renderPhaseStart,
     owner.renderPhaseEnd,
@@ -253,6 +259,7 @@ const GeneratedDeclarations _physicsDeclarations =
         DeclarationCollector(Sandbox, _collect$Sandbox),
         DeclarationCollector(_PhysicsPhaseStart, _collect$PhysicsPhaseStart),
         DeclarationCollector(_PhysicsPhaseEnd, _collect$PhysicsPhaseEnd),
+        DeclarationCollector(FlashSystem, _collect$FlashSystem),
         DeclarationCollector(SandboxSystem, _collect$SandboxSystem),
         DeclarationCollector(PhysicsState, _collect$PhysicsState),
         DeclarationCollector(PhysicsGame, _collect$PhysicsGame),

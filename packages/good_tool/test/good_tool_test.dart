@@ -1783,8 +1783,10 @@ mixin Cached on Component {
           'good:Parent',
         ],
       );
-      // `CollisionListener` is a mixin on `Component` in `goo2d` that never
-      // reaches `has<T>()`, so it holds no bit and spends none.
+      // `CollisionListener` is `on GameListener` in `goo2d` and not a
+      // component at all, so it holds no bit and spends none. It was the one
+      // mixin on `Component` that never reached `has<T>()`; this stays as the
+      // guard against it, or another like it, coming back.
       expect(
         scan.bits.map((bit) => bit.type),
         isNot(contains('CollisionListener')),

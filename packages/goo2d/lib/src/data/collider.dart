@@ -697,6 +697,10 @@ mixin Collider2D on MultiComponent {
 /// concrete type of the body it declared (`final box = ColliderBody.box(...)`
 /// keeps the shape in the field's own type).
 ///
+/// **One contact arrives twice**, once from each side - see
+/// [CollisionListener] for why. [source] is the side the delivery in hand is
+/// about, [target] the other; the next delivery swaps them.
+///
 /// **A single instance is reused for every dispatch.** A physics step can
 /// produce hundreds of contacts, and every framework event is hot path
 /// (the hot-path rules), so allocating one of these per contact is
@@ -717,7 +721,7 @@ class Collision2DEvent {
   /// call `RigidBody2D.bodyHandle` makes.
   Collision2DEvent();
 
-  /// The collider this event is being reported *to*.
+  /// The side of the contact this delivery is about.
   late ColliderBody source;
 
   /// The entity [source] belongs to.
@@ -748,13 +752,50 @@ class Collision2DEvent {
 /// No-op-default reaction surface for collision/trigger events - the same
 /// "mixin implementing an interface with no-op defaults, override only
 /// what you need" shape `LifecycleListener` already established elsewhere
-/// in this engine. `on Component`, not `on MultiComponent`: this is the
-/// *prefab's* reaction to events involving whichever `ColliderBody` it
-/// declared through `Collider2D` - one set of six methods per prefab type,
-/// independent of how many bodies that prefab declared.
+/// in this engine.
+///
+/// `on GameListener`, so it goes on a `GameSystem` (or the `GameState`), and
+/// never on a prefab. The six dispatchers are declared on the physics system,
+/// which is the object that learns a contact happened; an event reaches every
+/// listener in the game whoever declared it, so a system mixing this in hears
+/// every contact in the world and says which ones it wants:
+///
+/// ```dart
+/// class DamageSystem extends GameSystem with CollisionListener {
+///   @override
+///   void onTriggerEnter2D(Collision2DEvent event) {
+///     if (!event.sourceEntity.has<Hurtbox>()) return;
+///     applyDamage(event.sourceEntity, event.targetEntity);
+///   }
+/// }
+/// ```
+///
+/// Filtering by archetype is expected at this scope rather than a smell - the
+/// same thing `EntitySpawnListener` says about itself, for the same reason.
+///
+/// This used to be one set of six methods per prefab type, covering every
+/// [ColliderBody] that prefab declared through [Collider2D] at once. It is one
+/// set per listener now, covering every collider in the game, and
+/// [Collision2DEvent.source] is what says which body a contact was about - so
+/// a prefab with several bodies tells them apart by comparing `source` against
+/// the field it declared, which is what it had to do inside its own override
+/// before.
+///
+/// # A contact is delivered twice
+///
+/// Once from each side: the first delivery names one collider as
+/// [Collision2DEvent.source] and the other as `target`, and the second swaps
+/// them. So a listener that cares about one kind of entity tests
+/// `sourceEntity` and is done - it never has to ask whether the entity it
+/// wants turned up as the other half, and a filter that only looked at one
+/// field would otherwise miss roughly half the contacts it wanted, silently
+/// and in an order Box2D chooses.
+///
+/// The cost is that a listener counting *contacts* rather than *entities*
+/// sees each one twice. Unity dispatches to both sides too.
 ///
 /// Event names are Unity's own (`OnCollisionEnter2D` etc.), kept exactly.
-mixin CollisionListener on Component {
+mixin CollisionListener on GameListener {
   void onCollisionEnter2D(Collision2DEvent event) {}
   void onCollisionExit2D(Collision2DEvent event) {}
   void onCollisionStay2D(Collision2DEvent event) {}

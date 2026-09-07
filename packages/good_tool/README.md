@@ -131,11 +131,15 @@ install a table full of holes out of sixty-four; an order lets the registry
 number whatever set it is given, contiguously from zero.
 
 The set is the types some `describeType` in this repository calls `has<T>()` on,
-which is exactly the set `bitFor` is called with. Not every component mixin:
-`CollisionListener` is a mixin on `Component` that registers nothing, and a bit
-for it would be one of sixty-four spent on a type no signature carries. Not
-`EntityStruct`'s own `has(type: runtimeType)` either — the type is the value of
-an expression, so a prefab's bit stays a run-time assignment.
+which is exactly the set `bitFor` is called with. Not `EntityStruct`'s own
+`has(type: runtimeType)` — the type is the value of an expression, so a
+prefab's bit stays a run-time assignment.
+
+`CollisionListener` used to be the other exclusion: a mixin on `Component` that
+registered nothing, so a bit for it would have been one of sixty-four spent on
+a type no signature carries. It is `on GameListener` now and no longer a
+component at all, and with it gone every component mixin in these packages
+registers itself.
 
 Sixteen entries today, out of sixty-four. The tool refuses to write a table
 larger than that and names every type in it, which is the failure #18 wanted

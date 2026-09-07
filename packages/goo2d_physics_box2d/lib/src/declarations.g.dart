@@ -30,6 +30,12 @@ List<ScannableField> _box2DPhysicsSystem(Object object) {
   final owner = object as Box2DPhysicsSystem;
   return <ScannableField>[
     owner.bodies,
+    owner.collisionEnter2DEvent,
+    owner.collisionExit2DEvent,
+    owner.collisionStay2DEvent,
+    owner.triggerEnter2DEvent,
+    owner.triggerExit2DEvent,
+    owner.triggerStay2DEvent,
     owner.effectorZones,
   ];
 }

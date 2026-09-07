@@ -3,12 +3,17 @@ import 'package:flutter_test/flutter_test.dart';
 
 part 'collider_test.g.dart';
 
-class _Player extends EntityStruct
-    with Transform2D, Collider2D, CollisionListener {
+class _Player extends EntityStruct with Transform2D, Collider2D {
   final box = ColliderBody.box(halfWidth: 16, halfHeight: 24);
   final hurtbox = ColliderBody.circle(radius: 20);
   final pickupRange = ColliderBody.circle(radius: 48, isTrigger: true);
+}
 
+/// A `CollisionListener` on a `GameSystem`, which is the only place one can
+/// go: the mixin is `on GameListener` and the dispatchers are the physics
+/// system's. Overrides two of the six, so the other four have to be reachable
+/// no-ops rather than abstract members.
+class _Watcher extends GameSystem with CollisionListener {
   final List<String> firedEvents = <String>[];
 
   @override
@@ -295,29 +300,39 @@ void main() {
   });
 
   group('CollisionListener', () {
-    test('is a no-op-default mixin - a prefab overriding only some methods compiles and the rest stay silent', () {
+    test('is a no-op-default mixin - a listener overriding only some methods compiles and the rest stay silent', () {
       final scene = _scene();
       scene.pool.beginTick();
       final player = scene.addEntity(scene.player);
       scene.pool.commitTick();
 
+      final watcher = _Watcher();
+
       // Calling the un-overridden ones directly must not throw - they're
       // real no-op bodies, not abstract methods forcing an override.
       final event = Collision2DEvent()
         ..set(scene.player.box, player, scene.player.box, player);
-      expect(() => scene.player.onCollisionExit2D(event), returnsNormally);
-      expect(() => scene.player.onCollisionStay2D(event), returnsNormally);
-      expect(() => scene.player.onTriggerExit2D(event), returnsNormally);
-      expect(() => scene.player.onTriggerStay2D(event), returnsNormally);
+      expect(() => watcher.onCollisionExit2D(event), returnsNormally);
+      expect(() => watcher.onCollisionStay2D(event), returnsNormally);
+      expect(() => watcher.onTriggerExit2D(event), returnsNormally);
+      expect(() => watcher.onTriggerStay2D(event), returnsNormally);
       expect(
-        scene.player.firedEvents,
+        watcher.firedEvents,
         isEmpty,
         reason: 'none of the no-op ones should record anything',
       );
 
-      scene.player.onCollisionEnter2D(event);
-      scene.player.onTriggerEnter2D(event);
-      expect(scene.player.firedEvents, ['enter', 'triggerEnter']);
+      watcher.onCollisionEnter2D(event);
+      watcher.onTriggerEnter2D(event);
+      expect(watcher.firedEvents, ['enter', 'triggerEnter']);
+    });
+
+    test('goes on a GameListener, never on a prefab', () {
+      // The whole of what changed: `CollisionListener` is `on GameListener`,
+      // so a `GameSystem` can carry it and an `EntityStruct` cannot. The
+      // second half of that is a compile error and cannot be written here.
+      expect(_Watcher(), isA<GameListener>());
+      expect(_Player(), isNot(isA<GameListener>()));
     });
 
     test('Collision2DEvent carries which entity, not just which prefab', () {
