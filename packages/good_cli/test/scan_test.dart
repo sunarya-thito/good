@@ -1256,8 +1256,11 @@ class Loose {
       final usage = await scanScenes(project, scanAssets(project));
 
       expect(usage.byScene['MainScene'], isEmpty);
-      expect(usage.unresolved.keys, contains('menu'));
-      expect(usage.unresolved.keys, contains('player'));
+      // Qualified by the enum. Collisions are refused per enum, so `menu.png`
+      // and `menu.json` are both `menu` and a table keyed on the bare name
+      // keeps one of them (#357).
+      expect(usage.unresolved.keys, contains('Textures.menu'));
+      expect(usage.unresolved.keys, contains('Textures.player'));
     });
   });
 }
