@@ -71,12 +71,19 @@ class GoodCli {
   ///
   /// [environment] is laid over the two variables this sets for itself, for
   /// the one test that has to see what good does with a path of its own.
+  ///
+  /// [workingDirectory] is what a person's shell would be sitting in. It is
+  /// the child's and never this process's, so a test can run a command from
+  /// inside a project without moving `Directory.current` out from under every
+  /// other file the runner has scheduled beside it.
   ProcessResult run(
     List<String> args, {
     Map<String, String> environment = const <String, String>{},
+    String? workingDirectory,
   }) => Process.runSync(
     Platform.resolvedExecutable,
     <String>[build.snapshot, ...args],
+    workingDirectory: workingDirectory,
     environment: <String, String>{
       'PATH': _path,
       'GOOD_HOME': build.home,
@@ -242,9 +249,14 @@ class GoodCli {
       }
     }
     final home = Directory('${root.path}/home')..createSync(recursive: true);
+    // Absolute, all three. The shared build sits under this package's
+    // `.dart_tool`, which is only a path at all while the current directory is
+    // the package directory - and a test that runs the CLI from inside a
+    // fixture hands the child a different one. A relative kernel is then not
+    // there, and a relative stub directory on `PATH` shadows nothing.
     return CliBuild(
-      snapshot: snapshot,
-      stubs: stubs.path,
+      snapshot: File(snapshot).absolute.path,
+      stubs: stubs.absolute.path,
       home: home.absolute.path,
     );
   }
