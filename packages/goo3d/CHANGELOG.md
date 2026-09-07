@@ -32,6 +32,36 @@
   Your own components do not get these. The generator runs over the engine's
   own repository; a component in your game's `lib/` is not in it.
 
+* **`Game3D` and `GameState3D`.** A 3D game extended `Game` and declared two
+  things by hand in every project: a `CameraView` for a camera entity to point
+  at, and `WorldTransform3DSystem` so a child follows its parent. `extends
+  Game3D` and `extends GameState3D<MyGame>` declare both (#92).
+
+  ```dart
+  class MyGame extends Game3D {
+    @override
+    MyGameState createState() => MyGameState();
+  }
+
+  class MyGameState extends GameState3D<MyGame> {
+    @override
+    void onMounted() => loadScene(Level());
+  }
+  ```
+
+  The view is `defaultCamera` at address 0 - the name and the address
+  `goo2d`'s `Renderer2D` declares - and a game wanting more declares them in
+  its own `describeCameras` after calling `super`. `Game3D.createState()` is
+  narrowed to `GameState3D`, so a state without the composition system is a
+  compile error instead of a game whose parented entities keep the world
+  transform they were spawned with.
+
+  `View3D` and `Composition3DState` are those two declarations as mixins, for a
+  game or a state whose base class is already something else.
+
+  **It draws nothing.** `Game3D` does not override `buildView`, so a `GameView`
+  showing one paints what a plain `Game` does. The renderer is #43.
+
 ### Breaking
 
 * **`entity<T?>()` is gone; `entity.has<T>()` answers whether the component is
