@@ -663,7 +663,71 @@ void main() {
         '--wrIte',
       ]);
       expect(result.exitCode, 64);
-      expect(result.stderr, contains('Unknown argument'));
+      expect(result.stderr, contains('Unknown option "--wrIte"'));
+    }, timeout: const Timeout(Duration(minutes: 3)));
+
+    test('does not read a flag as the value of --dir', () async {
+      // #373. `--check` was read off the whole argument list before the loop
+      // that filled `--dir` ran, so this set the check flag *and* handed
+      // `--check` over as the directory to look in. What came out was a run
+      // refusing a directory nobody had named, and the flag it had eaten was
+      // never mentioned. The parser gives `--dir` what followed it, which
+      // here is nothing.
+      final repo = _runnableRepo();
+      final result = await _tool(repo, const <String>['--dir', '--check']);
+      expect(result.exitCode, 64);
+      expect(result.stderr, contains('--dir takes a directory'));
+      expect(
+        result.stderr,
+        isNot(contains('No such directory: --check')),
+        reason: 'a flag is not a directory the run failed to find',
+      );
+    }, timeout: const Timeout(Duration(minutes: 3)));
+
+    test('refuses a flag the mode it was given does not read', () async {
+      // Also #373. The modes were picked by three early returns, so
+      // `--doc-references --check` ran the doc-reference check and dropped the
+      // `--check` without a word: somebody asking whether the committed files
+      // are current got a clean run of something else, and a CI step written
+      // that way would have checked nothing for as long as it stood.
+      final repo = _runnableRepo();
+      final result = await _tool(repo, const <String>[
+        '--dir',
+        'packages',
+        '--doc-references',
+        '--check',
+      ]);
+      expect(result.exitCode, 64);
+      expect(result.stderr, contains('--doc-references does not read --check'));
+      expect(
+        result.stdout,
+        isEmpty,
+        reason: 'the command line was refused, so no mode ran',
+      );
+    }, timeout: const Timeout(Duration(minutes: 3)));
+
+    test('--help says what the tool does without doing any of it', () async {
+      final repo = _runnableRepo();
+      final result = await _tool(repo, const <String>['--help']);
+      expect(result.exitCode, 0);
+      expect(result.stdout, contains('Usage: dart run good_tool'));
+      // Every flag, so a mode added without a description is a failing test
+      // and not a mode nobody outside this file knows about.
+      for (final flag in const <String>[
+        '--dir',
+        '--check',
+        '--doc-references',
+        '--declarations',
+        '--tests',
+        '--verbose',
+      ]) {
+        expect(result.stdout, contains(flag));
+      }
+      expect(
+        result.stdout.split('\n').map((line) => line.trimRight().length),
+        everyElement(lessThanOrEqualTo(80)),
+        reason: 'help is read in a terminal',
+      );
     }, timeout: const Timeout(Duration(minutes: 3)));
 
     test('refuses to run with no --dir at all', () async {

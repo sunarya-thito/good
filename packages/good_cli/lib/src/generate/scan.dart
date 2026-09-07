@@ -2387,8 +2387,8 @@ class DeclarationScan {
   /// **Reported and not refused, for now.** The report is what a refusal
   /// would be built on and the annotations arrive with it, so there is no run
   /// anywhere that has been read against them - and a rule that refuses in
-  /// the same change that invents it has no evidence behind it. One
-  /// `exitCode = 65` in `good_tool`'s `_declarations` turns it into a
+  /// the same change that invents it has no evidence behind it. Adding it to
+  /// the `ArgumentError` `good_tool`'s `_declarations` throws turns it into a
   /// refusal once the tree has been green through a release with the report
   /// on. Unlike the three lists above it, it prints without `--verbose`:
   /// those name shapes that are legal, and this one does not.
