@@ -45,7 +45,11 @@ class CompactPlan {
 
   final List<CompactStep> steps;
 
-  /// Files in the source directory that compaction has no rule for, and why.
+  /// Files in the source directory that are not assets, and why.
+  ///
+  /// There is no longer any such thing as a file compaction has no *rule* for
+  /// - anything that is not a texture or audio is copied under its own name -
+  /// so what lands here is what is not an asset at all (#357).
   final Map<String, String> skipped;
 
   bool get isEmpty => steps.isEmpty;
@@ -86,6 +90,15 @@ CompactPlan planCompaction({
 
   for (final file in entries) {
     final relative = _slashes(file.path).substring(base.length + 1);
+    if (relative.split('/').any((segment) => segment.startsWith('.'))) {
+      // A dotfile is not source art. It has to be named rather than dropped:
+      // `flutter: assets:` lists the output directory, and flutter_tools
+      // expands a directory entry by listing every file in it - dotfiles
+      // included - so copying a `.DS_Store` across would put it in the
+      // release.
+      skipped[relative] = 'a dotfile, not an asset';
+      continue;
+    }
     final kind = AssetKind.of(relative);
     final String extension;
     switch (kind) {
@@ -93,10 +106,24 @@ CompactPlan planCompaction({
         extension = config.texture.format.extension;
       case AssetKind.audio:
         extension = config.audio.format.extension;
-      case AssetKind.other:
-        skipped[relative] =
-            'not a recognised texture or audio extension - copy it into '
-            '${config.assetOutput} yourself if it ships';
+      case AssetKind.json:
+      case AssetKind.text:
+      case AssetKind.blob:
+        // No container to normalize to. A texture becomes webp and audio
+        // becomes ogg because there is one sensible container per kind; a
+        // level layout, a dialogue file or a save blob is already what it is.
+        // So the file is copied under its own name and the pipeline picks it
+        // up from the output directory like everything else - which is what
+        // makes it chunked, compressed and encrypted rather than shipped in
+        // the clear (#357).
+        steps.add(
+          CompactStep(
+            source: relative,
+            output: relative,
+            kind: kind,
+            copyOnly: true,
+          ),
+        );
         continue;
     }
     final dot = relative.lastIndexOf('.');
@@ -317,7 +344,9 @@ String _settingsFor(CompactStep step, GoodConfig config) => switch (step.kind) {
     input: 'in',
     output: 'out',
   ).join(' '),
-  AssetKind.other => 'copy',
+  // Nothing but the bytes decides the output, so the source hash alone
+  // invalidates it.
+  AssetKind.json || AssetKind.text || AssetKind.blob => 'copy',
 };
 
 /// The ffmpeg command line for one step.
@@ -383,7 +412,12 @@ List<String> ffmpegArguments({
       // Drop any cover art: an album-art frame in a sound effect turns the
       // stream copy into a video encode and can fail outright.
       arguments.addAll(<String>['-vn']);
-    case AssetKind.other:
+    case AssetKind.json:
+    case AssetKind.text:
+    case AssetKind.blob:
+      // Never reached: these are copied, never encoded. Present because the
+      // switch is exhaustive, so a kind added later stops here rather than
+      // silently getting a texture's flags.
       break;
   }
 

@@ -11,7 +11,7 @@ String header(String command) =>
     '// GENERATED - do not edit.\n'
     '//\n'
     '// Regenerate with `$command`. Edits here are lost on the next run;\n'
-    '// change the pubspec\'s `flutter: assets:` list instead.\n';
+    '// change the pubspec\'s `good: assets:` list instead.\n';
 
 /// The one import line a generated file writes, for [package].
 ///
@@ -38,7 +38,7 @@ String emitTextures(
   required bool drawsTextures,
 }) => _emitEnum(
   assets: scan.textures,
-  enumName: 'Textures',
+  enumName: AssetKind.texture.enumName,
   payload: rendererPayloadType(drawsTextures, 'Texture'),
   command: command,
   package: generatedImport(namesTexture: drawsTextures),
@@ -57,11 +57,53 @@ String emitTextures(
 /// with something nobody here has heard of.
 String emitAudios(AssetScan scan, {required String command}) => _emitEnum(
   assets: scan.audio,
-  enumName: 'Audios',
+  enumName: AssetKind.audio.enumName,
   payload: 'AudioClip',
   command: command,
   package: generatedImport(namesTexture: false),
   emptyNote: 'audio',
+);
+
+/// `good.generated/jsons.dart` - one enum value per shipped JSON document.
+///
+/// `JsonValue` and not `Map<String, Object?>`: a JSON document's top level is
+/// as often an array, and `AssetLoaders` keys on the reified payload type, so
+/// a structural type would claim every map-shaped payload in the process. It
+/// is a kernel type, so this file imports the kernel whatever the project
+/// renders with - see `JsonValue` in `package:good`.
+String emitJsons(AssetScan scan, {required String command}) => _emitEnum(
+  assets: scan.json,
+  enumName: AssetKind.json.enumName,
+  payload: 'JsonValue',
+  command: command,
+  package: generatedImport(namesTexture: false),
+  emptyNote: 'JSON',
+);
+
+/// `good.generated/texts.dart` - one enum value per shipped UTF-8 text file.
+String emitTexts(AssetScan scan, {required String command}) => _emitEnum(
+  assets: scan.text,
+  enumName: AssetKind.text.enumName,
+  payload: 'String',
+  command: command,
+  package: generatedImport(namesTexture: false),
+  emptyNote: 'text',
+);
+
+/// `good.generated/blobs.dart` - one enum value per shipped file the engine
+/// knows nothing about.
+///
+/// The payload is `Uint8List`, which `package:good` does not export - it is a
+/// `dart:typed_data` type and re-exporting an SDK type would put a second
+/// name on it - so this is the one generated enum that imports anything else.
+String emitBlobs(AssetScan scan, {required String command}) => _emitEnum(
+  assets: scan.blobs,
+  enumName: AssetKind.blob.enumName,
+  payload: 'Uint8List',
+  command: command,
+  package: generatedImport(namesTexture: false),
+  emptyNote: 'raw-byte',
+  extraImports: const <String>["import 'dart:typed_data';"],
 );
 
 /// What a **renderer's** asset kind loads to, or `Object?` in a project whose
@@ -117,9 +159,17 @@ String _emitEnum({
   required String package,
   required String emptyNote,
   String? sizeClassName,
+  List<String> extraImports = const <String>[],
 }) {
   final buffer = StringBuffer(header(command))
-    ..writeln()
+    ..writeln();
+  // Sorted, and the SDK ones first, which is what `directives_ordering` asks
+  // for. A generated file that fails the project's own lints is a red
+  // `flutter analyze` nobody wrote.
+  for (final line in <String>[...extraImports]..sort()) {
+    buffer.writeln(line);
+  }
+  buffer
     ..writeln(importLine(package))
     ..writeln();
 
@@ -132,7 +182,7 @@ String _emitEnum({
     // a member of it in the meantime, because it has none.
     return (buffer
           ..writeln('/// No $emptyNote assets are declared in pubspec.yaml')
-          ..writeln('/// under `flutter: assets:` yet.')
+          ..writeln('/// under `good: assets:` yet.')
           ..writeln('///')
           ..writeln('/// A class rather than an enum only because Dart has no')
           ..writeln('/// empty enum. Declare an asset and this becomes')
@@ -263,6 +313,9 @@ ${importLine(generatedImport(namesTexture: false))}
 
 import 'asset_key.dart';
 import 'audios.dart';
+import 'blobs.dart';
+import 'jsons.dart';
+import 'texts.dart';
 import 'textures.dart';
 
 /// Every asset that is declared but will not be there at run time.
@@ -282,6 +335,9 @@ Future<List<AssetKey<Object?>>> findMissingAssets() async {
   for (final key in <AssetKey<Object?>>[
     ...Textures.values,
     ...Audios.values,
+    ...Jsons.values,
+    ...Texts.values,
+    ...Blobs.values,
   ]) {
     final availability = await key.source.check();
     if (availability == AssetAvailability.missing ||

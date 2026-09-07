@@ -427,7 +427,14 @@ class ScannedType {
   /// anything - see [scanScenes].
   final Set<String> referencedNames;
 
-  /// The names in every `Textures.x` and `Audios.x` written in the body.
+  /// Every generated asset key written in the body, qualified - `Textures.x`,
+  /// `Jsons.x`.
+  ///
+  /// Qualified because the identifier alone is not unique. Collisions are
+  /// refused *per enum*, so `click.png` and `click.ogg` are both `click`, and
+  /// with five enums a project can legitimately have five of them. Keyed on
+  /// the bare name, the path table `scanScenes` builds keeps one and loses the
+  /// rest, and the lost ones are attributed to no scene at all.
   final Set<String> assetIdentifiers;
 
   /// An extension type's representation field name, or null.
@@ -1524,8 +1531,8 @@ class _ReferenceCollector extends RecursiveAstVisitor<void> {
 
   @override
   void visitPrefixedIdentifier(PrefixedIdentifier node) {
-    if (node.prefix.name == 'Textures' || node.prefix.name == 'Audios') {
-      assets.add(node.identifier.name);
+    if (assetEnumNames.contains(node.prefix.name)) {
+      assets.add('${node.prefix.name}.${node.identifier.name}');
     }
     super.visitPrefixedIdentifier(node);
   }
@@ -1533,9 +1540,8 @@ class _ReferenceCollector extends RecursiveAstVisitor<void> {
   @override
   void visitPropertyAccess(PropertyAccess node) {
     final target = node.target;
-    if (target is SimpleIdentifier &&
-        (target.name == 'Textures' || target.name == 'Audios')) {
-      assets.add(node.propertyName.name);
+    if (target is SimpleIdentifier && assetEnumNames.contains(target.name)) {
+      assets.add('${target.name}.${node.propertyName.name}');
     }
     super.visitPropertyAccess(node);
   }
@@ -3364,8 +3370,8 @@ Future<SceneUsage> scanScenes(Directory project, AssetScan assets) async {
   final own = p.normalize(p.absolute(p.join(project.path, 'lib')));
 
   final pathByIdentifier = <String, String>{
-    for (final asset in assets.textures) asset.identifier: asset.path,
-    for (final asset in assets.audio) asset.identifier: asset.path,
+    for (final asset in assets.all)
+      '${asset.kind.enumName}.${asset.identifier}': asset.path,
   };
 
   final scenes = <ScannedType>[];

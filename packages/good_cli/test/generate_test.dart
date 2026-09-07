@@ -217,9 +217,11 @@ good:
       final scan = scanAssets(dir);
       expect(scan.textures.map((t) => t.path), ['assets/a.png']);
       expect(
-        scan.unsupported,
-        isEmpty,
-        reason: 'a chunk is not an asset good failed to understand',
+        scan.all.map((a) => a.path),
+        ['assets/a.png'],
+        reason:
+            'a chunk is made from assets and is not one - swept into Blobs it '
+            'would be packed into a chunk of its own on every run',
       );
     });
 
@@ -230,7 +232,13 @@ good:
       ]);
       final scan = scanAssets(dir);
       expect(scan.textures.map((t) => t.path), ['assets/a.png']);
-      expect(scan.unsupported, isEmpty);
+      expect(
+        scan.all.map((a) => a.path),
+        ['assets/a.png'],
+        reason:
+            'a dotfile is not an asset, and Blobs takes every extension there '
+            'is - so the rule that keeps this one out has to be the dot',
+      );
     });
 
     test('honours an individually declared file', () {
@@ -251,7 +259,9 @@ good:
       final dir = _project(_pubspecWithAssets, [
         'assets/a.png',
         'assets/theme.mp3',
-        'assets/notes.txt',
+        'assets/balance.json',
+        'assets/credits.txt',
+        'assets/autosave.sav',
       ]);
       final scan = scanAssets(dir);
       expect(scan.textures.map((t) => t.identifier), ['a']);
@@ -263,9 +273,15 @@ good:
             'one, where it would generate an AssetKey<Texture> that fails at '
             'decode',
       );
-      expect(scan.unsupported.keys, [
-        'assets/notes.txt',
-      ], reason: 'and only genuinely unrecognised files are reported as such');
+      expect(scan.json.map((t) => t.identifier), ['balance']);
+      expect(scan.text.map((t) => t.identifier), ['credits']);
+      expect(
+        scan.blobs.map((t) => t.identifier),
+        ['autosave'],
+        reason:
+            'an extension nothing recognises is bytes, not a file with no '
+            'key - a file with no key is a file that ships in the clear',
+      );
     });
 
     test('one name in two kinds is two assets, not a collision', () {
@@ -676,9 +692,7 @@ good:
       // the project entered the engine through (#316).
       final source = emitAudios(
         const AssetScan(
-          textures: <DiscoveredAsset>[],
-          audio: <DiscoveredAsset>[],
-          unsupported: <String, String>{},
+          byKind: <AssetKind, List<DiscoveredAsset>>{},
           declaredEntries: <String>[],
         ),
         command: 'good generate',
@@ -1338,15 +1352,19 @@ good:
       expect(unbundledAssets(dir), isEmpty);
     });
 
-    test('a subdirectory of things codegen would not name is left alone', () {
-      // A font or a `.gitkeep` was never going to become an enum value, so a
-      // directory holding only those is not a build to stop.
+    test('a dotfile is not an undeclared asset; a font now is', () {
+      // A `.gitkeep` was never going to become an enum value and still is not
+      // one. A font was in the same sentence until every extension became a
+      // kind: `assets/fonts/roboto.ttf` is `Blobs.fontsRoboto`, so the
+      // directory holding it needs its own line like any other (#357).
       final dir = _project(_pubspecWithAssets, <String>[
         'assets/player.png',
         'assets/fonts/roboto.ttf',
         'assets/ui/.gitkeep',
       ]);
-      expect(unbundledAssets(dir), isEmpty);
+      expect(unbundledAssets(dir), <String, List<String>>{
+        'assets/fonts/': <String>['assets/fonts/roboto.ttf'],
+      });
     });
 
     test('the message names the files and the exact line to add', () {

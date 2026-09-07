@@ -153,13 +153,10 @@ Future<GenerateResult> runGenerate({
     out.println(
       scan.declaredEntries.isEmpty
           ? 'No assets declared under `good: assets:` in pubspec.yaml. '
-                'Generating empty Textures and Audios enums.'
+                'Generating empty asset enums.'
           : 'No assets found in the declared directories. Generating empty '
-                'Textures and Audios enums.',
+                'asset enums.',
     );
-  }
-  for (final entry in scan.unsupported.entries) {
-    out.printf('Skipped %s - %s\n', [entry.key, entry.value]);
   }
 
   final package = enginePackage ?? enginePackageOf(project);
@@ -223,6 +220,9 @@ Future<GenerateResult> runGenerate({
       scan,
       command: command,
     ),
+    p.join(bundle.libDir.path, 'jsons.dart'): emitJsons(scan, command: command),
+    p.join(bundle.libDir.path, 'texts.dart'): emitTexts(scan, command: command),
+    p.join(bundle.libDir.path, 'blobs.dart'): emitBlobs(scan, command: command),
     p.join(bundle.libDir.path, 'good.dart'): emitReadiness(command: command),
   };
 
@@ -335,10 +335,17 @@ Future<GenerateResult> runGenerate({
     );
   }
 
-  out.printf('%s texture(s), %s audio file(s).\n', [
-    scan.textures.length,
-    scan.audio.length,
-  ]);
+  out.printf(
+    '%s texture(s), %s audio file(s), %s JSON document(s), %s text file(s), '
+    '%s other file(s).\n',
+    [
+      scan.textures.length,
+      scan.audio.length,
+      scan.json.length,
+      scan.text.length,
+      scan.blobs.length,
+    ],
+  );
   return GenerateResult(
     bundle: bundle,
     fileCount: writes.length + declarations,

@@ -474,12 +474,20 @@ good:
 /// it in somebody's source.
 const String legacyGeneratedDir = 'lib/good.generated';
 
-/// The four files `good generate` has always written, by the name they keep in
-/// the bundle package.
+/// The files `good generate` writes, by the name they keep in the bundle
+/// package.
+///
+/// One per asset kind plus the keys and the readiness check. A project that
+/// last generated under an older good has only the four that existed then in
+/// `lib/good.generated/`; the migration carries over what it finds and the
+/// run writes the rest.
 const List<String> generatedFileNames = <String>[
   'asset_key.dart',
   'audios.dart',
+  'blobs.dart',
   'good.dart',
+  'jsons.dart',
+  'texts.dart',
   'textures.dart',
 ];
 

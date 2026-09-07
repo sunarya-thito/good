@@ -56,57 +56,146 @@ const Set<String> reservedTextureMembers = <String>{'width', 'height'};
 
 /// What a file's extension says it is, which decides which generated enum it
 /// lands in and which `AssetLoader` will decode it.
+///
+/// # Every file is a kind, and [blob] is what makes that true
+///
+/// [blob] used to mean "no rule for this", and a file that landed there was
+/// reported and dropped: no enum value, no chunk, no encryption. So a level
+/// layout, a dialogue file or a save blob shipped loose and legible while the
+/// art beside it was sealed (#357). It now means raw bytes - a real kind with
+/// a real payload type - and it is the fallback, so there is no longer any
+/// such thing as a file the pipeline has no rule for.
+///
+/// # Why five kinds and not one
+///
+/// A generated enum mixes in `LocalEnumAssetKey<T>`, and `Asset.of<T>` takes
+/// an `AssetKey<T>`. The payload type is the enum's type argument, so one
+/// enum has one payload type and one loader. Three payload types is three
+/// enums; there is no spelling of `Jsons`, `Texts` and `Blobs` as one.
+///
+/// # Why the split is by extension
+///
+/// Nothing else says what a file is. There is no per-file declaration in
+/// `good: assets:` - an entry is a path, and that is the shape it has to keep
+/// so an entry moves between the two lists unchanged (`AssetEntry`). So the
+/// extension decides, exactly as it already did for [texture] and [audio].
+///
+/// [text] is deliberately short. `TextLoader` decodes strictly, so a file in
+/// it that is not UTF-8 throws at load; a file left out of it is a [blob] and
+/// the project decodes it itself, which is a worse API and never a failure.
+/// Adding an extension here later moves files from `Blobs` to `Texts` and
+/// breaks the code naming them, so the list errs towards what is UTF-8 by
+/// definition rather than towards what usually is.
 enum AssetKind {
-  texture(<String>['.png', '.jpg', '.jpeg', '.webp', '.gif', '.bmp']),
+  texture(
+    <String>['.png', '.jpg', '.jpeg', '.webp', '.gif', '.bmp'],
+    'Textures',
+  ),
 
   /// Keyed and packed exactly like a texture, into its own `Audios` enum.
   /// Nothing plays it yet - see `AudioClip` for why the pipeline runs ahead of
   /// the backend - but it ships, and a readiness check catches it missing.
-  audio(<String>['.wav', '.mp3', '.ogg', '.flac']),
+  audio(<String>['.wav', '.mp3', '.ogg', '.flac'], 'Audios'),
 
-  other(<String>[]);
+  /// Decoded by `JsonLoader` into a `JsonValue`, whose top level is whatever
+  /// the document's is.
+  json(<String>['.json'], 'Jsons'),
 
-  const AssetKind(this.extensions);
+  /// Read by `TextLoader` as one UTF-8 `String`.
+  text(
+    <String>[
+      '.txt',
+      '.md',
+      '.csv',
+      '.tsv',
+      '.xml',
+      '.yaml',
+      '.yml',
+      '.ini',
+      '.cfg',
+      '.glsl',
+      '.frag',
+      '.vert',
+    ],
+    'Texts',
+  ),
+
+  /// Everything else, handed over as bytes by `BytesLoader`.
+  ///
+  /// Named for the file and not for the payload, the way [texture] and [audio]
+  /// are: `Blobs.autosave` is a file a project ships, and what the engine
+  /// knows about it is nothing. It is also the fallback, so a file with an
+  /// extension nothing recognises - or with no extension at all - is this.
+  blob(<String>[], 'Blobs');
+
+  const AssetKind(this.extensions, this.enumName);
 
   final List<String> extensions;
 
+  /// The generated enum a file of this kind becomes a value of.
+  ///
+  /// Held here so the scene scan can recognise `Jsons.balance` in a source
+  /// file without a second list of the same five names - see `scanScenes`.
+  final String enumName;
+
   static AssetKind of(String path) {
     final dot = path.lastIndexOf('.');
-    if (dot == -1) return AssetKind.other;
+    if (dot == -1) return AssetKind.blob;
     final extension = path.substring(dot).toLowerCase();
     for (final kind in values) {
       if (kind.extensions.contains(extension)) return kind;
     }
-    return AssetKind.other;
+    return AssetKind.blob;
   }
 }
 
-/// The result of looking at a project: what it ships, and what codegen cannot
-/// do anything with.
+/// Every name a generated asset enum has, for a pass that has to spot one
+/// written in somebody's source.
+final Set<String> assetEnumNames = <String>{
+  for (final kind in AssetKind.values) kind.enumName,
+};
+
+/// The result of looking at a project: what it ships, by kind.
+///
+/// Keyed by [AssetKind] rather than held in one field per kind, so adding a
+/// kind is one entry in that enum and not a field here, a getter there and a
+/// list somewhere else that quietly stayed at two.
 @immutable
 class AssetScan {
-  const AssetScan({
-    required this.textures,
-    required this.audio,
-    required this.unsupported,
-    required this.declaredEntries,
-  });
+  const AssetScan({required this.byKind, required this.declaredEntries});
 
-  final List<DiscoveredAsset> textures;
-
-  /// Audio the project ships. Keyed and packed like a texture; nothing plays
-  /// it yet - see `AudioClip`.
-  final List<DiscoveredAsset> audio;
-
-  /// Files that ship but produce no generated code, with why. Reported rather
-  /// than dropped: a texture the generator quietly ignored is a missing enum
-  /// value someone will hunt for.
-  final Map<String, String> unsupported;
+  /// Every asset the project ships, under the kind that decides which enum it
+  /// becomes a value of and which loader decodes it.
+  ///
+  /// A kind with nothing in it is absent rather than empty; read it through
+  /// [of], which answers an empty list either way.
+  final Map<AssetKind, List<DiscoveredAsset>> byKind;
 
   /// The paths `good: assets:` declared, verbatim.
   final List<String> declaredEntries;
 
-  bool get isEmpty => textures.isEmpty && audio.isEmpty;
+  List<DiscoveredAsset> of(AssetKind kind) =>
+      byKind[kind] ?? const <DiscoveredAsset>[];
+
+  List<DiscoveredAsset> get textures => of(AssetKind.texture);
+
+  /// Audio the project ships. Keyed and packed like a texture; nothing plays
+  /// it yet - see `AudioClip`.
+  List<DiscoveredAsset> get audio => of(AssetKind.audio);
+
+  List<DiscoveredAsset> get json => of(AssetKind.json);
+
+  List<DiscoveredAsset> get text => of(AssetKind.text);
+
+  List<DiscoveredAsset> get blobs => of(AssetKind.blob);
+
+  /// Every asset, in kind order. What packing chunks, and what the readiness
+  /// check walks.
+  List<DiscoveredAsset> get all => <DiscoveredAsset>[
+    for (final kind in AssetKind.values) ...of(kind),
+  ];
+
+  bool get isEmpty => all.isEmpty;
 }
 
 /// Reads the assets good owns from a project's pubspec.
@@ -165,24 +254,17 @@ AssetScan scanAssets(Directory projectDir) {
   }
   files.sort(); // Stable output: codegen that reorders itself churns diffs.
 
-  final textures = <DiscoveredAsset>[];
-  final audio = <DiscoveredAsset>[];
-  final unsupported = <String, String>{};
+  final byKind = <AssetKind, List<DiscoveredAsset>>{};
   // Collisions are checked **per enum**, not across all of them: `Textures`
   // and `Audios` are separate types, so a `click.png` and a `click.ogg` are
   // `Textures.click` and `Audios.click` and do not collide at all.
   final byIdentifier = <AssetKind, Map<String, String>>{
-    AssetKind.texture: <String, String>{},
-    AssetKind.audio: <String, String>{},
+    for (final kind in AssetKind.values) kind: <String, String>{},
   };
 
   for (final path in files) {
     final kind = AssetKind.of(path);
-    final seen = byIdentifier[kind];
-    if (seen == null) {
-      unsupported[path] = 'unrecognised extension';
-      continue;
-    }
+    final seen = byIdentifier[kind]!;
     final identifier = identifierFor(path);
     final clash = seen[identifier];
     if (clash != null) {
@@ -210,23 +292,19 @@ AssetScan scanAssets(Directory projectDir) {
       );
     }
     seen[identifier] = path;
-    final asset = DiscoveredAsset(
-      identifier: identifier,
-      path: path,
-      kind: kind,
-      size: kind == AssetKind.texture
-          ? readImageSize(File('${projectDir.path}/$path'))
-          : null,
+    byKind.putIfAbsent(kind, () => <DiscoveredAsset>[]).add(
+      DiscoveredAsset(
+        identifier: identifier,
+        path: path,
+        kind: kind,
+        size: kind == AssetKind.texture
+            ? readImageSize(File('${projectDir.path}/$path'))
+            : null,
+      ),
     );
-    (kind == AssetKind.texture ? textures : audio).add(asset);
   }
 
-  return AssetScan(
-    textures: textures,
-    audio: audio,
-    unsupported: unsupported,
-    declaredEntries: entries,
-  );
+  return AssetScan(byKind: byKind, declaredEntries: entries);
 }
 
 /// Assets on disk that `good: assets:` does not declare, keyed by the pubspec
@@ -243,9 +321,11 @@ AssetScan scanAssets(Directory projectDir) {
 /// an error that makes the reader work out its shape is most of the problem
 /// again.
 ///
-/// Only files that would have become an enum value count. A chunk, a `.gitkeep`
-/// or a font is not something codegen was going to name, so a directory holding
-/// nothing else is not a mistake to stop a build for.
+/// Every file counts except the two that are not assets: a chunk, which is
+/// made *from* assets, and a dotfile. A font, a save blob and a level layout
+/// are all `Blobs` values now, so a file left out of the list is a key the
+/// project cannot name whatever its extension is - which is the whole of what
+/// this check is for.
 Map<String, List<String>> unbundledAssets(Directory projectDir) {
   final config = GoodConfig.read(projectDir);
   final output = Directory('${projectDir.path}/${config.assetOutput}');
@@ -266,7 +346,6 @@ Map<String, List<String>> unbundledAssets(Directory projectDir) {
     if (relative.split('/').any((segment) => segment.startsWith('.'))) continue;
     final bundlePath = '$root$relative';
     if (bundlePath.startsWith(config.packOutput)) continue;
-    if (AssetKind.of(relative) == AssetKind.other) continue;
     if (declared.contains(bundlePath)) continue;
     final slash = bundlePath.lastIndexOf('/');
     final entry = bundlePath.substring(0, slash + 1);
