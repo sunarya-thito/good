@@ -237,6 +237,19 @@
   showing only the shape of a command tree say `my_command`, so nothing on the
   page reads as a `good` invocation that is not one.
 
+* **`good generate` works from inside a project directory.** `--project-dir`
+  defaults to `.`, and the check that asks whether the project's package config
+  resolves the bundle read each `rootUri` as a URI against the directory holding
+  the config. A relative project directory makes that base relative, the
+  `../<bundle>` a `pub get` writes resolves against it to a URI with no scheme,
+  and the answer came back no for a project that was resolved - so the run paid
+  a `flutter pub get` it did not need and then exited 65 saying the package
+  config did not point at the bundle. An absolute `--project-dir` was the only
+  way through, and `good build` runs `good generate` the same way. The check now
+  reads the config through the same reader the rest of the command uses, which
+  joins each entry to the config's own directory as a path and makes it absolute
+  (#395).
+
 ## 0.2.0
 
 Six changes stop a build that worked at 0.1.1. Each one turns something that
