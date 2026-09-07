@@ -773,6 +773,14 @@ class Collision2DEvent {
 /// Filtering by archetype is expected at this scope rather than a smell - the
 /// same thing `EntitySpawnListener` says about itself, for the same reason.
 ///
+/// This used to be one set of six methods per prefab type, covering every
+/// [ColliderBody] that prefab declared through [Collider2D] at once. It is one
+/// set per listener now, covering every collider in the game, and
+/// [Collision2DEvent.source] is what says which body a contact was about - so
+/// a prefab with several bodies tells them apart by comparing `source` against
+/// the field it declared, which is what it had to do inside its own override
+/// before.
+///
 /// # A contact is delivered twice
 ///
 /// Once from each side: the first delivery names one collider as
