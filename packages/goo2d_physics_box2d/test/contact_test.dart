@@ -16,8 +16,13 @@ part 'contact_test.g.dart';
 late Game run;
 Box2DPhysicsSystem get physics => run.state.getSystem<Box2DPhysicsSystem>();
 
-/// Every dispatch, in order, as "phase:entity".
-final List<String> log = <String>[];
+/// One dispatch: which method it arrived through, and the two sides it named.
+typedef Delivery = ({String phase, Entity source, Entity target});
+
+/// Every dispatch, in order.
+final List<Delivery> log = <Delivery>[];
+
+Iterable<Delivery> phase(String phase) => log.where((d) => d.phase == phase);
 
 /// Whether the reused event instance was ever a different object. Pins the
 /// no-allocation-per-contact contract from the outside.
@@ -25,7 +30,11 @@ Collision2DEvent? seenInstance;
 bool sawSecondInstance = false;
 
 void record(String phase, Collision2DEvent event) {
-  log.add(phase);
+  log.add((
+    phase: phase,
+    source: event.sourceEntity,
+    target: event.targetEntity,
+  ));
   if (seenInstance == null) {
     seenInstance = event;
   } else if (!identical(seenInstance, event)) {
@@ -33,11 +42,11 @@ void record(String phase, Collision2DEvent event) {
   }
 }
 
-/// A falling crate that reports what it touches.
-class _Crate extends EntityStruct
-    with Transform2D, Collider2D, RigidBody2D, CollisionListener {
-  final box = ColliderBody.box(halfWidth: 0.5, halfHeight: 0.5);
-
+/// Hears every contact in the world and writes down what it was told.
+///
+/// A system and not a prefab: `CollisionListener` is `on GameListener` now, and
+/// the six dispatchers live on the physics system.
+class _Watcher extends GameSystem with CollisionListener {
   @override
   void onCollisionEnter2D(Collision2DEvent event) => record('enter', event);
 
@@ -58,7 +67,12 @@ class _Crate extends EntityStruct
   void onTriggerStay2D(Collision2DEvent event) => record('triggerStay', event);
 }
 
-/// A static floor that says nothing - so a test can tell which side heard.
+/// A falling crate.
+class _Crate extends EntityStruct with Transform2D, Collider2D, RigidBody2D {
+  final box = ColliderBody.box(halfWidth: 0.5, halfHeight: 0.5);
+}
+
+/// A static floor.
 class _Floor extends EntityStruct with Transform2D, Collider2D, RigidBody2D {
   final box = ColliderBody.box(halfWidth: 50, halfHeight: 1);
 
@@ -102,6 +116,9 @@ class _GameState extends GameState<_Game> {
 
   @system
   final physics = Box2DPhysicsSystem();
+
+  @system
+  final watcher = _Watcher();
 }
 
 class _Game extends Game {
@@ -115,10 +132,40 @@ class _Game extends Game {
   GameState createState() => _GameState();
 }
 
+/// The same game with nothing listening, for the case where the dispatchers
+/// are empty.
+class _DeafState extends GameState<_DeafGame> {
+  @override
+  void onMounted() => loadScene(_Scene());
+
+  @system
+  final physics = Box2DPhysicsSystem();
+}
+
+class _DeafGame extends Game {
+  @override
+  int get pageSize => 4096;
+
+  @override
+  Duration get fixedTimeStep => const Duration(microseconds: 16667);
+
+  @override
+  GameState createState() => _DeafState();
+}
+
 const Duration _step = Duration(microseconds: 16667);
 
 Future<_Scene> _boot() async {
   run = await Game.startInline(_Game.new);
+  addTearDown(() async {
+    if (run.isRunning) await run.stop();
+    physics.dispose();
+  });
+  return run.state.singleScene<_Scene>();
+}
+
+Future<_Scene> _bootDeaf() async {
+  run = await Game.startInline(_DeafGame.new);
   addTearDown(() async {
     if (run.isRunning) await run.stop();
     physics.dispose();
@@ -147,19 +194,27 @@ void main() {
     ComponentTypeRegistry.reset();
   });
 
-  test('landing on a floor fires collision enter exactly once', () async {
+  test('landing on a floor fires collision enter once per side', () async {
     final scene = await _boot();
 
     final floor = scene.addEntity(scene.floor);
     scene.floor.transformOffsetY[floor] = -10;
-    scene.addEntity(scene.crate);
+    final crate = scene.addEntity(scene.crate);
 
     _advance(180);
 
+    final enters = phase('enter').toList();
     expect(
-      log.where((e) => e == 'enter').length,
-      1,
-      reason: 'a crate that lands and stays landed touches once',
+      enters.length,
+      2,
+      reason: 'one contact, delivered from each side',
+    );
+    expect(
+      enters.map((d) => (d.source, d.target)),
+      containsAll(<(Entity, Entity)>[(crate, floor), (floor, crate)]),
+      reason:
+          'each delivery names its own side as source, so a listener that '
+          'filters on sourceEntity alone can see either entity',
     );
   });
 
@@ -174,12 +229,12 @@ void main() {
     scene.addEntity(scene.crate);
 
     _advance(180);
-    final afterLanding = log.where((e) => e == 'stay').length;
+    final afterLanding = phase('stay').length;
     expect(afterLanding, greaterThan(0), reason: 'it should be resting by now');
 
     _advance(30);
     expect(
-      log.where((e) => e == 'stay').length,
+      phase('stay').length,
       greaterThan(afterLanding),
       reason: 'stay must keep firing while the pair is still touching',
     );
@@ -215,12 +270,12 @@ void main() {
     _advance(120);
 
     expect(
-      log,
-      contains('triggerEnter'),
+      phase('triggerEnter'),
+      isNotEmpty,
       reason: 'entering a sensor should fire onTriggerEnter2D',
     );
     expect(
-      log.where((e) => e.startsWith('enter') || e == 'stay'),
+      log.where((d) => d.phase == 'enter' || d.phase == 'stay'),
       isEmpty,
       reason: 'a sensor must produce no collision events at all',
     );
@@ -254,54 +309,66 @@ void main() {
 
     _advance(200);
 
-    expect(log, contains('triggerEnter'));
+    expect(phase('triggerEnter'), isNotEmpty);
     expect(
-      log,
-      contains('triggerExit'),
+      phase('triggerExit'),
+      isNotEmpty,
       reason: 'having fallen past the zone, the crate has left it',
     );
     expect(
-      log.indexOf('triggerEnter'),
-      lessThan(log.lastIndexOf('triggerExit')),
+      log.indexWhere((d) => d.phase == 'triggerEnter'),
+      lessThan(log.lastIndexWhere((d) => d.phase == 'triggerExit')),
       reason: 'enter must precede exit',
     );
   });
 
   test(
-    'the event names the listener as source and the other as target',
+    'a trigger is reported from both sides, sensor included',
     () async {
       final scene = await _boot();
 
-      final floor = scene.addEntity(scene.floor);
-      scene.floor.transformOffsetY[floor] = -10;
+      final zone = scene.addEntity(scene.zone);
+      scene.zone.transformOffsetY[zone] = -5;
       final crate = scene.addEntity(scene.crate);
 
-      Entity? reportedSource;
-      Entity? reportedTarget;
-      // Capture on the first enter by reading the shared instance during it.
-      var captured = false;
-      for (var i = 0; i < 180 && !captured; i++) {
-        run.state.advance(_step);
-        if (log.contains('enter') && seenInstance != null) {
-          reportedSource = seenInstance!.sourceEntity;
-          reportedTarget = seenInstance!.targetEntity;
-          captured = true;
-        }
-      }
+      _advance(200);
 
-      expect(captured, isTrue);
+      final enters = phase('triggerEnter').toList();
       expect(
-        reportedSource,
-        crate,
-        reason: 'the crate is the listener, so it must read itself as source',
+        enters.map((d) => d.source),
+        containsAll(<Entity>[crate, zone]),
+        reason:
+            'Box2D names the sensor first in its own report; a listener '
+            'watching for the visitor must still hear the visitor as source',
       );
-      expect(reportedTarget, floor);
     },
   );
 
-  test('a collider with no listener is simply skipped', () async {
-    // The floor mixes in no CollisionListener. Dispatching to it must be a
-    // no-op rather than an error, and must not stop the crate hearing.
+  test('every dispatch names one side as source and the other as target', () async {
+    final scene = await _boot();
+
+    final floor = scene.addEntity(scene.floor);
+    scene.floor.transformOffsetY[floor] = -10;
+    final crate = scene.addEntity(scene.crate);
+
+    _advance(180);
+
+    expect(log, isNotEmpty);
+    for (final delivery in log) {
+      expect(
+        {delivery.source, delivery.target},
+        {crate, floor},
+        reason: 'the two sides of the only contact in this scene',
+      );
+      expect(delivery.source, isNot(delivery.target));
+    }
+  });
+
+  test('an entity whose prefab does nothing still reaches the listener', () async {
+    // Nothing about the floor says it wants to hear anything, and under the
+    // old shape it was skipped because it mixed in no CollisionListener. The
+    // dispatcher does not ask the entity, so both sides now arrive and the
+    // filtering is the listener's.
     final scene = await _boot();
 
     final floor = scene.addEntity(scene.floor);
@@ -310,6 +377,35 @@ void main() {
 
     _advance(180);
 
-    expect(log, contains('enter'), reason: 'the crate still heard');
+    expect(
+      phase('enter').map((d) => d.source),
+      contains(floor),
+      reason: 'the floor is named as source by its own half of the contact',
+    );
+  });
+
+  test('with nothing listening, no contact is dispatched and the touching set is still tracked', () async {
+    final scene = await _bootDeaf();
+
+    final floor = scene.addEntity(scene.floor);
+    scene.floor.transformOffsetY[floor] = -10;
+    scene.addEntity(scene.crate);
+
+    _advance(180);
+
+    expect(
+      physics.collisionEnter2DEvent.listenerCount,
+      0,
+      reason: 'this game declares no CollisionListener',
+    );
+    expect(log, isEmpty);
+    expect(
+      physics.touchingPairCount,
+      greaterThan(0),
+      reason:
+          'the pairs are remembered whether or not anybody is listening - a '
+          'system disabled during the landing and enabled afterwards has to '
+          'find the stay phase already correct',
+    );
   });
 }

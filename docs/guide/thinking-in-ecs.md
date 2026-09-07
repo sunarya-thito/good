@@ -685,16 +685,16 @@ The handlers are ordinary overrides on the prefab. The entity arrives as part
 of the event, since one prefab is shared by every orc:
 
 ```dart
-class Orc extends EntityStruct
-    with Transform2D, Renderable2D, Health, Collider2D, RigidBody2D,
-         CollisionListener {
+class OrcDamage extends GameSystem with CollisionListener {
   @override
   void onTriggerEnter2D(Collision2DEvent event) {
     final self = event.sourceEntity;
+    if (!self.has<Health>()) return;
     if (!event.targetEntity.has<Bullet>()) return;
     final bullet = event.targetEntity<Bullet>().component;
 
-    healthHp[self] -= bullet.damage[event.targetEntity];
+    self<Health>().component.healthHp[self] -=
+        bullet.damage[event.targetEntity];
     event.targetEntity.destroy();
   }
 }
@@ -762,7 +762,7 @@ class DamageSystem extends GameSystem with FixedTickable {
 The handler reaches the system through `getSystem`, which every `EntityStruct`
 has. Cache it, because one call per contact is one map lookup per contact:
 
-<!-- snippet: in EntityStruct with Collider2D, CollisionListener -->
+<!-- snippet: in GameSystem with CollisionListener -->
 ```dart
 DamageSystem? _damage;
 

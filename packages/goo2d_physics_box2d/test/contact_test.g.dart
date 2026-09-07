@@ -20,6 +20,11 @@
 // what the row is missing, and where, is visible.
 part of 'contact_test.dart';
 
+List<ScannableField> _collect$Watcher(Object object) {
+  object as _Watcher;
+  return const <ScannableField>[];
+}
+
 List<ScannableField> _collect$Crate(Object object) {
   final owner = object as _Crate;
   return <ScannableField>[
@@ -111,6 +116,7 @@ List<ScannableField> _collect$GameState(Object object) {
   final owner = object as _GameState;
   return <ScannableField>[
     owner.physics,
+    owner.watcher,
     owner.fixedTickEvent,
     owner.tickEvent,
     owner.gameMountedEvent,
@@ -129,6 +135,28 @@ List<ScannableField> _collect$Game(Object object) {
   return const <ScannableField>[];
 }
 
+List<ScannableField> _collect$DeafState(Object object) {
+  final owner = object as _DeafState;
+  return <ScannableField>[
+    owner.physics,
+    owner.fixedTickEvent,
+    owner.tickEvent,
+    owner.gameMountedEvent,
+    owner.gameUnmountedEvent,
+    owner.appHiddenEvent,
+    owner.appShownEvent,
+    owner.entitySpawnedEvent,
+    owner.entityDespawnedEvent,
+    owner.sceneLoadedEvent,
+    owner.sceneUnloadedEvent,
+  ];
+}
+
+List<ScannableField> _collect$DeafGame(Object object) {
+  object as _DeafGame;
+  return const <ScannableField>[];
+}
+
 /// Every fixture this library declares, and how to read one.
 ///
 /// It carries the package's own generated table as a
@@ -138,12 +166,15 @@ const GeneratedDeclarations _contactTestDeclarations =
     GeneratedDeclarations(
       package: 'goo2d_physics_box2d/test/contact_test.dart',
       collectors: <DeclarationCollector>[
+        DeclarationCollector(_Watcher, _collect$Watcher),
         DeclarationCollector(_Crate, _collect$Crate),
         DeclarationCollector(_Floor, _collect$Floor),
         DeclarationCollector(_Zone, _collect$Zone),
         DeclarationCollector(_Scene, _collect$Scene),
         DeclarationCollector(_GameState, _collect$GameState),
         DeclarationCollector(_Game, _collect$Game),
+        DeclarationCollector(_DeafState, _collect$DeafState),
+        DeclarationCollector(_DeafGame, _collect$DeafGame),
       ],
       dependencies: <GeneratedDeclarations>[
         goo2dPhysicsBox2dDeclarations,
