@@ -18,6 +18,17 @@
 // package's lib/ holds privately. That is another library,
 // so nothing here can read it - it keeps its place so that
 // what the row is missing, and where, is visible.
+//
+// Beside each list is every type an instance of that fixture
+// is, the fixture itself first, then the names in its
+// extends, with and implements clauses in that order, each
+// followed by its own supertypes. Nothing reads that order
+// positionally; it is fixed so two machines write one file.
+//
+// A type the generator did not read is not listed. A type it
+// read and this part cannot name keeps its place as a
+// comment - a part writes no imports of its own, so what it
+// may name is what its library already does.
 part of 'archetype_test.dart';
 
 List<ScannableField> _collect$Player(Object object) {
@@ -32,6 +43,20 @@ List<ScannableField> _collect$Player(Object object) {
   ];
 }
 
+const List<Type> _supertypes$Player = <Type>[
+  _Player,
+  EntityStruct,
+  // Coroutines: the library this part belongs to does not import it.
+  // Animations: the library this part belongs to does not import it.
+  MultiComponent,
+  Component,
+  Scannable,
+  ScannableField,
+  _Transform,
+  _Health,
+  _Flags,
+];
+
 List<ScannableField> _collect$Enemy(Object object) {
   final owner = object as _Enemy;
   return <ScannableField>[
@@ -43,10 +68,34 @@ List<ScannableField> _collect$Enemy(Object object) {
   ];
 }
 
+const List<Type> _supertypes$Enemy = <Type>[
+  _Enemy,
+  EntityStruct,
+  // Coroutines: the library this part belongs to does not import it.
+  // Animations: the library this part belongs to does not import it.
+  MultiComponent,
+  Component,
+  Scannable,
+  ScannableField,
+  _Transform,
+  _Flags,
+];
+
 List<ScannableField> _collect$Rock(Object object) {
   object as _Rock;
   return const <ScannableField>[];
 }
+
+const List<Type> _supertypes$Rock = <Type>[
+  _Rock,
+  EntityStruct,
+  // Coroutines: the library this part belongs to does not import it.
+  // Animations: the library this part belongs to does not import it.
+  MultiComponent,
+  Component,
+  Scannable,
+  ScannableField,
+];
 
 List<ScannableField> _collect$ChildOnly(Object object) {
   final owner = object as _ChildOnly;
@@ -57,6 +106,18 @@ List<ScannableField> _collect$ChildOnly(Object object) {
   ];
 }
 
+const List<Type> _supertypes$ChildOnly = <Type>[
+  _ChildOnly,
+  EntityStruct,
+  // Coroutines: the library this part belongs to does not import it.
+  // Animations: the library this part belongs to does not import it.
+  MultiComponent,
+  Component,
+  Scannable,
+  ScannableField,
+  Child,
+];
+
 List<ScannableField> _collect$Level(Object object) {
   final owner = object as _Level;
   return <ScannableField>[
@@ -64,6 +125,13 @@ List<ScannableField> _collect$Level(Object object) {
     owner.enemy,
   ];
 }
+
+const List<Type> _supertypes$Level = <Type>[
+  _Level,
+  SceneStruct,
+  // Coroutines: the library this part belongs to does not import it.
+  Scannable,
+];
 
 /// Every fixture this library declares, and how to read one.
 ///
@@ -74,11 +142,15 @@ const GeneratedDeclarations _archetypeTestDeclarations =
     GeneratedDeclarations(
       package: 'good/test/archetype_test.dart',
       collectors: <DeclarationCollector>[
-        DeclarationCollector(_Player, _collect$Player),
-        DeclarationCollector(_Enemy, _collect$Enemy),
-        DeclarationCollector(_Rock, _collect$Rock),
-        DeclarationCollector(_ChildOnly, _collect$ChildOnly),
-        DeclarationCollector(_Level, _collect$Level),
+        DeclarationCollector(_Player, _collect$Player, _supertypes$Player),
+        DeclarationCollector(_Enemy, _collect$Enemy, _supertypes$Enemy),
+        DeclarationCollector(_Rock, _collect$Rock, _supertypes$Rock),
+        DeclarationCollector(
+          _ChildOnly,
+          _collect$ChildOnly,
+          _supertypes$ChildOnly,
+        ),
+        DeclarationCollector(_Level, _collect$Level, _supertypes$Level),
       ],
       dependencies: <GeneratedDeclarations>[
         goodDeclarations,

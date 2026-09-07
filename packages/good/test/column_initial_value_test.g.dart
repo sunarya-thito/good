@@ -18,6 +18,17 @@
 // package's lib/ holds privately. That is another library,
 // so nothing here can read it - it keeps its place so that
 // what the row is missing, and where, is visible.
+//
+// Beside each list is every type an instance of that fixture
+// is, the fixture itself first, then the names in its
+// extends, with and implements clauses in that order, each
+// followed by its own supertypes. Nothing reads that order
+// positionally; it is fixed so two machines write one file.
+//
+// A type the generator did not read is not listed. A type it
+// read and this part cannot name keeps its place as a
+// comment - a part writes no imports of its own, so what it
+// may name is what its library already does.
 part of 'column_initial_value_test.dart';
 
 List<ScannableField> _collect$Grunt(Object object) {
@@ -33,6 +44,18 @@ List<ScannableField> _collect$Grunt(Object object) {
   ];
 }
 
+const List<Type> _supertypes$Grunt = <Type>[
+  _Grunt,
+  EntityStruct,
+  // Coroutines: the library this part belongs to does not import it.
+  // Animations: the library this part belongs to does not import it.
+  MultiComponent,
+  Component,
+  Scannable,
+  ScannableField,
+  _Body,
+];
+
 List<ScannableField> _collect$Captain(Object object) {
   final owner = object as _Captain;
   return <ScannableField>[
@@ -45,6 +68,18 @@ List<ScannableField> _collect$Captain(Object object) {
     owner.aim,
   ];
 }
+
+const List<Type> _supertypes$Captain = <Type>[
+  _Captain,
+  EntityStruct,
+  // Coroutines: the library this part belongs to does not import it.
+  // Animations: the library this part belongs to does not import it.
+  MultiComponent,
+  Component,
+  Scannable,
+  ScannableField,
+  _Body,
+];
 
 List<ScannableField> _collect$Lieutenant(Object object) {
   final owner = object as _Lieutenant;
@@ -59,6 +94,18 @@ List<ScannableField> _collect$Lieutenant(Object object) {
   ];
 }
 
+const List<Type> _supertypes$Lieutenant = <Type>[
+  _Lieutenant,
+  EntityStruct,
+  // Coroutines: the library this part belongs to does not import it.
+  // Animations: the library this part belongs to does not import it.
+  MultiComponent,
+  Component,
+  Scannable,
+  ScannableField,
+  _Body,
+];
+
 List<ScannableField> _collect$Squad(Object object) {
   final owner = object as _Squad;
   return <ScannableField>[
@@ -67,6 +114,13 @@ List<ScannableField> _collect$Squad(Object object) {
     owner.lieutenant,
   ];
 }
+
+const List<Type> _supertypes$Squad = <Type>[
+  _Squad,
+  SceneStruct,
+  // Coroutines: the library this part belongs to does not import it.
+  Scannable,
+];
 
 /// Every fixture this library declares, and how to read one.
 ///
@@ -77,10 +131,14 @@ const GeneratedDeclarations _columnInitialValueTestDeclarations =
     GeneratedDeclarations(
       package: 'good/test/column_initial_value_test.dart',
       collectors: <DeclarationCollector>[
-        DeclarationCollector(_Grunt, _collect$Grunt),
-        DeclarationCollector(_Captain, _collect$Captain),
-        DeclarationCollector(_Lieutenant, _collect$Lieutenant),
-        DeclarationCollector(_Squad, _collect$Squad),
+        DeclarationCollector(_Grunt, _collect$Grunt, _supertypes$Grunt),
+        DeclarationCollector(_Captain, _collect$Captain, _supertypes$Captain),
+        DeclarationCollector(
+          _Lieutenant,
+          _collect$Lieutenant,
+          _supertypes$Lieutenant,
+        ),
+        DeclarationCollector(_Squad, _collect$Squad, _supertypes$Squad),
       ],
       dependencies: <GeneratedDeclarations>[
         goodDeclarations,

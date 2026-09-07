@@ -18,6 +18,17 @@
 // package's lib/ holds privately. That is another library,
 // so nothing here can read it - it keeps its place so that
 // what the row is missing, and where, is visible.
+//
+// Beside each list is every type an instance of that fixture
+// is, the fixture itself first, then the names in its
+// extends, with and implements clauses in that order, each
+// followed by its own supertypes. Nothing reads that order
+// positionally; it is fixed so two machines write one file.
+//
+// A type the generator did not read is not listed. A type it
+// read and this part cannot name keeps its place as a
+// comment - a part writes no imports of its own, so what it
+// may name is what its library already does.
 part of 'camera_test.dart';
 
 List<ScannableField> _collect$CamEntity(Object object) {
@@ -44,6 +55,20 @@ List<ScannableField> _collect$CamEntity(Object object) {
   ];
 }
 
+const List<Type> _supertypes$CamEntity = <Type>[
+  _CamEntity,
+  EntityStruct,
+  Coroutines,
+  Animations,
+  MultiComponent,
+  Component,
+  Scannable,
+  ScannableField,
+  Transform2D,
+  WorldTransform2D,
+  Camera,
+];
+
 List<ScannableField> _collect$Scene(Object object) {
   final owner = object as _Scene;
   return <ScannableField>[
@@ -51,12 +76,30 @@ List<ScannableField> _collect$Scene(Object object) {
   ];
 }
 
+const List<Type> _supertypes$Scene = <Type>[
+  _Scene,
+  SceneStruct,
+  Coroutines,
+  Scannable,
+];
+
 List<ScannableField> _collect$CameraQuerySystem(Object object) {
   final owner = object as _CameraQuerySystem;
   return <ScannableField>[
     owner.cameras,
   ];
 }
+
+const List<Type> _supertypes$CameraQuerySystem = <Type>[
+  _CameraQuerySystem,
+  GameSystem,
+  GameListenerBase,
+  GameListener,
+  EventBus,
+  Scannable,
+  Coroutines,
+  ScannableField,
+];
 
 List<ScannableField> _collect$CamState(Object object) {
   final owner = object as _CamState;
@@ -75,10 +118,27 @@ List<ScannableField> _collect$CamState(Object object) {
   ];
 }
 
+const List<Type> _supertypes$CamState = <Type>[
+  _CamState,
+  GameState,
+  GameListenerBase,
+  GameListener,
+  EventBus,
+  Scannable,
+  Coroutines,
+];
+
 List<ScannableField> _collect$CamGame(Object object) {
   object as _CamGame;
   return const <ScannableField>[];
 }
+
+const List<Type> _supertypes$CamGame = <Type>[
+  _CamGame,
+  Game,
+  // RandomOwner: the library this part belongs to does not import it.
+  Scannable,
+];
 
 /// Every fixture this library declares, and how to read one.
 ///
@@ -89,11 +149,23 @@ const GeneratedDeclarations _cameraTestDeclarations =
     GeneratedDeclarations(
       package: 'goo2d/test/camera_test.dart',
       collectors: <DeclarationCollector>[
-        DeclarationCollector(_CamEntity, _collect$CamEntity),
-        DeclarationCollector(_Scene, _collect$Scene),
-        DeclarationCollector(_CameraQuerySystem, _collect$CameraQuerySystem),
-        DeclarationCollector(_CamState, _collect$CamState),
-        DeclarationCollector(_CamGame, _collect$CamGame),
+        DeclarationCollector(
+          _CamEntity,
+          _collect$CamEntity,
+          _supertypes$CamEntity,
+        ),
+        DeclarationCollector(_Scene, _collect$Scene, _supertypes$Scene),
+        DeclarationCollector(
+          _CameraQuerySystem,
+          _collect$CameraQuerySystem,
+          _supertypes$CameraQuerySystem,
+        ),
+        DeclarationCollector(
+          _CamState,
+          _collect$CamState,
+          _supertypes$CamState,
+        ),
+        DeclarationCollector(_CamGame, _collect$CamGame, _supertypes$CamGame),
       ],
       dependencies: <GeneratedDeclarations>[
         goo2dDeclarations,

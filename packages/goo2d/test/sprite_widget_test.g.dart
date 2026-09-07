@@ -18,12 +18,30 @@
 // package's lib/ holds privately. That is another library,
 // so nothing here can read it - it keeps its place so that
 // what the row is missing, and where, is visible.
+//
+// Beside each list is every type an instance of that fixture
+// is, the fixture itself first, then the names in its
+// extends, with and implements clauses in that order, each
+// followed by its own supertypes. Nothing reads that order
+// positionally; it is fixed so two machines write one file.
+//
+// A type the generator did not read is not listed. A type it
+// read and this part cannot name keeps its place as a
+// comment - a part writes no imports of its own, so what it
+// may name is what its library already does.
 part of 'sprite_widget_test.dart';
 
 List<ScannableField> _collect$TextureScene(Object object) {
   object as _TextureScene;
   return const <ScannableField>[];
 }
+
+const List<Type> _supertypes$TextureScene = <Type>[
+  _TextureScene,
+  SceneStruct,
+  Coroutines,
+  Scannable,
+];
 
 /// Every fixture this library declares, and how to read one.
 ///
@@ -34,7 +52,11 @@ const GeneratedDeclarations _spriteWidgetTestDeclarations =
     GeneratedDeclarations(
       package: 'goo2d/test/sprite_widget_test.dart',
       collectors: <DeclarationCollector>[
-        DeclarationCollector(_TextureScene, _collect$TextureScene),
+        DeclarationCollector(
+          _TextureScene,
+          _collect$TextureScene,
+          _supertypes$TextureScene,
+        ),
       ],
       dependencies: <GeneratedDeclarations>[
         goo2dDeclarations,

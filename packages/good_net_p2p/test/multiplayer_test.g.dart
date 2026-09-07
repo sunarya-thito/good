@@ -18,6 +18,17 @@
 // package's lib/ holds privately. That is another library,
 // so nothing here can read it - it keeps its place so that
 // what the row is missing, and where, is visible.
+//
+// Beside each list is every type an instance of that fixture
+// is, the fixture itself first, then the names in its
+// extends, with and implements clauses in that order, each
+// followed by its own supertypes. Nothing reads that order
+// positionally; it is fixed so two machines write one file.
+//
+// A type the generator did not read is not listed. A type it
+// read and this part cannot name keeps its place as a
+// comment - a part writes no imports of its own, so what it
+// may name is what its library already does.
 part of 'multiplayer_test.dart';
 
 List<ScannableField> _collect$Fire(Object object) {
@@ -28,6 +39,13 @@ List<ScannableField> _collect$Fire(Object object) {
   ];
 }
 
+const List<Type> _supertypes$Fire = <Type>[
+  Fire,
+  NetMessage,
+  NetMessageBase,
+  Scannable,
+];
+
 List<ScannableField> _collect$Hit(Object object) {
   final owner = object as Hit;
   return <ScannableField>[
@@ -36,10 +54,24 @@ List<ScannableField> _collect$Hit(Object object) {
   ];
 }
 
+const List<Type> _supertypes$Hit = <Type>[
+  Hit,
+  NetMessage,
+  NetMessageBase,
+  Scannable,
+];
+
 List<ScannableField> _collect$ShooterGame(Object object) {
   object as ShooterGame;
   return const <ScannableField>[];
 }
+
+const List<Type> _supertypes$ShooterGame = <Type>[
+  ShooterGame,
+  Game,
+  // RandomOwner: the library this part belongs to does not import it.
+  Scannable,
+];
 
 List<ScannableField> _collect$ShooterState(Object object) {
   final owner = object as ShooterState;
@@ -58,6 +90,17 @@ List<ScannableField> _collect$ShooterState(Object object) {
   ];
 }
 
+const List<Type> _supertypes$ShooterState = <Type>[
+  ShooterState,
+  GameState,
+  GameListenerBase,
+  GameListener,
+  EventBus,
+  Scannable,
+  Coroutines,
+  MultiplayerState,
+];
+
 /// Every fixture this library declares, and how to read one.
 ///
 /// It carries the generated tables this library imports,
@@ -69,10 +112,18 @@ const GeneratedDeclarations _multiplayerTestDeclarations =
     GeneratedDeclarations(
       package: 'good_net_p2p/test/multiplayer_test.dart',
       collectors: <DeclarationCollector>[
-        DeclarationCollector(Fire, _collect$Fire),
-        DeclarationCollector(Hit, _collect$Hit),
-        DeclarationCollector(ShooterGame, _collect$ShooterGame),
-        DeclarationCollector(ShooterState, _collect$ShooterState),
+        DeclarationCollector(Fire, _collect$Fire, _supertypes$Fire),
+        DeclarationCollector(Hit, _collect$Hit, _supertypes$Hit),
+        DeclarationCollector(
+          ShooterGame,
+          _collect$ShooterGame,
+          _supertypes$ShooterGame,
+        ),
+        DeclarationCollector(
+          ShooterState,
+          _collect$ShooterState,
+          _supertypes$ShooterState,
+        ),
       ],
       dependencies: <GeneratedDeclarations>[
         goodNetDeclarations,

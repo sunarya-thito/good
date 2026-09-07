@@ -591,6 +591,7 @@ class FixtureCollector {
     required this.type,
     required this.functionName,
     required this.fields,
+    required this.supertypes,
     required this.isGeneric,
   });
 
@@ -609,6 +610,19 @@ class FixtureCollector {
   /// would have run.
   final List<CollectedDeclaration> fields;
 
+  /// Every type an instance of it is, the class itself first - see
+  /// `flattenedSupertypes` for the order.
+  ///
+  /// What a part may name is a narrower question here than in a package's own
+  /// `declarations.g.dart`. That file writes its own imports, so anything the
+  /// run read and can spell goes in; a part writes none and is compiled inside
+  /// a library somebody else wrote, so what it may name is what that library
+  /// declares plus what its own imports export - `LibraryScopes.visibleIn`.
+  /// A fixture applying a mixin whose own supertype the test file never
+  /// imported gets that one line commented out rather than a part that does
+  /// not compile.
+  final List<CollectedSupertype> supertypes;
+
   /// The collector function's name - `_collect$Level` for `_Level`.
   ///
   /// The leading underscore of a private fixture is dropped rather than kept,
@@ -623,6 +637,12 @@ class FixtureCollector {
   /// Built off [functionName] rather than off [type] so that it inherits the
   /// `$` [scanFixtures] appended to keep that one unique.
   String get matcherName => '_is${functionName.substring('_collect'.length)}';
+
+  /// `_supertypes$Level`, the const list of what it is.
+  ///
+  /// Built off [functionName] for [matcherName]'s reason.
+  String get supertypesName =>
+      '_supertypes${functionName.substring('_collect'.length)}';
 }
 
 /// One test or example library, and the collectors it needs.
@@ -955,10 +975,44 @@ FixtureScan scanFixtures({
         while (!taken.add(functionName)) {
           functionName = '$functionName\$';
         }
+        // Resolved through `scope`, which crosses libraries, and written
+        // through `visibleIn`, which does not. The chain a fixture sits on
+        // runs through files its own test never imported, so the walk has to
+        // be the wide one; the part is compiled inside the test's library, so
+        // the writing has to be the narrow one. A private name is nameable
+        // only where it was declared, which no scope map records.
+        final visible = scopes.visibleIn(path);
+        final supertypes = <CollectedSupertype>[];
+        for (final name in flattenedSupertypes(type, scope)) {
+          // A name this run never read is left out and not marked, for the
+          // reason `scanDeclarationCollectors` gives beside the same line.
+          if (!scope.containsKey(name)) continue;
+          if (declaredHere.contains(name)) {
+            supertypes.add(CollectedSupertype(name));
+          } else if (name.startsWith('_')) {
+            supertypes.add(
+              CollectedSupertype(
+                name,
+                'it is private to another library, so this part cannot name '
+                'it',
+              ),
+            );
+          } else if (!visible.containsKey(name)) {
+            supertypes.add(
+              CollectedSupertype(
+                name,
+                'the library this part belongs to does not import it',
+              ),
+            );
+          } else {
+            supertypes.add(CollectedSupertype(name));
+          }
+        }
         collectors.add(
           FixtureCollector(
             type: type.name,
             functionName: functionName,
+            supertypes: supertypes,
             isGeneric: type.typeParameters.isNotEmpty,
             fields: <CollectedDeclaration>[
               for (final declaration in flattenedDeclarations(

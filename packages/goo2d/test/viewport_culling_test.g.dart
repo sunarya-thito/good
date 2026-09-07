@@ -18,6 +18,17 @@
 // package's lib/ holds privately. That is another library,
 // so nothing here can read it - it keeps its place so that
 // what the row is missing, and where, is visible.
+//
+// Beside each list is every type an instance of that fixture
+// is, the fixture itself first, then the names in its
+// extends, with and implements clauses in that order, each
+// followed by its own supertypes. Nothing reads that order
+// positionally; it is fixed so two machines write one file.
+//
+// A type the generator did not read is not listed. A type it
+// read and this part cannot name keeps its place as a
+// comment - a part writes no imports of its own, so what it
+// may name is what its library already does.
 part of 'viewport_culling_test.dart';
 
 List<ScannableField> _collect$Quad(Object object) {
@@ -43,6 +54,20 @@ List<ScannableField> _collect$Quad(Object object) {
   ];
 }
 
+const List<Type> _supertypes$Quad = <Type>[
+  _Quad,
+  EntityStruct,
+  Coroutines,
+  Animations,
+  MultiComponent,
+  Component,
+  Scannable,
+  ScannableField,
+  Transform2D,
+  WorldTransform2D,
+  Renderable2D,
+];
+
 List<ScannableField> _collect$Flat(Object object) {
   final owner = object as _Flat;
   return <ScannableField>[
@@ -54,6 +79,19 @@ List<ScannableField> _collect$Flat(Object object) {
     owner.transformRotation,
   ];
 }
+
+const List<Type> _supertypes$Flat = <Type>[
+  _Flat,
+  EntityStruct,
+  Coroutines,
+  Animations,
+  MultiComponent,
+  Component,
+  Scannable,
+  ScannableField,
+  Transform2D,
+  Renderable2D,
+];
 
 List<ScannableField> _collect$Panel(Object object) {
   final owner = object as _Panel;
@@ -77,6 +115,20 @@ List<ScannableField> _collect$Panel(Object object) {
     owner.transformRotation,
   ];
 }
+
+const List<Type> _supertypes$Panel = <Type>[
+  _Panel,
+  EntityStruct,
+  Coroutines,
+  Animations,
+  MultiComponent,
+  Component,
+  Scannable,
+  ScannableField,
+  Transform2D,
+  WorldTransform2D,
+  Renderable2D,
+];
 
 List<ScannableField> _collect$Eye(Object object) {
   final owner = object as _Eye;
@@ -102,6 +154,20 @@ List<ScannableField> _collect$Eye(Object object) {
   ];
 }
 
+const List<Type> _supertypes$Eye = <Type>[
+  _Eye,
+  EntityStruct,
+  Coroutines,
+  Animations,
+  MultiComponent,
+  Component,
+  Scannable,
+  ScannableField,
+  Transform2D,
+  WorldTransform2D,
+  Camera,
+];
+
 List<ScannableField> _collect$Scene(Object object) {
   final owner = object as _Scene;
   return <ScannableField>[
@@ -111,6 +177,13 @@ List<ScannableField> _collect$Scene(Object object) {
     owner.eye,
   ];
 }
+
+const List<Type> _supertypes$Scene = <Type>[
+  _Scene,
+  SceneStruct,
+  Coroutines,
+  Scannable,
+];
 
 List<ScannableField> _collect$State(Object object) {
   final owner = object as _State;
@@ -130,10 +203,31 @@ List<ScannableField> _collect$State(Object object) {
   ];
 }
 
+const List<Type> _supertypes$State = <Type>[
+  _State,
+  GameState2D,
+  GameState,
+  GameListenerBase,
+  GameListener,
+  EventBus,
+  Scannable,
+  Coroutines,
+  Renderer2DState,
+];
+
 List<ScannableField> _collect$CullGame(Object object) {
   object as _CullGame;
   return const <ScannableField>[];
 }
+
+const List<Type> _supertypes$CullGame = <Type>[
+  _CullGame,
+  Game2D,
+  Game,
+  // RandomOwner: the library this part belongs to does not import it.
+  Scannable,
+  Renderer2D,
+];
 
 /// Every fixture this library declares, and how to read one.
 ///
@@ -144,13 +238,17 @@ const GeneratedDeclarations _viewportCullingTestDeclarations =
     GeneratedDeclarations(
       package: 'goo2d/test/viewport_culling_test.dart',
       collectors: <DeclarationCollector>[
-        DeclarationCollector(_Quad, _collect$Quad),
-        DeclarationCollector(_Flat, _collect$Flat),
-        DeclarationCollector(_Panel, _collect$Panel),
-        DeclarationCollector(_Eye, _collect$Eye),
-        DeclarationCollector(_Scene, _collect$Scene),
-        DeclarationCollector(_State, _collect$State),
-        DeclarationCollector(_CullGame, _collect$CullGame),
+        DeclarationCollector(_Quad, _collect$Quad, _supertypes$Quad),
+        DeclarationCollector(_Flat, _collect$Flat, _supertypes$Flat),
+        DeclarationCollector(_Panel, _collect$Panel, _supertypes$Panel),
+        DeclarationCollector(_Eye, _collect$Eye, _supertypes$Eye),
+        DeclarationCollector(_Scene, _collect$Scene, _supertypes$Scene),
+        DeclarationCollector(_State, _collect$State, _supertypes$State),
+        DeclarationCollector(
+          _CullGame,
+          _collect$CullGame,
+          _supertypes$CullGame,
+        ),
       ],
       dependencies: <GeneratedDeclarations>[
         goo2dDeclarations,

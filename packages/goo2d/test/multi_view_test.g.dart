@@ -18,6 +18,17 @@
 // package's lib/ holds privately. That is another library,
 // so nothing here can read it - it keeps its place so that
 // what the row is missing, and where, is visible.
+//
+// Beside each list is every type an instance of that fixture
+// is, the fixture itself first, then the names in its
+// extends, with and implements clauses in that order, each
+// followed by its own supertypes. Nothing reads that order
+// positionally; it is fixed so two machines write one file.
+//
+// A type the generator did not read is not listed. A type it
+// read and this part cannot name keeps its place as a
+// comment - a part writes no imports of its own, so what it
+// may name is what its library already does.
 part of 'multi_view_test.dart';
 
 List<ScannableField> _collect$Sprite(Object object) {
@@ -43,6 +54,20 @@ List<ScannableField> _collect$Sprite(Object object) {
   ];
 }
 
+const List<Type> _supertypes$Sprite = <Type>[
+  _Sprite,
+  EntityStruct,
+  Coroutines,
+  Animations,
+  MultiComponent,
+  Component,
+  Scannable,
+  ScannableField,
+  Transform2D,
+  WorldTransform2D,
+  Renderable2D,
+];
+
 List<ScannableField> _collect$Eye(Object object) {
   final owner = object as _Eye;
   return <ScannableField>[
@@ -66,6 +91,20 @@ List<ScannableField> _collect$Eye(Object object) {
     owner.transformRotation,
   ];
 }
+
+const List<Type> _supertypes$Eye = <Type>[
+  _Eye,
+  EntityStruct,
+  Coroutines,
+  Animations,
+  MultiComponent,
+  Component,
+  Scannable,
+  ScannableField,
+  Transform2D,
+  WorldTransform2D,
+  Camera,
+];
 
 List<ScannableField> _collect$Target(Object object) {
   final owner = object as _Target;
@@ -91,6 +130,25 @@ List<ScannableField> _collect$Target(Object object) {
   ];
 }
 
+const List<Type> _supertypes$Target = <Type>[
+  _Target,
+  EntityStruct,
+  Coroutines,
+  Animations,
+  MultiComponent,
+  Component,
+  Scannable,
+  ScannableField,
+  Transform2D,
+  WorldTransform2D,
+  Renderable2D,
+  Collider2D,
+  PointerReceiver,
+  PointerListener,
+  HoverReceiver,
+  HoverListener,
+];
+
 List<ScannableField> _collect$Level(Object object) {
   final owner = object as _Level;
   return <ScannableField>[
@@ -100,6 +158,13 @@ List<ScannableField> _collect$Level(Object object) {
   ];
 }
 
+const List<Type> _supertypes$Level = <Type>[
+  _Level,
+  SceneStruct,
+  Coroutines,
+  Scannable,
+];
+
 List<ScannableField> _collect$Overlay(Object object) {
   final owner = object as _Overlay;
   return <ScannableField>[
@@ -108,6 +173,13 @@ List<ScannableField> _collect$Overlay(Object object) {
     owner.target,
   ];
 }
+
+const List<Type> _supertypes$Overlay = <Type>[
+  _Overlay,
+  SceneStruct,
+  Coroutines,
+  Scannable,
+];
 
 List<ScannableField> _collect$MultiState(Object object) {
   final owner = object as _MultiState;
@@ -128,10 +200,31 @@ List<ScannableField> _collect$MultiState(Object object) {
   ];
 }
 
+const List<Type> _supertypes$MultiState = <Type>[
+  _MultiState,
+  GameState2D,
+  GameState,
+  GameListenerBase,
+  GameListener,
+  EventBus,
+  Scannable,
+  Coroutines,
+  Renderer2DState,
+];
+
 List<ScannableField> _collect$MultiGame(Object object) {
   object as _MultiGame;
   return const <ScannableField>[];
 }
+
+const List<Type> _supertypes$MultiGame = <Type>[
+  _MultiGame,
+  Game2D,
+  Game,
+  // RandomOwner: the library this part belongs to does not import it.
+  Scannable,
+  Renderer2D,
+];
 
 /// Every fixture this library declares, and how to read one.
 ///
@@ -142,13 +235,21 @@ const GeneratedDeclarations _multiViewTestDeclarations =
     GeneratedDeclarations(
       package: 'goo2d/test/multi_view_test.dart',
       collectors: <DeclarationCollector>[
-        DeclarationCollector(_Sprite, _collect$Sprite),
-        DeclarationCollector(_Eye, _collect$Eye),
-        DeclarationCollector(_Target, _collect$Target),
-        DeclarationCollector(_Level, _collect$Level),
-        DeclarationCollector(_Overlay, _collect$Overlay),
-        DeclarationCollector(_MultiState, _collect$MultiState),
-        DeclarationCollector(_MultiGame, _collect$MultiGame),
+        DeclarationCollector(_Sprite, _collect$Sprite, _supertypes$Sprite),
+        DeclarationCollector(_Eye, _collect$Eye, _supertypes$Eye),
+        DeclarationCollector(_Target, _collect$Target, _supertypes$Target),
+        DeclarationCollector(_Level, _collect$Level, _supertypes$Level),
+        DeclarationCollector(_Overlay, _collect$Overlay, _supertypes$Overlay),
+        DeclarationCollector(
+          _MultiState,
+          _collect$MultiState,
+          _supertypes$MultiState,
+        ),
+        DeclarationCollector(
+          _MultiGame,
+          _collect$MultiGame,
+          _supertypes$MultiGame,
+        ),
       ],
       dependencies: <GeneratedDeclarations>[
         goo2dDeclarations,

@@ -49,6 +49,35 @@ class CollectedDeclaration {
   final bool isPrivate;
 }
 
+/// One type a class is, in the position it holds in that class's list.
+///
+/// An unwritable one is here too, for [CollectedDeclaration]'s reason: a
+/// generated file that can name none of `Foo`'s three supertypes should say
+/// which three it could not name, in the place they would have had, rather
+/// than hand back a shorter list that reads as complete.
+@immutable
+class CollectedSupertype {
+  const CollectedSupertype(this.name, [this.problem]);
+
+  /// The type, as it is written in the clause - `Transform2D`, bare of any
+  /// type arguments.
+  final String name;
+
+  /// Why the generated file cannot write [name], or null when it can.
+  ///
+  /// A private class in another library, a name two libraries both declare, a
+  /// name whose package exports it from nowhere. Each is a fact about this
+  /// file's reach and not about the class, which is why the class still gets
+  /// its entry and only this one line goes missing.
+  ///
+  /// Not "the run never read it". Such a name never reaches a
+  /// [CollectedSupertype] at all - see `scanDeclarationCollectors`, which
+  /// says why that absence is not a hole.
+  final String? problem;
+
+  bool get isWritable => problem == null;
+}
+
 /// One class's collector: what it reads, and off what.
 @immutable
 class DeclarationCollectorEntry {
@@ -58,6 +87,7 @@ class DeclarationCollectorEntry {
     required this.path,
     required this.imports,
     required this.fields,
+    required this.supertypes,
     required this.isGeneric,
   });
 
@@ -82,6 +112,11 @@ class DeclarationCollectorEntry {
   /// keeping their place.
   final List<CollectedDeclaration> fields;
 
+  /// Every type an instance of it is, the class itself first - see
+  /// [flattenedSupertypes] for the order. Unwritable ones included, keeping
+  /// their place.
+  final List<CollectedSupertype> supertypes;
+
   /// Whether any of [fields] can actually be read.
   ///
   /// False leaves a collector that hands back an empty list, which is a
@@ -103,6 +138,11 @@ class DeclarationCollectorEntry {
   /// cannot appear in a class name, so this can never land on the same name
   /// as some other class's [functionName].
   String get matcherName => '_is\$$type';
+
+  /// `_supertypes$GameRenderer2D`, the const list of what it is.
+  ///
+  /// Named the way [matcherName] is, and for its reason.
+  String get supertypesName => '_supertypes\$$type';
 }
 
 /// Every collector one run would write, and what it left out.
@@ -120,7 +160,8 @@ class DeclarationCollectorScan {
   /// Every entry, over every package read.
   final List<DeclarationCollectorEntry> entries;
 
-  /// Every declaration that reached no collector, keyed `Class.field`, to
+  /// Every declaration that reached no collector, keyed `Class.field`, and
+  /// every supertype no generated file can name, keyed `Class.Supertype`, to
   /// why.
   ///
   /// Reported under `--verbose` and not fatal, for the reason
@@ -158,7 +199,9 @@ class DeclarationCollectorScan {
 /// file - exactly as the accessor extensions are, and for the same reason:
 /// the file is committed and read in a diff. The *fields* inside an entry are
 /// in construction order, which is the one order here that is load-bearing
-/// rather than tidy.
+/// rather than tidy. The *supertypes* are in [flattenedSupertypes]' order,
+/// which is fixed so that the file is comparable between two machines and is
+/// read by nothing positionally - see `collectSupertypes` in `good`.
 DeclarationCollectorScan scanDeclarationCollectors({
   required List<EnginePackage> packages,
   required ScanSources sources,
@@ -246,13 +289,56 @@ DeclarationCollectorScan scanDeclarationCollectors({
         skipped[type.name] = resolved.problem ?? field.problem!;
         continue;
       }
+
+      // A supertype that cannot be written costs this entry its line and
+      // nothing else. That is the difference between it and the class's own
+      // name above: without the class there is no collector at all, while
+      // without one of these there is a type list with a hole in it, which
+      // the emitter marks where the hole is.
+      final supertypes = <CollectedSupertype>[];
+      final supertypeImports = <String>{};
+      for (final name in flattenedSupertypes(type, typesByName)) {
+        // A name this run never read is left out rather than marked, and it
+        // is the one omission here that is not a hole. `Comparable` is on
+        // every `GameSystem` and is in `dart:core`, which no scan reads; so
+        // is anything from a package outside the read set. Nothing downstream
+        // can act on such a name either - a component bit comes out of this
+        // same walk - so listing it would put a line in every entry that says
+        // only that `dart:core` exists. `isSubtypeOf` stops at one for the
+        // same reason.
+        if (!typesByName.containsKey(name)) continue;
+        if (name.startsWith('_')) {
+          const problem =
+              'it is a private supertype, and this file is a different '
+              'library from the one that declares it - so it is left out of '
+              'what this class reports itself to be, and out of any component '
+              'bit read off that';
+          supertypes.add(CollectedSupertype(name, problem));
+          skipped['${type.name}.$name'] = problem;
+          continue;
+        }
+        final above = imports.importFor(name, owner);
+        if (above.problem != null) {
+          supertypes.add(CollectedSupertype(name, above.problem));
+          skipped['${type.name}.$name'] = above.problem!;
+          continue;
+        }
+        supertypes.add(CollectedSupertype(name));
+        supertypeImports.addAll(above.imports);
+      }
+
       entries.add(
         DeclarationCollectorEntry(
           type: type.name,
           package: owner.name,
           path: path,
-          imports: <String>{...resolved.imports, ...field.imports},
+          imports: <String>{
+            ...resolved.imports,
+            ...field.imports,
+            ...supertypeImports,
+          },
           fields: fields,
+          supertypes: supertypes,
           isGeneric: type.typeParameters.isNotEmpty,
         ),
       );

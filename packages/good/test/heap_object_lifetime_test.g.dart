@@ -18,6 +18,17 @@
 // package's lib/ holds privately. That is another library,
 // so nothing here can read it - it keeps its place so that
 // what the row is missing, and where, is visible.
+//
+// Beside each list is every type an instance of that fixture
+// is, the fixture itself first, then the names in its
+// extends, with and implements clauses in that order, each
+// followed by its own supertypes. Nothing reads that order
+// positionally; it is fixed so two machines write one file.
+//
+// A type the generator did not read is not listed. A type it
+// read and this part cannot name keeps its place as a
+// comment - a part writes no imports of its own, so what it
+// may name is what its library already does.
 part of 'heap_object_lifetime_test.dart';
 
 List<ScannableField> _collect$Thing(Object object) {
@@ -33,6 +44,20 @@ List<ScannableField> _collect$Thing(Object object) {
   ];
 }
 
+const List<Type> _supertypes$Thing = <Type>[
+  _Thing,
+  EntityStruct,
+  // Coroutines: the library this part belongs to does not import it.
+  // Animations: the library this part belongs to does not import it.
+  MultiComponent,
+  Component,
+  Scannable,
+  ScannableField,
+  _Holder,
+  Child,
+  Parent,
+];
+
 List<ScannableField> _collect$Level(Object object) {
   final owner = object as _Level;
   return <ScannableField>[
@@ -40,12 +65,26 @@ List<ScannableField> _collect$Level(Object object) {
   ];
 }
 
+const List<Type> _supertypes$Level = <Type>[
+  _Level,
+  SceneStruct,
+  // Coroutines: the library this part belongs to does not import it.
+  Scannable,
+];
+
 List<ScannableField> _collect$GameLevel(Object object) {
   final owner = object as _GameLevel;
   return <ScannableField>[
     owner.thing,
   ];
 }
+
+const List<Type> _supertypes$GameLevel = <Type>[
+  _GameLevel,
+  SceneStruct,
+  // Coroutines: the library this part belongs to does not import it.
+  Scannable,
+];
 
 List<ScannableField> _collect$HeapState(Object object) {
   final owner = object as _HeapState;
@@ -63,10 +102,27 @@ List<ScannableField> _collect$HeapState(Object object) {
   ];
 }
 
+const List<Type> _supertypes$HeapState = <Type>[
+  _HeapState,
+  GameState,
+  // GameListenerBase: the library this part belongs to does not import it.
+  // GameListener: the library this part belongs to does not import it.
+  // EventBus: the library this part belongs to does not import it.
+  Scannable,
+  // Coroutines: the library this part belongs to does not import it.
+];
+
 List<ScannableField> _collect$HeapGame(Object object) {
   object as _HeapGame;
   return const <ScannableField>[];
 }
+
+const List<Type> _supertypes$HeapGame = <Type>[
+  _HeapGame,
+  Game,
+  // RandomOwner: the library this part belongs to does not import it.
+  Scannable,
+];
 
 /// Every fixture this library declares, and how to read one.
 ///
@@ -77,11 +133,23 @@ const GeneratedDeclarations _heapObjectLifetimeTestDeclarations =
     GeneratedDeclarations(
       package: 'good/test/heap_object_lifetime_test.dart',
       collectors: <DeclarationCollector>[
-        DeclarationCollector(_Thing, _collect$Thing),
-        DeclarationCollector(_Level, _collect$Level),
-        DeclarationCollector(_GameLevel, _collect$GameLevel),
-        DeclarationCollector(_HeapState, _collect$HeapState),
-        DeclarationCollector(_HeapGame, _collect$HeapGame),
+        DeclarationCollector(_Thing, _collect$Thing, _supertypes$Thing),
+        DeclarationCollector(_Level, _collect$Level, _supertypes$Level),
+        DeclarationCollector(
+          _GameLevel,
+          _collect$GameLevel,
+          _supertypes$GameLevel,
+        ),
+        DeclarationCollector(
+          _HeapState,
+          _collect$HeapState,
+          _supertypes$HeapState,
+        ),
+        DeclarationCollector(
+          _HeapGame,
+          _collect$HeapGame,
+          _supertypes$HeapGame,
+        ),
       ],
       dependencies: <GeneratedDeclarations>[
         goodDeclarations,

@@ -18,6 +18,17 @@
 // package's lib/ holds privately. That is another library,
 // so nothing here can read it - it keeps its place so that
 // what the row is missing, and where, is visible.
+//
+// Beside each list is every type an instance of that fixture
+// is, the fixture itself first, then the names in its
+// extends, with and implements clauses in that order, each
+// followed by its own supertypes. Nothing reads that order
+// positionally; it is fixed so two machines write one file.
+//
+// A type the generator did not read is not listed. A type it
+// read and this part cannot name keeps its place as a
+// comment - a part writes no imports of its own, so what it
+// may name is what its library already does.
 part of 'transform_3d_test.dart';
 
 List<ScannableField> _collect$Turret(Object object) {
@@ -36,6 +47,18 @@ List<ScannableField> _collect$Turret(Object object) {
   ];
 }
 
+const List<Type> _supertypes$Turret = <Type>[
+  _Turret,
+  EntityStruct,
+  Coroutines,
+  Animations,
+  MultiComponent,
+  Component,
+  Scannable,
+  ScannableField,
+  Transform3D,
+];
+
 List<ScannableField> _collect$Enemy(Object object) {
   final owner = object as _Enemy;
   return <ScannableField>[
@@ -53,6 +76,18 @@ List<ScannableField> _collect$Enemy(Object object) {
   ];
 }
 
+const List<Type> _supertypes$Enemy = <Type>[
+  _Enemy,
+  EntityStruct,
+  Coroutines,
+  Animations,
+  MultiComponent,
+  Component,
+  Scannable,
+  ScannableField,
+  Transform3D,
+];
+
 List<ScannableField> _collect$Scene(Object object) {
   final owner = object as _Scene;
   return <ScannableField>[
@@ -60,6 +95,13 @@ List<ScannableField> _collect$Scene(Object object) {
     owner.enemy,
   ];
 }
+
+const List<Type> _supertypes$Scene = <Type>[
+  _Scene,
+  SceneStruct,
+  Coroutines,
+  Scannable,
+];
 
 /// Every fixture this library declares, and how to read one.
 ///
@@ -70,9 +112,9 @@ const GeneratedDeclarations _transform3dTestDeclarations =
     GeneratedDeclarations(
       package: 'goo3d/test/transform_3d_test.dart',
       collectors: <DeclarationCollector>[
-        DeclarationCollector(_Turret, _collect$Turret),
-        DeclarationCollector(_Enemy, _collect$Enemy),
-        DeclarationCollector(_Scene, _collect$Scene),
+        DeclarationCollector(_Turret, _collect$Turret, _supertypes$Turret),
+        DeclarationCollector(_Enemy, _collect$Enemy, _supertypes$Enemy),
+        DeclarationCollector(_Scene, _collect$Scene, _supertypes$Scene),
       ],
       dependencies: <GeneratedDeclarations>[
         goo3dDeclarations,

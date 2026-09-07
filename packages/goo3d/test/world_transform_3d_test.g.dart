@@ -18,6 +18,17 @@
 // package's lib/ holds privately. That is another library,
 // so nothing here can read it - it keeps its place so that
 // what the row is missing, and where, is visible.
+//
+// Beside each list is every type an instance of that fixture
+// is, the fixture itself first, then the names in its
+// extends, with and implements clauses in that order, each
+// followed by its own supertypes. Nothing reads that order
+// positionally; it is fixed so two machines write one file.
+//
+// A type the generator did not read is not listed. A type it
+// read and this part cannot name keeps its place as a
+// comment - a part writes no imports of its own, so what it
+// may name is what its library already does.
 part of 'world_transform_3d_test.dart';
 
 List<ScannableField> _collect$Node(Object object) {
@@ -62,6 +73,21 @@ List<ScannableField> _collect$Node(Object object) {
   ];
 }
 
+const List<Type> _supertypes$Node = <Type>[
+  _Node,
+  EntityStruct,
+  Coroutines,
+  Animations,
+  MultiComponent,
+  Component,
+  Scannable,
+  ScannableField,
+  Transform3D,
+  WorldTransform3D,
+  Child,
+  Parent,
+];
+
 List<ScannableField> _collect$Leaf(Object object) {
   final owner = object as _Leaf;
   return <ScannableField>[
@@ -102,6 +128,20 @@ List<ScannableField> _collect$Leaf(Object object) {
   ];
 }
 
+const List<Type> _supertypes$Leaf = <Type>[
+  _Leaf,
+  EntityStruct,
+  Coroutines,
+  Animations,
+  MultiComponent,
+  Component,
+  Scannable,
+  ScannableField,
+  Transform3D,
+  WorldTransform3D,
+  Child,
+];
+
 List<ScannableField> _collect$Group(Object object) {
   final owner = object as _Group;
   return <ScannableField>[
@@ -123,6 +163,20 @@ List<ScannableField> _collect$Group(Object object) {
   ];
 }
 
+const List<Type> _supertypes$Group = <Type>[
+  _Group,
+  EntityStruct,
+  Coroutines,
+  Animations,
+  MultiComponent,
+  Component,
+  Scannable,
+  ScannableField,
+  Transform3D,
+  Child,
+  Parent,
+];
+
 List<ScannableField> _collect$Prop(Object object) {
   final owner = object as _Prop;
   return <ScannableField>[
@@ -139,6 +193,18 @@ List<ScannableField> _collect$Prop(Object object) {
   ];
 }
 
+const List<Type> _supertypes$Prop = <Type>[
+  _Prop,
+  EntityStruct,
+  Coroutines,
+  Animations,
+  MultiComponent,
+  Component,
+  Scannable,
+  ScannableField,
+  Transform3D,
+];
+
 List<ScannableField> _collect$Scene(Object object) {
   final owner = object as _Scene;
   return <ScannableField>[
@@ -149,10 +215,29 @@ List<ScannableField> _collect$Scene(Object object) {
   ];
 }
 
+const List<Type> _supertypes$Scene = <Type>[
+  _Scene,
+  SceneStruct,
+  Coroutines,
+  Scannable,
+];
+
 List<ScannableField> _collect$Spawner(Object object) {
   object as _Spawner;
   return const <ScannableField>[];
 }
+
+const List<Type> _supertypes$Spawner = <Type>[
+  _Spawner,
+  GameSystem,
+  GameListenerBase,
+  GameListener,
+  EventBus,
+  Scannable,
+  Coroutines,
+  ScannableField,
+  FixedTickable,
+];
 
 List<ScannableField> _collect$GameState(Object object) {
   final owner = object as _GameState;
@@ -172,10 +257,27 @@ List<ScannableField> _collect$GameState(Object object) {
   ];
 }
 
+const List<Type> _supertypes$GameState = <Type>[
+  _GameState,
+  GameState,
+  GameListenerBase,
+  GameListener,
+  EventBus,
+  Scannable,
+  Coroutines,
+];
+
 List<ScannableField> _collect$Game(Object object) {
   object as _Game;
   return const <ScannableField>[];
 }
+
+const List<Type> _supertypes$Game = <Type>[
+  _Game,
+  Game,
+  // RandomOwner: the library this part belongs to does not import it.
+  Scannable,
+];
 
 /// Every fixture this library declares, and how to read one.
 ///
@@ -186,14 +288,18 @@ const GeneratedDeclarations _worldTransform3dTestDeclarations =
     GeneratedDeclarations(
       package: 'goo3d/test/world_transform_3d_test.dart',
       collectors: <DeclarationCollector>[
-        DeclarationCollector(_Node, _collect$Node),
-        DeclarationCollector(_Leaf, _collect$Leaf),
-        DeclarationCollector(_Group, _collect$Group),
-        DeclarationCollector(_Prop, _collect$Prop),
-        DeclarationCollector(_Scene, _collect$Scene),
-        DeclarationCollector(_Spawner, _collect$Spawner),
-        DeclarationCollector(_GameState, _collect$GameState),
-        DeclarationCollector(_Game, _collect$Game),
+        DeclarationCollector(_Node, _collect$Node, _supertypes$Node),
+        DeclarationCollector(_Leaf, _collect$Leaf, _supertypes$Leaf),
+        DeclarationCollector(_Group, _collect$Group, _supertypes$Group),
+        DeclarationCollector(_Prop, _collect$Prop, _supertypes$Prop),
+        DeclarationCollector(_Scene, _collect$Scene, _supertypes$Scene),
+        DeclarationCollector(_Spawner, _collect$Spawner, _supertypes$Spawner),
+        DeclarationCollector(
+          _GameState,
+          _collect$GameState,
+          _supertypes$GameState,
+        ),
+        DeclarationCollector(_Game, _collect$Game, _supertypes$Game),
       ],
       dependencies: <GeneratedDeclarations>[
         goo3dDeclarations,

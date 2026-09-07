@@ -1599,13 +1599,21 @@ class Spawner<T extends EntityStruct> extends EntityStruct {
       expect(
         written,
         contains(
-          'DeclarationCollector.generic(Spawner, _spawner, _is\$Spawner),',
+          'DeclarationCollector.generic(\n'
+          '      Spawner,\n'
+          '      _spawner,\n'
+          '      _is\$Spawner,\n'
+          '      _supertypes\$Spawner,\n'
+          '    ),',
         ),
       );
-      // The plain form keeps two arguments. A type test on every entry would
-      // make the fallback walk answer for a subclass nothing ever scanned,
-      // which is the silence the throw exists for.
-      expect(written, contains('DeclarationCollector(Enemy, _enemy),'));
+      // The plain form keeps the type test out and nothing else. A test on
+      // every entry would make the fallback walk answer for a subclass
+      // nothing ever scanned, which is the silence the throw exists for.
+      expect(
+        written,
+        contains('DeclarationCollector(Enemy, _enemy, _supertypes\$Enemy),'),
+      );
       expect(written, isNot(contains('_is\$Enemy')));
     });
 
@@ -1651,8 +1659,12 @@ class _Spawner<T extends EntityStruct> extends EntityStruct {
       expect(
         written,
         contains(
-          'DeclarationCollector.generic(_Spawner, _collect\$Spawner, '
-          '_is\$Spawner),',
+          'DeclarationCollector.generic(\n'
+          '          _Spawner,\n'
+          '          _collect\$Spawner,\n'
+          '          _is\$Spawner,\n'
+          '          _supertypes\$Spawner,\n'
+          '        ),',
         ),
       );
       expect(written, isNot(contains('_is\$Enemy')));

@@ -18,6 +18,17 @@
 // package's lib/ holds privately. That is another library,
 // so nothing here can read it - it keeps its place so that
 // what the row is missing, and where, is visible.
+//
+// Beside each list is every type an instance of that fixture
+// is, the fixture itself first, then the names in its
+// extends, with and implements clauses in that order, each
+// followed by its own supertypes. Nothing reads that order
+// positionally; it is fixed so two machines write one file.
+//
+// A type the generator did not read is not listed. A type it
+// read and this part cannot name keeps its place as a
+// comment - a part writes no imports of its own, so what it
+// may name is what its library already does.
 part of 'component_bits_test.dart';
 
 List<ScannableField> _collect$Ship(Object object) {
@@ -42,6 +53,19 @@ List<ScannableField> _collect$Ship(Object object) {
   ];
 }
 
+const List<Type> _supertypes$Ship = <Type>[
+  _Ship,
+  EntityStruct,
+  Coroutines,
+  Animations,
+  MultiComponent,
+  Component,
+  Scannable,
+  ScannableField,
+  Transform2D,
+  WorldTransform2D,
+];
+
 List<ScannableField> _collect$Eye(Object object) {
   final owner = object as _Eye;
   return <ScannableField>[
@@ -55,6 +79,19 @@ List<ScannableField> _collect$Eye(Object object) {
   ];
 }
 
+const List<Type> _supertypes$Eye = <Type>[
+  _Eye,
+  EntityStruct,
+  Coroutines,
+  Animations,
+  MultiComponent,
+  Component,
+  Scannable,
+  ScannableField,
+  Transform2D,
+  Camera,
+];
+
 List<ScannableField> _collect$Bare(Object object) {
   final owner = object as _Bare;
   return <ScannableField>[
@@ -63,6 +100,18 @@ List<ScannableField> _collect$Bare(Object object) {
     owner.childPrevSibling,
   ];
 }
+
+const List<Type> _supertypes$Bare = <Type>[
+  _Bare,
+  EntityStruct,
+  Coroutines,
+  Animations,
+  MultiComponent,
+  Component,
+  Scannable,
+  ScannableField,
+  Child,
+];
 
 List<ScannableField> _collect$Forward(Object object) {
   final owner = object as _Forward;
@@ -73,6 +122,13 @@ List<ScannableField> _collect$Forward(Object object) {
   ];
 }
 
+const List<Type> _supertypes$Forward = <Type>[
+  _Forward,
+  SceneStruct,
+  Coroutines,
+  Scannable,
+];
+
 List<ScannableField> _collect$Reversed(Object object) {
   final owner = object as _Reversed;
   return <ScannableField>[
@@ -81,6 +137,13 @@ List<ScannableField> _collect$Reversed(Object object) {
     owner.ship,
   ];
 }
+
+const List<Type> _supertypes$Reversed = <Type>[
+  _Reversed,
+  SceneStruct,
+  Coroutines,
+  Scannable,
+];
 
 /// Every fixture this library declares, and how to read one.
 ///
@@ -91,11 +154,15 @@ const GeneratedDeclarations _componentBitsTestDeclarations =
     GeneratedDeclarations(
       package: 'goo2d/test/component_bits_test.dart',
       collectors: <DeclarationCollector>[
-        DeclarationCollector(_Ship, _collect$Ship),
-        DeclarationCollector(_Eye, _collect$Eye),
-        DeclarationCollector(_Bare, _collect$Bare),
-        DeclarationCollector(_Forward, _collect$Forward),
-        DeclarationCollector(_Reversed, _collect$Reversed),
+        DeclarationCollector(_Ship, _collect$Ship, _supertypes$Ship),
+        DeclarationCollector(_Eye, _collect$Eye, _supertypes$Eye),
+        DeclarationCollector(_Bare, _collect$Bare, _supertypes$Bare),
+        DeclarationCollector(_Forward, _collect$Forward, _supertypes$Forward),
+        DeclarationCollector(
+          _Reversed,
+          _collect$Reversed,
+          _supertypes$Reversed,
+        ),
       ],
       dependencies: <GeneratedDeclarations>[
         goo2dDeclarations,

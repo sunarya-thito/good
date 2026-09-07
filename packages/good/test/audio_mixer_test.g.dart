@@ -18,6 +18,17 @@
 // package's lib/ holds privately. That is another library,
 // so nothing here can read it - it keeps its place so that
 // what the row is missing, and where, is visible.
+//
+// Beside each list is every type an instance of that fixture
+// is, the fixture itself first, then the names in its
+// extends, with and implements clauses in that order, each
+// followed by its own supertypes. Nothing reads that order
+// positionally; it is fixed so two machines write one file.
+//
+// A type the generator did not read is not listed. A type it
+// read and this part cannot name keeps its place as a
+// comment - a part writes no imports of its own, so what it
+// may name is what its library already does.
 part of 'audio_mixer_test.dart';
 
 List<ScannableField> _collect$MusicScene(Object object) {
@@ -27,6 +38,13 @@ List<ScannableField> _collect$MusicScene(Object object) {
   ];
 }
 
+const List<Type> _supertypes$MusicScene = <Type>[
+  _MusicScene,
+  SceneStruct,
+  // Coroutines: the library this part belongs to does not import it.
+  Scannable,
+];
+
 List<ScannableField> _collect$AlsoMusicScene(Object object) {
   final owner = object as _AlsoMusicScene;
   return <ScannableField>[
@@ -34,12 +52,26 @@ List<ScannableField> _collect$AlsoMusicScene(Object object) {
   ];
 }
 
+const List<Type> _supertypes$AlsoMusicScene = <Type>[
+  _AlsoMusicScene,
+  SceneStruct,
+  // Coroutines: the library this part belongs to does not import it.
+  Scannable,
+];
+
 List<ScannableField> _collect$EffectScene(Object object) {
   final owner = object as _EffectScene;
   return <ScannableField>[
     owner.hit,
   ];
 }
+
+const List<Type> _supertypes$EffectScene = <Type>[
+  _EffectScene,
+  SceneStruct,
+  // Coroutines: the library this part belongs to does not import it.
+  Scannable,
+];
 
 List<ScannableField> _collect$AudioState(Object object) {
   final owner = object as _AudioState;
@@ -57,10 +89,27 @@ List<ScannableField> _collect$AudioState(Object object) {
   ];
 }
 
+const List<Type> _supertypes$AudioState = <Type>[
+  _AudioState,
+  GameState,
+  // GameListenerBase: the library this part belongs to does not import it.
+  // GameListener: the library this part belongs to does not import it.
+  // EventBus: the library this part belongs to does not import it.
+  Scannable,
+  // Coroutines: the library this part belongs to does not import it.
+];
+
 List<ScannableField> _collect$AudioGame(Object object) {
   object as _AudioGame;
   return const <ScannableField>[];
 }
+
+const List<Type> _supertypes$AudioGame = <Type>[
+  _AudioGame,
+  Game,
+  // RandomOwner: the library this part belongs to does not import it.
+  Scannable,
+];
 
 /// Every fixture this library declares, and how to read one.
 ///
@@ -71,11 +120,31 @@ const GeneratedDeclarations _audioMixerTestDeclarations =
     GeneratedDeclarations(
       package: 'good/test/audio_mixer_test.dart',
       collectors: <DeclarationCollector>[
-        DeclarationCollector(_MusicScene, _collect$MusicScene),
-        DeclarationCollector(_AlsoMusicScene, _collect$AlsoMusicScene),
-        DeclarationCollector(_EffectScene, _collect$EffectScene),
-        DeclarationCollector(_AudioState, _collect$AudioState),
-        DeclarationCollector(_AudioGame, _collect$AudioGame),
+        DeclarationCollector(
+          _MusicScene,
+          _collect$MusicScene,
+          _supertypes$MusicScene,
+        ),
+        DeclarationCollector(
+          _AlsoMusicScene,
+          _collect$AlsoMusicScene,
+          _supertypes$AlsoMusicScene,
+        ),
+        DeclarationCollector(
+          _EffectScene,
+          _collect$EffectScene,
+          _supertypes$EffectScene,
+        ),
+        DeclarationCollector(
+          _AudioState,
+          _collect$AudioState,
+          _supertypes$AudioState,
+        ),
+        DeclarationCollector(
+          _AudioGame,
+          _collect$AudioGame,
+          _supertypes$AudioGame,
+        ),
       ],
       dependencies: <GeneratedDeclarations>[
         goodDeclarations,

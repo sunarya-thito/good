@@ -18,6 +18,17 @@
 // package's lib/ holds privately. That is another library,
 // so nothing here can read it - it keeps its place so that
 // what the row is missing, and where, is visible.
+//
+// Beside each list is every type an instance of that fixture
+// is, the fixture itself first, then the names in its
+// extends, with and implements clauses in that order, each
+// followed by its own supertypes. Nothing reads that order
+// positionally; it is fixed so two machines write one file.
+//
+// A type the generator did not read is not listed. A type it
+// read and this part cannot name keeps its place as a
+// comment - a part writes no imports of its own, so what it
+// may name is what its library already does.
 part of 'particles.dart';
 
 List<ScannableField> _collect$SetAblations(Object object) {
@@ -26,6 +37,14 @@ List<ScannableField> _collect$SetAblations(Object object) {
     owner.value,
   ];
 }
+
+const List<Type> _supertypes$SetAblations = <Type>[
+  SetAblations,
+  ValueSink,
+  SinkCommand,
+  GameCommandBase,
+  Scannable,
+];
 
 List<ScannableField> _collect$Mote(Object object) {
   final owner = object as Mote;
@@ -44,6 +63,19 @@ List<ScannableField> _collect$Mote(Object object) {
     owner.transformRotation,
   ];
 }
+
+const List<Type> _supertypes$Mote = <Type>[
+  Mote,
+  EntityStruct,
+  Coroutines,
+  Animations,
+  MultiComponent,
+  Component,
+  Scannable,
+  ScannableField,
+  Transform2D,
+  Renderable2D,
+];
 
 List<ScannableField> _collect$Eye(Object object) {
   final owner = object as Eye;
@@ -69,6 +101,20 @@ List<ScannableField> _collect$Eye(Object object) {
   ];
 }
 
+const List<Type> _supertypes$Eye = <Type>[
+  Eye,
+  EntityStruct,
+  Coroutines,
+  Animations,
+  MultiComponent,
+  Component,
+  Scannable,
+  ScannableField,
+  Transform2D,
+  WorldTransform2D,
+  Camera,
+];
+
 List<ScannableField> _collect$Galaxy(Object object) {
   final owner = object as Galaxy;
   return <ScannableField>[
@@ -77,12 +123,31 @@ List<ScannableField> _collect$Galaxy(Object object) {
   ];
 }
 
+const List<Type> _supertypes$Galaxy = <Type>[
+  Galaxy,
+  SceneStruct,
+  Coroutines,
+  Scannable,
+];
+
 List<ScannableField> _collect$SwirlSystem(Object object) {
   final owner = object as SwirlSystem;
   return <ScannableField>[
     owner.motes,
   ];
 }
+
+const List<Type> _supertypes$SwirlSystem = <Type>[
+  SwirlSystem,
+  GameSystem,
+  GameListenerBase,
+  GameListener,
+  EventBus,
+  Scannable,
+  Coroutines,
+  ScannableField,
+  FixedTickable,
+];
 
 List<ScannableField> _collect$ParticlesState(Object object) {
   final owner = object as ParticlesState;
@@ -109,6 +174,19 @@ List<ScannableField> _collect$ParticlesState(Object object) {
   ];
 }
 
+const List<Type> _supertypes$ParticlesState = <Type>[
+  ParticlesState,
+  DemoState,
+  GameState2D,
+  GameState,
+  GameListenerBase,
+  GameListener,
+  EventBus,
+  Scannable,
+  Coroutines,
+  Renderer2DState,
+];
+
 List<ScannableField> _collect$ParticlesGame(Object object) {
   final owner = object as ParticlesGame;
   return <ScannableField>[
@@ -126,6 +204,16 @@ List<ScannableField> _collect$ParticlesGame(Object object) {
   ];
 }
 
+const List<Type> _supertypes$ParticlesGame = <Type>[
+  ParticlesGame,
+  DemoGame,
+  Game2D,
+  Game,
+  // RandomOwner: the library this part belongs to does not import it.
+  Scannable,
+  Renderer2D,
+];
+
 /// Every fixture this library declares, and how to read one.
 ///
 /// It carries the package's own generated table as a
@@ -135,13 +223,29 @@ const GeneratedDeclarations _particlesDeclarations =
     GeneratedDeclarations(
       package: 'goo2d/example/lib/demo/particles.dart',
       collectors: <DeclarationCollector>[
-        DeclarationCollector(SetAblations, _collect$SetAblations),
-        DeclarationCollector(Mote, _collect$Mote),
-        DeclarationCollector(Eye, _collect$Eye),
-        DeclarationCollector(Galaxy, _collect$Galaxy),
-        DeclarationCollector(SwirlSystem, _collect$SwirlSystem),
-        DeclarationCollector(ParticlesState, _collect$ParticlesState),
-        DeclarationCollector(ParticlesGame, _collect$ParticlesGame),
+        DeclarationCollector(
+          SetAblations,
+          _collect$SetAblations,
+          _supertypes$SetAblations,
+        ),
+        DeclarationCollector(Mote, _collect$Mote, _supertypes$Mote),
+        DeclarationCollector(Eye, _collect$Eye, _supertypes$Eye),
+        DeclarationCollector(Galaxy, _collect$Galaxy, _supertypes$Galaxy),
+        DeclarationCollector(
+          SwirlSystem,
+          _collect$SwirlSystem,
+          _supertypes$SwirlSystem,
+        ),
+        DeclarationCollector(
+          ParticlesState,
+          _collect$ParticlesState,
+          _supertypes$ParticlesState,
+        ),
+        DeclarationCollector(
+          ParticlesGame,
+          _collect$ParticlesGame,
+          _supertypes$ParticlesGame,
+        ),
       ],
       dependencies: <GeneratedDeclarations>[
         goo2dDeclarations,

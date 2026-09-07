@@ -18,6 +18,17 @@
 // package's lib/ holds privately. That is another library,
 // so nothing here can read it - it keeps its place so that
 // what the row is missing, and where, is visible.
+//
+// Beside each list is every type an instance of that fixture
+// is, the fixture itself first, then the names in its
+// extends, with and implements clauses in that order, each
+// followed by its own supertypes. Nothing reads that order
+// positionally; it is fixed so two machines write one file.
+//
+// A type the generator did not read is not listed. A type it
+// read and this part cannot name keeps its place as a
+// comment - a part writes no imports of its own, so what it
+// may name is what its library already does.
 part of 'game_buffer_test.dart';
 
 List<ScannableField> _collect$Empty(Object object) {
@@ -25,15 +36,45 @@ List<ScannableField> _collect$Empty(Object object) {
   return const <ScannableField>[];
 }
 
+const List<Type> _supertypes$Empty = <Type>[
+  _Empty,
+  EntityStruct,
+  // Coroutines: the library this part belongs to does not import it.
+  // Animations: the library this part belongs to does not import it.
+  MultiComponent,
+  Component,
+  Scannable,
+  ScannableField,
+];
+
 List<ScannableField> _collect$EmptyScene(Object object) {
   object as _EmptyScene;
   return const <ScannableField>[];
 }
 
+const List<Type> _supertypes$EmptyScene = <Type>[
+  _EmptyScene,
+  SceneStruct,
+  // Coroutines: the library this part belongs to does not import it.
+  Scannable,
+];
+
 List<ScannableField> _collect$PingSystem(Object object) {
   object as _PingSystem;
   return const <ScannableField>[];
 }
+
+const List<Type> _supertypes$PingSystem = <Type>[
+  _PingSystem,
+  GameSystem,
+  // GameListenerBase: the library this part belongs to does not import it.
+  // GameListener: the library this part belongs to does not import it.
+  // EventBus: the library this part belongs to does not import it.
+  Scannable,
+  // Coroutines: the library this part belongs to does not import it.
+  ScannableField,
+  FixedTickable,
+];
 
 List<ScannableField> _collect$BufferState(Object object) {
   final owner = object as _BufferState;
@@ -52,20 +93,53 @@ List<ScannableField> _collect$BufferState(Object object) {
   ];
 }
 
+const List<Type> _supertypes$BufferState = <Type>[
+  _BufferState,
+  GameState,
+  // GameListenerBase: the library this part belongs to does not import it.
+  // GameListener: the library this part belongs to does not import it.
+  // EventBus: the library this part belongs to does not import it.
+  Scannable,
+  // Coroutines: the library this part belongs to does not import it.
+];
+
 List<ScannableField> _collect$BufferGame(Object object) {
   object as _BufferGame;
   return const <ScannableField>[];
 }
+
+const List<Type> _supertypes$BufferGame = <Type>[
+  _BufferGame,
+  Game,
+  // RandomOwner: the library this part belongs to does not import it.
+  Scannable,
+];
 
 List<ScannableField> _collect$TwoBufferGame(Object object) {
   object as _TwoBufferGame;
   return const <ScannableField>[];
 }
 
+const List<Type> _supertypes$TwoBufferGame = <Type>[
+  _TwoBufferGame,
+  _BufferGame,
+  Game,
+  // RandomOwner: the library this part belongs to does not import it.
+  Scannable,
+];
+
 List<ScannableField> _collect$TinyBufferGame(Object object) {
   object as _TinyBufferGame;
   return const <ScannableField>[];
 }
+
+const List<Type> _supertypes$TinyBufferGame = <Type>[
+  _TinyBufferGame,
+  _BufferGame,
+  Game,
+  // RandomOwner: the library this part belongs to does not import it.
+  Scannable,
+];
 
 List<ScannableField> _collect$BareState(Object object) {
   final owner = object as _BareState;
@@ -83,10 +157,27 @@ List<ScannableField> _collect$BareState(Object object) {
   ];
 }
 
+const List<Type> _supertypes$BareState = <Type>[
+  _BareState,
+  GameState,
+  // GameListenerBase: the library this part belongs to does not import it.
+  // GameListener: the library this part belongs to does not import it.
+  // EventBus: the library this part belongs to does not import it.
+  Scannable,
+  // Coroutines: the library this part belongs to does not import it.
+];
+
 List<ScannableField> _collect$BareGame(Object object) {
   object as _BareGame;
   return const <ScannableField>[];
 }
+
+const List<Type> _supertypes$BareGame = <Type>[
+  _BareGame,
+  Game,
+  // RandomOwner: the library this part belongs to does not import it.
+  Scannable,
+];
 
 /// Every fixture this library declares, and how to read one.
 ///
@@ -97,15 +188,47 @@ const GeneratedDeclarations _gameBufferTestDeclarations =
     GeneratedDeclarations(
       package: 'good/test/game_buffer_test.dart',
       collectors: <DeclarationCollector>[
-        DeclarationCollector(_Empty, _collect$Empty),
-        DeclarationCollector(_EmptyScene, _collect$EmptyScene),
-        DeclarationCollector(_PingSystem, _collect$PingSystem),
-        DeclarationCollector(_BufferState, _collect$BufferState),
-        DeclarationCollector(_BufferGame, _collect$BufferGame),
-        DeclarationCollector(_TwoBufferGame, _collect$TwoBufferGame),
-        DeclarationCollector(_TinyBufferGame, _collect$TinyBufferGame),
-        DeclarationCollector(_BareState, _collect$BareState),
-        DeclarationCollector(_BareGame, _collect$BareGame),
+        DeclarationCollector(_Empty, _collect$Empty, _supertypes$Empty),
+        DeclarationCollector(
+          _EmptyScene,
+          _collect$EmptyScene,
+          _supertypes$EmptyScene,
+        ),
+        DeclarationCollector(
+          _PingSystem,
+          _collect$PingSystem,
+          _supertypes$PingSystem,
+        ),
+        DeclarationCollector(
+          _BufferState,
+          _collect$BufferState,
+          _supertypes$BufferState,
+        ),
+        DeclarationCollector(
+          _BufferGame,
+          _collect$BufferGame,
+          _supertypes$BufferGame,
+        ),
+        DeclarationCollector(
+          _TwoBufferGame,
+          _collect$TwoBufferGame,
+          _supertypes$TwoBufferGame,
+        ),
+        DeclarationCollector(
+          _TinyBufferGame,
+          _collect$TinyBufferGame,
+          _supertypes$TinyBufferGame,
+        ),
+        DeclarationCollector(
+          _BareState,
+          _collect$BareState,
+          _supertypes$BareState,
+        ),
+        DeclarationCollector(
+          _BareGame,
+          _collect$BareGame,
+          _supertypes$BareGame,
+        ),
       ],
       dependencies: <GeneratedDeclarations>[
         goodDeclarations,

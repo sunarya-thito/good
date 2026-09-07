@@ -5,6 +5,8 @@ import 'package:good_tool/src/scan.dart';
 import 'package:good_cli/src/generate/engine_package.dart';
 // ignore: implementation_imports
 import 'package:good_cli/src/generate/declaration_collectors.dart';
+// ignore: implementation_imports
+import 'package:good_cli/src/generate/declaration_emit.dart';
 
 /// A part beside every test or example library that declares a fixture.
 ///
@@ -69,7 +71,18 @@ String emitFixtureDeclarations(FixtureLibrary library) {
     ..writeln('// A commented-out line is a declaration a mixin from a')
     ..writeln("// package's lib/ holds privately. That is another library,")
     ..writeln('// so nothing here can read it - it keeps its place so that')
-    ..writeln('// what the row is missing, and where, is visible.');
+    ..writeln('// what the row is missing, and where, is visible.')
+    ..writeln('//')
+    ..writeln('// Beside each list is every type an instance of that fixture')
+    ..writeln('// is, the fixture itself first, then the names in its')
+    ..writeln('// extends, with and implements clauses in that order, each')
+    ..writeln('// followed by its own supertypes. Nothing reads that order')
+    ..writeln('// positionally; it is fixed so two machines write one file.')
+    ..writeln('//')
+    ..writeln('// A type the generator did not read is not listed. A type it')
+    ..writeln('// read and this part cannot name keeps its place as a')
+    ..writeln('// comment - a part writes no imports of its own, so what it')
+    ..writeln('// may name is what its library already does.');
   if (library.collectors.any((collector) => collector.isGeneric)) {
     buffer
       ..writeln('//')
@@ -96,20 +109,23 @@ String emitFixtureDeclarations(FixtureLibrary library) {
         ..writeln('  return const <$scannableFieldType>[];')
         ..writeln('}')
         ..writeln();
-      continue;
+    } else {
+      buffer.writeln('  return <$scannableFieldType>[');
+      for (final field in collector.fields) {
+        buffer.writeln(
+          field.isPrivate
+              ? '    // ${field.owner}.${field.name}: private, unreachable.'
+              : '    owner.${field.name},',
+        );
+      }
+      buffer
+        ..writeln('  ];')
+        ..writeln('}')
+        ..writeln();
     }
-    buffer.writeln('  return <$scannableFieldType>[');
-    for (final field in collector.fields) {
-      buffer.writeln(
-        field.isPrivate
-            ? '    // ${field.owner}.${field.name}: private, unreachable.'
-            : '    owner.${field.name},',
-      );
-    }
-    buffer
-      ..writeln('  ];')
-      ..writeln('}')
-      ..writeln();
+    buffer.writeln(
+      emitSupertypes(collector.supertypesName, collector.supertypes),
+    );
   }
 
   for (final collector in library.collectors) {
@@ -163,25 +179,23 @@ String emitFixtureDeclarations(FixtureLibrary library) {
     ..writeln("      package: '${library.tableKey}',")
     ..writeln('      collectors: <$declarationCollectorType>[');
   for (final collector in library.collectors) {
-    if (!collector.isGeneric) {
-      buffer.writeln(
-        '        $declarationCollectorType(${collector.type}, '
-        '${collector.functionName}),',
-      );
-      continue;
-    }
-    final line =
-        '        $declarationCollectorType.generic(${collector.type}, '
-        '${collector.functionName}, ${collector.matcherName}),';
     // Wrapped only when it has to be, the way the accessor emitter wraps a
     // setter. `dart format` is not run over a generated file.
+    final arguments = <String>[
+      collector.type,
+      collector.functionName,
+      if (collector.isGeneric) collector.matcherName,
+      collector.supertypesName,
+    ];
+    final constructor = collector.isGeneric
+        ? '$declarationCollectorType.generic'
+        : declarationCollectorType;
+    final line = '        $constructor(${arguments.join(', ')}),';
     buffer.writeln(
       line.length <= 80
           ? line
-          : '        $declarationCollectorType.generic(\n'
-                '          ${collector.type},\n'
-                '          ${collector.functionName},\n'
-                '          ${collector.matcherName},\n'
+          : '        $constructor(\n'
+                '${arguments.map((a) => '          $a,\n').join()}'
                 '        ),',
     );
   }

@@ -22,6 +22,18 @@
 // field. Dart privacy is per library and this is a different
 // one, so nothing here can read it - it keeps its place so
 // that what the row is missing, and where, is visible.
+//
+// Beside each list is every type an instance of that class
+// is, the class itself first, then the names in its extends,
+// with and implements clauses in that order, each followed by
+// its own supertypes. Nothing reads that order positionally;
+// it is fixed so two machines write one file.
+//
+// A type the generator did not read - anything in dart: or in
+// a package outside the run - is not listed, because nothing
+// downstream of this file can act on a name it never saw. A
+// type it did read and this library cannot name keeps its
+// place as a comment.
 
 import 'package:goo2d/src/data/world_transform.dart';
 import 'package:goo2d/src/input/pointer.dart';
@@ -35,6 +47,19 @@ List<ScannableField> _worldTransformSystem(Object object) {
   ];
 }
 
+const List<Type> _supertypes$WorldTransformSystem = <Type>[
+  WorldTransformSystem,
+  GameSystem,
+  GameListenerBase,
+  GameListener,
+  EventBus,
+  Scannable,
+  Coroutines,
+  ScannableField,
+  FixedTickable,
+  EntitySpawnListener,
+];
+
 List<ScannableField> _pointerPickingSystem(Object object) {
   final owner = object as PointerPickingSystem;
   return <ScannableField>[
@@ -47,6 +72,18 @@ List<ScannableField> _pointerPickingSystem(Object object) {
   ];
 }
 
+const List<Type> _supertypes$PointerPickingSystem = <Type>[
+  PointerPickingSystem,
+  GameSystem,
+  GameListenerBase,
+  GameListener,
+  EventBus,
+  Scannable,
+  Coroutines,
+  ScannableField,
+  FixedTickable,
+];
+
 List<ScannableField> _gameRenderer2D(Object object) {
   final owner = object as GameRenderer2D;
   return <ScannableField>[
@@ -56,6 +93,18 @@ List<ScannableField> _gameRenderer2D(Object object) {
     owner.cameras,
   ];
 }
+
+const List<Type> _supertypes$GameRenderer2D = <Type>[
+  GameRenderer2D,
+  GameSystem,
+  GameListenerBase,
+  GameListener,
+  EventBus,
+  Scannable,
+  Coroutines,
+  ScannableField,
+  Tickable,
+];
 
 /// Every class `package:goo2d` can instantiate that holds a
 /// declaration, and how to read one.
@@ -67,9 +116,21 @@ List<ScannableField> _gameRenderer2D(Object object) {
 const GeneratedDeclarations goo2dDeclarations = GeneratedDeclarations(
   package: 'goo2d',
   collectors: <DeclarationCollector>[
-    DeclarationCollector(WorldTransformSystem, _worldTransformSystem),
-    DeclarationCollector(PointerPickingSystem, _pointerPickingSystem),
-    DeclarationCollector(GameRenderer2D, _gameRenderer2D),
+    DeclarationCollector(
+      WorldTransformSystem,
+      _worldTransformSystem,
+      _supertypes$WorldTransformSystem,
+    ),
+    DeclarationCollector(
+      PointerPickingSystem,
+      _pointerPickingSystem,
+      _supertypes$PointerPickingSystem,
+    ),
+    DeclarationCollector(
+      GameRenderer2D,
+      _gameRenderer2D,
+      _supertypes$GameRenderer2D,
+    ),
   ],
   dependencies: <GeneratedDeclarations>[
     goodDeclarations,

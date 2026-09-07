@@ -18,6 +18,17 @@
 // package's lib/ holds privately. That is another library,
 // so nothing here can read it - it keeps its place so that
 // what the row is missing, and where, is visible.
+//
+// Beside each list is every type an instance of that fixture
+// is, the fixture itself first, then the names in its
+// extends, with and implements clauses in that order, each
+// followed by its own supertypes. Nothing reads that order
+// positionally; it is fixed so two machines write one file.
+//
+// A type the generator did not read is not listed. A type it
+// read and this part cannot name keeps its place as a
+// comment - a part writes no imports of its own, so what it
+// may name is what its library already does.
 part of 'pointer_picking_test.dart';
 
 List<ScannableField> _collect$Button(Object object) {
@@ -44,6 +55,25 @@ List<ScannableField> _collect$Button(Object object) {
   ];
 }
 
+const List<Type> _supertypes$Button = <Type>[
+  _Button,
+  EntityStruct,
+  Coroutines,
+  Animations,
+  MultiComponent,
+  Component,
+  Scannable,
+  ScannableField,
+  Transform2D,
+  WorldTransform2D,
+  Renderable2D,
+  Collider2D,
+  PointerReceiver,
+  PointerListener,
+  HoverReceiver,
+  HoverListener,
+];
+
 List<ScannableField> _collect$Panel(Object object) {
   final owner = object as _Panel;
   return <ScannableField>[
@@ -68,6 +98,25 @@ List<ScannableField> _collect$Panel(Object object) {
   ];
 }
 
+const List<Type> _supertypes$Panel = <Type>[
+  _Panel,
+  EntityStruct,
+  Coroutines,
+  Animations,
+  MultiComponent,
+  Component,
+  Scannable,
+  ScannableField,
+  Transform2D,
+  WorldTransform2D,
+  Renderable2D,
+  Collider2D,
+  PointerReceiver,
+  PointerListener,
+  HoverReceiver,
+  HoverListener,
+];
+
 List<ScannableField> _collect$Zone(Object object) {
   final owner = object as _Zone;
   return <ScannableField>[
@@ -91,6 +140,24 @@ List<ScannableField> _collect$Zone(Object object) {
   ];
 }
 
+const List<Type> _supertypes$Zone = <Type>[
+  _Zone,
+  EntityStruct,
+  Coroutines,
+  Animations,
+  MultiComponent,
+  Component,
+  Scannable,
+  ScannableField,
+  Transform2D,
+  WorldTransform2D,
+  Collider2D,
+  PointerReceiver,
+  PointerListener,
+  HoverReceiver,
+  HoverListener,
+];
+
 List<ScannableField> _collect$Naked(Object object) {
   final owner = object as _Naked;
   return <ScannableField>[
@@ -112,6 +179,23 @@ List<ScannableField> _collect$Naked(Object object) {
     owner.transformRotation,
   ];
 }
+
+const List<Type> _supertypes$Naked = <Type>[
+  _Naked,
+  EntityStruct,
+  Coroutines,
+  Animations,
+  MultiComponent,
+  Component,
+  Scannable,
+  ScannableField,
+  Transform2D,
+  WorldTransform2D,
+  PointerReceiver,
+  PointerListener,
+  HoverReceiver,
+  HoverListener,
+];
 
 List<ScannableField> _collect$Satellite(Object object) {
   final owner = object as _Satellite;
@@ -135,6 +219,24 @@ List<ScannableField> _collect$Satellite(Object object) {
     owner.transformRotation,
   ];
 }
+
+const List<Type> _supertypes$Satellite = <Type>[
+  _Satellite,
+  EntityStruct,
+  Coroutines,
+  Animations,
+  MultiComponent,
+  Component,
+  Scannable,
+  ScannableField,
+  Transform2D,
+  WorldTransform2D,
+  Collider2D,
+  PointerReceiver,
+  PointerListener,
+  HoverReceiver,
+  HoverListener,
+];
 
 List<ScannableField> _collect$Compound(Object object) {
   final owner = object as _Compound;
@@ -160,6 +262,24 @@ List<ScannableField> _collect$Compound(Object object) {
   ];
 }
 
+const List<Type> _supertypes$Compound = <Type>[
+  _Compound,
+  EntityStruct,
+  Coroutines,
+  Animations,
+  MultiComponent,
+  Component,
+  Scannable,
+  ScannableField,
+  Transform2D,
+  WorldTransform2D,
+  Collider2D,
+  PointerReceiver,
+  PointerListener,
+  HoverReceiver,
+  HoverListener,
+];
+
 List<ScannableField> _collect$Pad(Object object) {
   final owner = object as _Pad;
   return <ScannableField>[
@@ -182,6 +302,22 @@ List<ScannableField> _collect$Pad(Object object) {
     owner.transformRotation,
   ];
 }
+
+const List<Type> _supertypes$Pad = <Type>[
+  _Pad,
+  EntityStruct,
+  Coroutines,
+  Animations,
+  MultiComponent,
+  Component,
+  Scannable,
+  ScannableField,
+  Transform2D,
+  WorldTransform2D,
+  Collider2D,
+  PointerReceiver,
+  PointerListener,
+];
 
 List<ScannableField> _collect$Glass(Object object) {
   final owner = object as _Glass;
@@ -207,6 +343,23 @@ List<ScannableField> _collect$Glass(Object object) {
   ];
 }
 
+const List<Type> _supertypes$Glass = <Type>[
+  _Glass,
+  EntityStruct,
+  Coroutines,
+  Animations,
+  MultiComponent,
+  Component,
+  Scannable,
+  ScannableField,
+  Transform2D,
+  WorldTransform2D,
+  Renderable2D,
+  Collider2D,
+  HoverReceiver,
+  HoverListener,
+];
+
 List<ScannableField> _collect$Eye(Object object) {
   final owner = object as _Eye;
   return <ScannableField>[
@@ -231,6 +384,20 @@ List<ScannableField> _collect$Eye(Object object) {
   ];
 }
 
+const List<Type> _supertypes$Eye = <Type>[
+  _Eye,
+  EntityStruct,
+  Coroutines,
+  Animations,
+  MultiComponent,
+  Component,
+  Scannable,
+  ScannableField,
+  Transform2D,
+  WorldTransform2D,
+  Camera,
+];
+
 List<ScannableField> _collect$Scene(Object object) {
   final owner = object as _Scene;
   return <ScannableField>[
@@ -245,6 +412,13 @@ List<ScannableField> _collect$Scene(Object object) {
     owner.glass,
   ];
 }
+
+const List<Type> _supertypes$Scene = <Type>[
+  _Scene,
+  SceneStruct,
+  Coroutines,
+  Scannable,
+];
 
 List<ScannableField> _collect$GameState(Object object) {
   final owner = object as _GameState;
@@ -264,10 +438,27 @@ List<ScannableField> _collect$GameState(Object object) {
   ];
 }
 
+const List<Type> _supertypes$GameState = <Type>[
+  _GameState,
+  GameState,
+  GameListenerBase,
+  GameListener,
+  EventBus,
+  Scannable,
+  Coroutines,
+];
+
 List<ScannableField> _collect$Game(Object object) {
   object as _Game;
   return const <ScannableField>[];
 }
+
+const List<Type> _supertypes$Game = <Type>[
+  _Game,
+  Game,
+  // RandomOwner: the library this part belongs to does not import it.
+  Scannable,
+];
 
 /// Every fixture this library declares, and how to read one.
 ///
@@ -278,18 +469,30 @@ const GeneratedDeclarations _pointerPickingTestDeclarations =
     GeneratedDeclarations(
       package: 'goo2d/test/pointer_picking_test.dart',
       collectors: <DeclarationCollector>[
-        DeclarationCollector(_Button, _collect$Button),
-        DeclarationCollector(_Panel, _collect$Panel),
-        DeclarationCollector(_Zone, _collect$Zone),
-        DeclarationCollector(_Naked, _collect$Naked),
-        DeclarationCollector(_Satellite, _collect$Satellite),
-        DeclarationCollector(_Compound, _collect$Compound),
-        DeclarationCollector(_Pad, _collect$Pad),
-        DeclarationCollector(_Glass, _collect$Glass),
-        DeclarationCollector(_Eye, _collect$Eye),
-        DeclarationCollector(_Scene, _collect$Scene),
-        DeclarationCollector(_GameState, _collect$GameState),
-        DeclarationCollector(_Game, _collect$Game),
+        DeclarationCollector(_Button, _collect$Button, _supertypes$Button),
+        DeclarationCollector(_Panel, _collect$Panel, _supertypes$Panel),
+        DeclarationCollector(_Zone, _collect$Zone, _supertypes$Zone),
+        DeclarationCollector(_Naked, _collect$Naked, _supertypes$Naked),
+        DeclarationCollector(
+          _Satellite,
+          _collect$Satellite,
+          _supertypes$Satellite,
+        ),
+        DeclarationCollector(
+          _Compound,
+          _collect$Compound,
+          _supertypes$Compound,
+        ),
+        DeclarationCollector(_Pad, _collect$Pad, _supertypes$Pad),
+        DeclarationCollector(_Glass, _collect$Glass, _supertypes$Glass),
+        DeclarationCollector(_Eye, _collect$Eye, _supertypes$Eye),
+        DeclarationCollector(_Scene, _collect$Scene, _supertypes$Scene),
+        DeclarationCollector(
+          _GameState,
+          _collect$GameState,
+          _supertypes$GameState,
+        ),
+        DeclarationCollector(_Game, _collect$Game, _supertypes$Game),
       ],
       dependencies: <GeneratedDeclarations>[
         goo2dDeclarations,

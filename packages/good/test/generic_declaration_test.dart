@@ -100,7 +100,12 @@ void main() {
       GeneratedDeclarations(
         package: 'good/test/generic_declaration_test.dart hand-built',
         collectors: <DeclarationCollector>[
-          DeclarationCollector.generic(_Spawner, _collect$Spawner, _is$Spawner),
+          DeclarationCollector.generic(
+            _Spawner,
+            _collect$Spawner,
+            _is$Spawner,
+            _supertypes$Spawner,
+          ),
         ],
       ),
     ]);

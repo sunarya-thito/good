@@ -2,6 +2,17 @@
 
 ### Changed
 
+* **`declarations.g.dart` carries a type list beside each field list** (#381).
+  The walk over a class's `extends`, `with`, `on` and `implements` clauses
+  already ran to put the fields in construction order; it now also writes what
+  the class is, so `collectSupertypes` has something to read. Field lists are
+  unchanged - the same collectors, in the same order.
+
+  A type the run never read is left out, because nothing downstream of this
+  file can act on a name that was never scanned. One it did read and the
+  generated library cannot name - a private supertype, say - keeps its place as
+  a comment, the way an unreadable field does.
+
 * **The scene scan reads field initialisers, not only method bodies.** It kept
   `describeAssets` and `describeScene` bodies and skipped everything else, so
   `final texture = Asset.of(Textures.player)` was attributed to no scene. That

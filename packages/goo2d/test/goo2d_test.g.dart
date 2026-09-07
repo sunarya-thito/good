@@ -18,6 +18,17 @@
 // package's lib/ holds privately. That is another library,
 // so nothing here can read it - it keeps its place so that
 // what the row is missing, and where, is visible.
+//
+// Beside each list is every type an instance of that fixture
+// is, the fixture itself first, then the names in its
+// extends, with and implements clauses in that order, each
+// followed by its own supertypes. Nothing reads that order
+// positionally; it is fixed so two machines write one file.
+//
+// A type the generator did not read is not listed. A type it
+// read and this part cannot name keeps its place as a
+// comment - a part writes no imports of its own, so what it
+// may name is what its library already does.
 part of 'goo2d_test.dart';
 
 List<ScannableField> _collect$Player(Object object) {
@@ -34,6 +45,19 @@ List<ScannableField> _collect$Player(Object object) {
   ];
 }
 
+const List<Type> _supertypes$Player = <Type>[
+  Player,
+  EntityStruct,
+  Coroutines,
+  Animations,
+  MultiComponent,
+  Component,
+  Scannable,
+  ScannableField,
+  Transform2D,
+  Child,
+];
+
 List<ScannableField> _collect$Enemy(Object object) {
   final owner = object as Enemy;
   return <ScannableField>[
@@ -48,6 +72,19 @@ List<ScannableField> _collect$Enemy(Object object) {
   ];
 }
 
+const List<Type> _supertypes$Enemy = <Type>[
+  Enemy,
+  EntityStruct,
+  Coroutines,
+  Animations,
+  MultiComponent,
+  Component,
+  Scannable,
+  ScannableField,
+  Transform2D,
+  Child,
+];
+
 List<ScannableField> _collect$Rock(Object object) {
   final owner = object as Rock;
   return <ScannableField>[
@@ -59,6 +96,18 @@ List<ScannableField> _collect$Rock(Object object) {
   ];
 }
 
+const List<Type> _supertypes$Rock = <Type>[
+  Rock,
+  EntityStruct,
+  Coroutines,
+  Animations,
+  MultiComponent,
+  Component,
+  Scannable,
+  ScannableField,
+  Transform2D,
+];
+
 List<ScannableField> _collect$MainScene(Object object) {
   final owner = object as MainScene;
   return <ScannableField>[
@@ -67,6 +116,13 @@ List<ScannableField> _collect$MainScene(Object object) {
     owner.rockPrefab,
   ];
 }
+
+const List<Type> _supertypes$MainScene = <Type>[
+  MainScene,
+  SceneStruct,
+  Coroutines,
+  Scannable,
+];
 
 /// Every fixture this library declares, and how to read one.
 ///
@@ -77,10 +133,14 @@ const GeneratedDeclarations _goo2dTestDeclarations =
     GeneratedDeclarations(
       package: 'goo2d/test/goo2d_test.dart',
       collectors: <DeclarationCollector>[
-        DeclarationCollector(Player, _collect$Player),
-        DeclarationCollector(Enemy, _collect$Enemy),
-        DeclarationCollector(Rock, _collect$Rock),
-        DeclarationCollector(MainScene, _collect$MainScene),
+        DeclarationCollector(Player, _collect$Player, _supertypes$Player),
+        DeclarationCollector(Enemy, _collect$Enemy, _supertypes$Enemy),
+        DeclarationCollector(Rock, _collect$Rock, _supertypes$Rock),
+        DeclarationCollector(
+          MainScene,
+          _collect$MainScene,
+          _supertypes$MainScene,
+        ),
       ],
       dependencies: <GeneratedDeclarations>[
         goo2dDeclarations,

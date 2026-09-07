@@ -597,6 +597,8 @@ class LibraryScopes {
       <String, Map<String, ScannedType>>{};
   final Map<String, Map<String, ScannedType>> _namespaces =
       <String, Map<String, ScannedType>>{};
+  final Map<String, Map<String, ScannedType>> _visible =
+      <String, Map<String, ScannedType>>{};
   final Map<String, Set<String>> _closures = <String, Set<String>>{};
   Map<String, String>? _libDirs;
 
@@ -655,6 +657,49 @@ class LibraryScopes {
     }
     return unread;
   }
+
+  /// The types a bare name written in the library at [path] actually means.
+  ///
+  /// Narrower than [scopeOf], and the two are not interchangeable. [scopeOf]
+  /// follows an imported library's own imports, because what it answers is
+  /// where a supertype chain goes and a chain crosses libraries that never
+  /// imported each other. This answers what a line written *in this library*
+  /// may say, which is Dart's rule and not that one: what the library
+  /// declares, plus what each unprefixed import exports.
+  ///
+  /// A generated part is compiled inside this library, so this is the test a
+  /// name written into one has to pass. Being wide here does not produce a
+  /// longer answer, it produces a part that does not compile - which is why
+  /// the pass that emits one asks this rather than the map it walked with.
+  ///
+  /// Private names from another library are in it, because an export
+  /// namespace is read off declarations and nothing here filters them. A
+  /// caller writing a name checks that itself; it is a fact about the name
+  /// rather than about the scope.
+  Map<String, ScannedType> visibleIn(String path) =>
+      _visible.putIfAbsent(path, () {
+        final visible = <String, ScannedType>{};
+        final unit = _units[path];
+        if (unit == null) return visible;
+        for (final type in unit.types) {
+          visible.putIfAbsent(type.name, () => type);
+        }
+        for (final import in unit.imports) {
+          if (import.prefix != null) continue;
+          final target = resolveDirectiveUri(
+            import.uri,
+            from: path,
+            libDirs: _packageLibDirs,
+          );
+          if (target == null) continue;
+          _namespaceOf(target).forEach((name, type) {
+            if (import.shown.isNotEmpty && !import.shown.contains(name)) return;
+            if (import.hidden.contains(name)) return;
+            visible.putIfAbsent(name, () => type);
+          });
+        }
+        return visible;
+      });
 
   /// [scopeOf] over [base], for a pass that has to keep its own map.
   ///
@@ -2912,6 +2957,54 @@ List<ScannedDeclaration> flattenedDeclarations(
     }
   }
   return flattened;
+}
+
+/// Every type [type] is, [type] itself first.
+///
+/// The other half of the walk [flattenedDeclarations] makes, over all four
+/// clauses instead of the two that build a row. `extends`, `with` and `on`
+/// carry state upwards and `implements` does not, which is why the field walk
+/// reads only the first two - but "is this an instance of that" is carried by
+/// every one of them, so a list meant to be asked that question reads them all.
+///
+/// # The order
+///
+/// Depth first over the clauses as they are written - for a class the
+/// `extends` name, then the `with` names left to right, then the `implements`
+/// names; for a mixin the `on` names then the `implements` names - each one
+/// followed by its own supertypes before the next name beside it. A name
+/// reached twice keeps the first place it got.
+///
+/// [ScannedType.supertypes] is already in that order, so this is the walk and
+/// not a sort. Nothing here consults a file system, a hash order or a clock:
+/// the answer is a function of the source, which is what lets a generated
+/// table be compared between two machines.
+///
+/// # A name it could not resolve is still in the list
+///
+/// It stops the walk - there is nothing above it to read - but the name was
+/// written in a clause, so it is part of what the class is, and what to do
+/// about that is the caller's call. Both emitters drop such a name rather
+/// than marking it, because everything that reads a generated table works off
+/// this same scan and none of it can act on a name nothing read. Deciding it
+/// *here* would leave a caller unable to tell "no other supertype" from "did
+/// not read the package that says what it is".
+List<String> flattenedSupertypes(
+  ScannedType type,
+  Map<String, ScannedType> typesByName,
+) {
+  final ordered = <String>[];
+  final seen = <String>{};
+  void walk(String name) {
+    if (!seen.add(name)) return;
+    ordered.add(name);
+    for (final supertype in typesByName[name]?.supertypes ?? const <String>[]) {
+      walk(supertype);
+    }
+  }
+
+  walk(type.name);
+  return ordered;
 }
 
 /// Every name in [type]'s construction chain that [typesByName] does not hold.

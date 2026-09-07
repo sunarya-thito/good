@@ -18,6 +18,17 @@
 // package's lib/ holds privately. That is another library,
 // so nothing here can read it - it keeps its place so that
 // what the row is missing, and where, is visible.
+//
+// Beside each list is every type an instance of that fixture
+// is, the fixture itself first, then the names in its
+// extends, with and implements clauses in that order, each
+// followed by its own supertypes. Nothing reads that order
+// positionally; it is fixed so two machines write one file.
+//
+// A type the generator did not read is not listed. A type it
+// read and this part cannot name keeps its place as a
+// comment - a part writes no imports of its own, so what it
+// may name is what its library already does.
 part of 'static_sync_test.dart';
 
 List<ScannableField> _collect$Slab(Object object) {
@@ -46,6 +57,20 @@ List<ScannableField> _collect$Slab(Object object) {
   ];
 }
 
+const List<Type> _supertypes$Slab = <Type>[
+  _Slab,
+  EntityStruct,
+  Coroutines,
+  Animations,
+  MultiComponent,
+  Component,
+  Scannable,
+  ScannableField,
+  Transform2D,
+  Collider2D,
+  RigidBody2D,
+];
+
 List<ScannableField> _collect$Scene(Object object) {
   final owner = object as _Scene;
   return <ScannableField>[
@@ -53,10 +78,29 @@ List<ScannableField> _collect$Scene(Object object) {
   ];
 }
 
+const List<Type> _supertypes$Scene = <Type>[
+  _Scene,
+  SceneStruct,
+  Coroutines,
+  Scannable,
+];
+
 List<ScannableField> _collect$Turner(Object object) {
   object as _Turner;
   return const <ScannableField>[];
 }
+
+const List<Type> _supertypes$Turner = <Type>[
+  _Turner,
+  GameSystem,
+  GameListenerBase,
+  GameListener,
+  EventBus,
+  Scannable,
+  Coroutines,
+  ScannableField,
+  FixedTickable,
+];
 
 List<ScannableField> _collect$GameState(Object object) {
   final owner = object as _GameState;
@@ -76,10 +120,27 @@ List<ScannableField> _collect$GameState(Object object) {
   ];
 }
 
+const List<Type> _supertypes$GameState = <Type>[
+  _GameState,
+  GameState,
+  GameListenerBase,
+  GameListener,
+  EventBus,
+  Scannable,
+  Coroutines,
+];
+
 List<ScannableField> _collect$Game(Object object) {
   object as _Game;
   return const <ScannableField>[];
 }
+
+const List<Type> _supertypes$Game = <Type>[
+  _Game,
+  Game,
+  // RandomOwner: the library this part belongs to does not import it.
+  Scannable,
+];
 
 /// Every fixture this library declares, and how to read one.
 ///
@@ -90,11 +151,15 @@ const GeneratedDeclarations _staticSyncTestDeclarations =
     GeneratedDeclarations(
       package: 'goo2d_physics_box2d/test/static_sync_test.dart',
       collectors: <DeclarationCollector>[
-        DeclarationCollector(_Slab, _collect$Slab),
-        DeclarationCollector(_Scene, _collect$Scene),
-        DeclarationCollector(_Turner, _collect$Turner),
-        DeclarationCollector(_GameState, _collect$GameState),
-        DeclarationCollector(_Game, _collect$Game),
+        DeclarationCollector(_Slab, _collect$Slab, _supertypes$Slab),
+        DeclarationCollector(_Scene, _collect$Scene, _supertypes$Scene),
+        DeclarationCollector(_Turner, _collect$Turner, _supertypes$Turner),
+        DeclarationCollector(
+          _GameState,
+          _collect$GameState,
+          _supertypes$GameState,
+        ),
+        DeclarationCollector(_Game, _collect$Game, _supertypes$Game),
       ],
       dependencies: <GeneratedDeclarations>[
         goo2dPhysicsBox2dDeclarations,

@@ -18,6 +18,17 @@
 // package's lib/ holds privately. That is another library,
 // so nothing here can read it - it keeps its place so that
 // what the row is missing, and where, is visible.
+//
+// Beside each list is every type an instance of that fixture
+// is, the fixture itself first, then the names in its
+// extends, with and implements clauses in that order, each
+// followed by its own supertypes. Nothing reads that order
+// positionally; it is fixed so two machines write one file.
+//
+// A type the generator did not read is not listed. A type it
+// read and this part cannot name keeps its place as a
+// comment - a part writes no imports of its own, so what it
+// may name is what its library already does.
 part of 'game_composite_input_test.dart';
 
 List<ScannableField> _collect$CompositeSystem(Object object) {
@@ -29,6 +40,17 @@ List<ScannableField> _collect$CompositeSystem(Object object) {
     owner.throttle,
   ];
 }
+
+const List<Type> _supertypes$CompositeSystem = <Type>[
+  _CompositeSystem,
+  GameSystem,
+  // GameListenerBase: the library this part belongs to does not import it.
+  // GameListener: the library this part belongs to does not import it.
+  // EventBus: the library this part belongs to does not import it.
+  Scannable,
+  // Coroutines: the library this part belongs to does not import it.
+  ScannableField,
+];
 
 List<ScannableField> _collect$CompositeGameState(Object object) {
   final owner = object as _CompositeGameState;
@@ -47,10 +69,27 @@ List<ScannableField> _collect$CompositeGameState(Object object) {
   ];
 }
 
+const List<Type> _supertypes$CompositeGameState = <Type>[
+  _CompositeGameState,
+  GameState,
+  // GameListenerBase: the library this part belongs to does not import it.
+  // GameListener: the library this part belongs to does not import it.
+  // EventBus: the library this part belongs to does not import it.
+  Scannable,
+  // Coroutines: the library this part belongs to does not import it.
+];
+
 List<ScannableField> _collect$CompositeGame(Object object) {
   object as _CompositeGame;
   return const <ScannableField>[];
 }
+
+const List<Type> _supertypes$CompositeGame = <Type>[
+  _CompositeGame,
+  Game,
+  // RandomOwner: the library this part belongs to does not import it.
+  Scannable,
+];
 
 List<ScannableField> _collect$RestoreSystem(Object object) {
   final owner = object as _RestoreSystem;
@@ -58,6 +97,17 @@ List<ScannableField> _collect$RestoreSystem(Object object) {
     owner.attack,
   ];
 }
+
+const List<Type> _supertypes$RestoreSystem = <Type>[
+  _RestoreSystem,
+  GameSystem,
+  // GameListenerBase: the library this part belongs to does not import it.
+  // GameListener: the library this part belongs to does not import it.
+  // EventBus: the library this part belongs to does not import it.
+  Scannable,
+  // Coroutines: the library this part belongs to does not import it.
+  ScannableField,
+];
 
 List<ScannableField> _collect$RestoreGameState(Object object) {
   final owner = object as _RestoreGameState;
@@ -76,10 +126,27 @@ List<ScannableField> _collect$RestoreGameState(Object object) {
   ];
 }
 
+const List<Type> _supertypes$RestoreGameState = <Type>[
+  _RestoreGameState,
+  GameState,
+  // GameListenerBase: the library this part belongs to does not import it.
+  // GameListener: the library this part belongs to does not import it.
+  // EventBus: the library this part belongs to does not import it.
+  Scannable,
+  // Coroutines: the library this part belongs to does not import it.
+];
+
 List<ScannableField> _collect$RestoreGame(Object object) {
   object as _RestoreGame;
   return const <ScannableField>[];
 }
+
+const List<Type> _supertypes$RestoreGame = <Type>[
+  _RestoreGame,
+  Game,
+  // RandomOwner: the library this part belongs to does not import it.
+  Scannable,
+];
 
 /// Every fixture this library declares, and how to read one.
 ///
@@ -90,12 +157,36 @@ const GeneratedDeclarations _gameCompositeInputTestDeclarations =
     GeneratedDeclarations(
       package: 'good/test/game_composite_input_test.dart',
       collectors: <DeclarationCollector>[
-        DeclarationCollector(_CompositeSystem, _collect$CompositeSystem),
-        DeclarationCollector(_CompositeGameState, _collect$CompositeGameState),
-        DeclarationCollector(_CompositeGame, _collect$CompositeGame),
-        DeclarationCollector(_RestoreSystem, _collect$RestoreSystem),
-        DeclarationCollector(_RestoreGameState, _collect$RestoreGameState),
-        DeclarationCollector(_RestoreGame, _collect$RestoreGame),
+        DeclarationCollector(
+          _CompositeSystem,
+          _collect$CompositeSystem,
+          _supertypes$CompositeSystem,
+        ),
+        DeclarationCollector(
+          _CompositeGameState,
+          _collect$CompositeGameState,
+          _supertypes$CompositeGameState,
+        ),
+        DeclarationCollector(
+          _CompositeGame,
+          _collect$CompositeGame,
+          _supertypes$CompositeGame,
+        ),
+        DeclarationCollector(
+          _RestoreSystem,
+          _collect$RestoreSystem,
+          _supertypes$RestoreSystem,
+        ),
+        DeclarationCollector(
+          _RestoreGameState,
+          _collect$RestoreGameState,
+          _supertypes$RestoreGameState,
+        ),
+        DeclarationCollector(
+          _RestoreGame,
+          _collect$RestoreGame,
+          _supertypes$RestoreGame,
+        ),
       ],
       dependencies: <GeneratedDeclarations>[
         goodDeclarations,

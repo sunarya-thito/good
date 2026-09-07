@@ -18,6 +18,17 @@
 // package's lib/ holds privately. That is another library,
 // so nothing here can read it - it keeps its place so that
 // what the row is missing, and where, is visible.
+//
+// Beside each list is every type an instance of that fixture
+// is, the fixture itself first, then the names in its
+// extends, with and implements clauses in that order, each
+// followed by its own supertypes. Nothing reads that order
+// positionally; it is fixed so two machines write one file.
+//
+// A type the generator did not read is not listed. A type it
+// read and this part cannot name keeps its place as a
+// comment - a part writes no imports of its own, so what it
+// may name is what its library already does.
 part of 'system_input_declaration_test.dart';
 
 List<ScannableField> _collect$OneActionSystem(Object object) {
@@ -26,6 +37,18 @@ List<ScannableField> _collect$OneActionSystem(Object object) {
     owner.fire,
   ];
 }
+
+const List<Type> _supertypes$OneActionSystem = <Type>[
+  _OneActionSystem,
+  GameSystem,
+  // GameListenerBase: the library this part belongs to does not import it.
+  // GameListener: the library this part belongs to does not import it.
+  // EventBus: the library this part belongs to does not import it.
+  Scannable,
+  // Coroutines: the library this part belongs to does not import it.
+  ScannableField,
+  FixedTickable,
+];
 
 List<ScannableField> _collect$OneActionState(Object object) {
   final owner = object as _OneActionState;
@@ -44,10 +67,27 @@ List<ScannableField> _collect$OneActionState(Object object) {
   ];
 }
 
+const List<Type> _supertypes$OneActionState = <Type>[
+  _OneActionState,
+  GameState,
+  // GameListenerBase: the library this part belongs to does not import it.
+  // GameListener: the library this part belongs to does not import it.
+  // EventBus: the library this part belongs to does not import it.
+  Scannable,
+  // Coroutines: the library this part belongs to does not import it.
+];
+
 List<ScannableField> _collect$OneActionGame(Object object) {
   object as _OneActionGame;
   return const <ScannableField>[];
 }
+
+const List<Type> _supertypes$OneActionGame = <Type>[
+  _OneActionGame,
+  Game,
+  // RandomOwner: the library this part belongs to does not import it.
+  Scannable,
+];
 
 /// Every fixture this library declares, and how to read one.
 ///
@@ -58,9 +98,21 @@ const GeneratedDeclarations _systemInputDeclarationTestDeclarations =
     GeneratedDeclarations(
       package: 'good/test/system_input_declaration_test.dart',
       collectors: <DeclarationCollector>[
-        DeclarationCollector(_OneActionSystem, _collect$OneActionSystem),
-        DeclarationCollector(_OneActionState, _collect$OneActionState),
-        DeclarationCollector(_OneActionGame, _collect$OneActionGame),
+        DeclarationCollector(
+          _OneActionSystem,
+          _collect$OneActionSystem,
+          _supertypes$OneActionSystem,
+        ),
+        DeclarationCollector(
+          _OneActionState,
+          _collect$OneActionState,
+          _supertypes$OneActionState,
+        ),
+        DeclarationCollector(
+          _OneActionGame,
+          _collect$OneActionGame,
+          _supertypes$OneActionGame,
+        ),
       ],
       dependencies: <GeneratedDeclarations>[
         goodDeclarations,

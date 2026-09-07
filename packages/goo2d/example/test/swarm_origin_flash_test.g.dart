@@ -18,6 +18,17 @@
 // package's lib/ holds privately. That is another library,
 // so nothing here can read it - it keeps its place so that
 // what the row is missing, and where, is visible.
+//
+// Beside each list is every type an instance of that fixture
+// is, the fixture itself first, then the names in its
+// extends, with and implements clauses in that order, each
+// followed by its own supertypes. Nothing reads that order
+// positionally; it is fixed so two machines write one file.
+//
+// A type the generator did not read is not listed. A type it
+// read and this part cannot name keeps its place as a
+// comment - a part writes no imports of its own, so what it
+// may name is what its library already does.
 part of 'swarm_origin_flash_test.dart';
 
 List<ScannableField> _collect$OriginProbe(Object object) {
@@ -26,6 +37,18 @@ List<ScannableField> _collect$OriginProbe(Object object) {
     owner._renderables,
   ];
 }
+
+const List<Type> _supertypes$OriginProbe = <Type>[
+  _OriginProbe,
+  GameSystem,
+  GameListenerBase,
+  GameListener,
+  EventBus,
+  Scannable,
+  Coroutines,
+  ScannableField,
+  Tickable,
+];
 
 List<ScannableField> _collect$ProbedState(Object object) {
   final owner = object as _ProbedState;
@@ -53,6 +76,20 @@ List<ScannableField> _collect$ProbedState(Object object) {
   ];
 }
 
+const List<Type> _supertypes$ProbedState = <Type>[
+  _ProbedState,
+  SceneGraphState,
+  // DemoState: the library this part belongs to does not import it.
+  GameState2D,
+  GameState,
+  GameListenerBase,
+  GameListener,
+  EventBus,
+  Scannable,
+  Coroutines,
+  Renderer2DState,
+];
+
 List<ScannableField> _collect$ProbedGame(Object object) {
   final owner = object as _ProbedGame;
   return <ScannableField>[
@@ -70,6 +107,17 @@ List<ScannableField> _collect$ProbedGame(Object object) {
   ];
 }
 
+const List<Type> _supertypes$ProbedGame = <Type>[
+  _ProbedGame,
+  SceneGraphGame,
+  // DemoGame: the library this part belongs to does not import it.
+  Game2D,
+  Game,
+  // RandomOwner: the library this part belongs to does not import it.
+  Scannable,
+  Renderer2D,
+];
+
 /// Every fixture this library declares, and how to read one.
 ///
 /// It carries the package's own generated table as a
@@ -79,9 +127,21 @@ const GeneratedDeclarations _swarmOriginFlashTestDeclarations =
     GeneratedDeclarations(
       package: 'goo2d/example/test/swarm_origin_flash_test.dart',
       collectors: <DeclarationCollector>[
-        DeclarationCollector(_OriginProbe, _collect$OriginProbe),
-        DeclarationCollector(_ProbedState, _collect$ProbedState),
-        DeclarationCollector(_ProbedGame, _collect$ProbedGame),
+        DeclarationCollector(
+          _OriginProbe,
+          _collect$OriginProbe,
+          _supertypes$OriginProbe,
+        ),
+        DeclarationCollector(
+          _ProbedState,
+          _collect$ProbedState,
+          _supertypes$ProbedState,
+        ),
+        DeclarationCollector(
+          _ProbedGame,
+          _collect$ProbedGame,
+          _supertypes$ProbedGame,
+        ),
       ],
       dependencies: <GeneratedDeclarations>[
         goo2dDeclarations,

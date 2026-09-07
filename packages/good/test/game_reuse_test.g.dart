@@ -18,6 +18,17 @@
 // package's lib/ holds privately. That is another library,
 // so nothing here can read it - it keeps its place so that
 // what the row is missing, and where, is visible.
+//
+// Beside each list is every type an instance of that fixture
+// is, the fixture itself first, then the names in its
+// extends, with and implements clauses in that order, each
+// followed by its own supertypes. Nothing reads that order
+// positionally; it is fixed so two machines write one file.
+//
+// A type the generator did not read is not listed. A type it
+// read and this part cannot name keeps its place as a
+// comment - a part writes no imports of its own, so what it
+// may name is what its library already does.
 part of 'game_reuse_test.dart';
 
 List<ScannableField> _collect$Thing(Object object) {
@@ -25,12 +36,30 @@ List<ScannableField> _collect$Thing(Object object) {
   return const <ScannableField>[];
 }
 
+const List<Type> _supertypes$Thing = <Type>[
+  _Thing,
+  EntityStruct,
+  Coroutines,
+  Animations,
+  MultiComponent,
+  Component,
+  Scannable,
+  ScannableField,
+];
+
 List<ScannableField> _collect$Level(Object object) {
   final owner = object as _Level;
   return <ScannableField>[
     owner.thing,
   ];
 }
+
+const List<Type> _supertypes$Level = <Type>[
+  _Level,
+  SceneStruct,
+  Coroutines,
+  Scannable,
+];
 
 List<ScannableField> _collect$ReuseState(Object object) {
   final owner = object as _ReuseState;
@@ -48,12 +77,29 @@ List<ScannableField> _collect$ReuseState(Object object) {
   ];
 }
 
+const List<Type> _supertypes$ReuseState = <Type>[
+  _ReuseState,
+  GameState,
+  GameListenerBase,
+  GameListener,
+  EventBus,
+  Scannable,
+  Coroutines,
+];
+
 List<ScannableField> _collect$Reuse(Object object) {
   final owner = object as _Reuse;
   return <ScannableField>[
     owner.score,
   ];
 }
+
+const List<Type> _supertypes$Reuse = <Type>[
+  _Reuse,
+  Game,
+  // RandomOwner: the library this part belongs to does not import it.
+  Scannable,
+];
 
 /// Every fixture this library declares, and how to read one.
 ///
@@ -64,10 +110,14 @@ const GeneratedDeclarations _gameReuseTestDeclarations =
     GeneratedDeclarations(
       package: 'good/test/game_reuse_test.dart',
       collectors: <DeclarationCollector>[
-        DeclarationCollector(_Thing, _collect$Thing),
-        DeclarationCollector(_Level, _collect$Level),
-        DeclarationCollector(_ReuseState, _collect$ReuseState),
-        DeclarationCollector(_Reuse, _collect$Reuse),
+        DeclarationCollector(_Thing, _collect$Thing, _supertypes$Thing),
+        DeclarationCollector(_Level, _collect$Level, _supertypes$Level),
+        DeclarationCollector(
+          _ReuseState,
+          _collect$ReuseState,
+          _supertypes$ReuseState,
+        ),
+        DeclarationCollector(_Reuse, _collect$Reuse, _supertypes$Reuse),
       ],
       dependencies: <GeneratedDeclarations>[
         goodDeclarations,

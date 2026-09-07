@@ -18,6 +18,17 @@
 // package's lib/ holds privately. That is another library,
 // so nothing here can read it - it keeps its place so that
 // what the row is missing, and where, is visible.
+//
+// Beside each list is every type an instance of that fixture
+// is, the fixture itself first, then the names in its
+// extends, with and implements clauses in that order, each
+// followed by its own supertypes. Nothing reads that order
+// positionally; it is fixed so two machines write one file.
+//
+// A type the generator did not read is not listed. A type it
+// read and this part cannot name keeps its place as a
+// comment - a part writes no imports of its own, so what it
+// may name is what its library already does.
 part of 'asset_loaders_test.dart';
 
 List<ScannableField> _collect$State(Object object) {
@@ -38,10 +49,31 @@ List<ScannableField> _collect$State(Object object) {
   ];
 }
 
+const List<Type> _supertypes$State = <Type>[
+  _State,
+  GameState2D,
+  GameState,
+  GameListenerBase,
+  GameListener,
+  EventBus,
+  Scannable,
+  Coroutines,
+  Renderer2DState,
+];
+
 List<ScannableField> _collect$Game(Object object) {
   object as _Game;
   return const <ScannableField>[];
 }
+
+const List<Type> _supertypes$Game = <Type>[
+  _Game,
+  Game2D,
+  Game,
+  // RandomOwner: the library this part belongs to does not import it.
+  Scannable,
+  Renderer2D,
+];
 
 List<ScannableField> _collect$MixedState(Object object) {
   final owner = object as _MixedState;
@@ -59,10 +91,28 @@ List<ScannableField> _collect$MixedState(Object object) {
   ];
 }
 
+const List<Type> _supertypes$MixedState = <Type>[
+  _MixedState,
+  GameState,
+  GameListenerBase,
+  GameListener,
+  EventBus,
+  Scannable,
+  Coroutines,
+];
+
 List<ScannableField> _collect$Mixed(Object object) {
   object as _Mixed;
   return const <ScannableField>[];
 }
+
+const List<Type> _supertypes$Mixed = <Type>[
+  _Mixed,
+  Game,
+  // RandomOwner: the library this part belongs to does not import it.
+  Scannable,
+  Renderer2D,
+];
 
 /// Every fixture this library declares, and how to read one.
 ///
@@ -73,10 +123,14 @@ const GeneratedDeclarations _assetLoadersTestDeclarations =
     GeneratedDeclarations(
       package: 'goo2d/test/asset_loaders_test.dart',
       collectors: <DeclarationCollector>[
-        DeclarationCollector(_State, _collect$State),
-        DeclarationCollector(_Game, _collect$Game),
-        DeclarationCollector(_MixedState, _collect$MixedState),
-        DeclarationCollector(_Mixed, _collect$Mixed),
+        DeclarationCollector(_State, _collect$State, _supertypes$State),
+        DeclarationCollector(_Game, _collect$Game, _supertypes$Game),
+        DeclarationCollector(
+          _MixedState,
+          _collect$MixedState,
+          _supertypes$MixedState,
+        ),
+        DeclarationCollector(_Mixed, _collect$Mixed, _supertypes$Mixed),
       ],
       dependencies: <GeneratedDeclarations>[
         goo2dDeclarations,

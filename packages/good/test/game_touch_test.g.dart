@@ -18,6 +18,17 @@
 // package's lib/ holds privately. That is another library,
 // so nothing here can read it - it keeps its place so that
 // what the row is missing, and where, is visible.
+//
+// Beside each list is every type an instance of that fixture
+// is, the fixture itself first, then the names in its
+// extends, with and implements clauses in that order, each
+// followed by its own supertypes. Nothing reads that order
+// positionally; it is fixed so two machines write one file.
+//
+// A type the generator did not read is not listed. A type it
+// read and this part cannot name keeps its place as a
+// comment - a part writes no imports of its own, so what it
+// may name is what its library already does.
 part of 'game_touch_test.dart';
 
 List<ScannableField> _collect$TouchSystem(Object object) {
@@ -27,6 +38,18 @@ List<ScannableField> _collect$TouchSystem(Object object) {
     owner.cursor,
   ];
 }
+
+const List<Type> _supertypes$TouchSystem = <Type>[
+  _TouchSystem,
+  GameSystem,
+  // GameListenerBase: the library this part belongs to does not import it.
+  // GameListener: the library this part belongs to does not import it.
+  // EventBus: the library this part belongs to does not import it.
+  Scannable,
+  // Coroutines: the library this part belongs to does not import it.
+  ScannableField,
+  FixedTickable,
+];
 
 List<ScannableField> _collect$TouchState(Object object) {
   final owner = object as _TouchState;
@@ -45,20 +68,53 @@ List<ScannableField> _collect$TouchState(Object object) {
   ];
 }
 
+const List<Type> _supertypes$TouchState = <Type>[
+  _TouchState,
+  GameState,
+  // GameListenerBase: the library this part belongs to does not import it.
+  // GameListener: the library this part belongs to does not import it.
+  // EventBus: the library this part belongs to does not import it.
+  Scannable,
+  // Coroutines: the library this part belongs to does not import it.
+];
+
 List<ScannableField> _collect$TouchGame(Object object) {
   object as _TouchGame;
   return const <ScannableField>[];
 }
+
+const List<Type> _supertypes$TouchGame = <Type>[
+  _TouchGame,
+  Game,
+  // RandomOwner: the library this part belongs to does not import it.
+  Scannable,
+];
 
 List<ScannableField> _collect$TwoContactGame(Object object) {
   object as _TwoContactGame;
   return const <ScannableField>[];
 }
 
+const List<Type> _supertypes$TwoContactGame = <Type>[
+  _TwoContactGame,
+  _TouchGame,
+  Game,
+  // RandomOwner: the library this part belongs to does not import it.
+  Scannable,
+];
+
 List<ScannableField> _collect$ZeroContactGame(Object object) {
   object as _ZeroContactGame;
   return const <ScannableField>[];
 }
+
+const List<Type> _supertypes$ZeroContactGame = <Type>[
+  _ZeroContactGame,
+  _TouchGame,
+  Game,
+  // RandomOwner: the library this part belongs to does not import it.
+  Scannable,
+];
 
 /// Every fixture this library declares, and how to read one.
 ///
@@ -69,11 +125,31 @@ const GeneratedDeclarations _gameTouchTestDeclarations =
     GeneratedDeclarations(
       package: 'good/test/game_touch_test.dart',
       collectors: <DeclarationCollector>[
-        DeclarationCollector(_TouchSystem, _collect$TouchSystem),
-        DeclarationCollector(_TouchState, _collect$TouchState),
-        DeclarationCollector(_TouchGame, _collect$TouchGame),
-        DeclarationCollector(_TwoContactGame, _collect$TwoContactGame),
-        DeclarationCollector(_ZeroContactGame, _collect$ZeroContactGame),
+        DeclarationCollector(
+          _TouchSystem,
+          _collect$TouchSystem,
+          _supertypes$TouchSystem,
+        ),
+        DeclarationCollector(
+          _TouchState,
+          _collect$TouchState,
+          _supertypes$TouchState,
+        ),
+        DeclarationCollector(
+          _TouchGame,
+          _collect$TouchGame,
+          _supertypes$TouchGame,
+        ),
+        DeclarationCollector(
+          _TwoContactGame,
+          _collect$TwoContactGame,
+          _supertypes$TwoContactGame,
+        ),
+        DeclarationCollector(
+          _ZeroContactGame,
+          _collect$ZeroContactGame,
+          _supertypes$ZeroContactGame,
+        ),
       ],
       dependencies: <GeneratedDeclarations>[
         goodDeclarations,

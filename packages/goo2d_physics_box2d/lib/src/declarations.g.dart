@@ -22,6 +22,18 @@
 // field. Dart privacy is per library and this is a different
 // one, so nothing here can read it - it keeps its place so
 // that what the row is missing, and where, is visible.
+//
+// Beside each list is every type an instance of that class
+// is, the class itself first, then the names in its extends,
+// with and implements clauses in that order, each followed by
+// its own supertypes. Nothing reads that order positionally;
+// it is fixed so two machines write one file.
+//
+// A type the generator did not read - anything in dart: or in
+// a package outside the run - is not listed, because nothing
+// downstream of this file can act on a name it never saw. A
+// type it did read and this library cannot name keeps its
+// place as a comment.
 
 import 'package:goo2d/goo2d.dart';
 import 'package:goo2d_physics_box2d/src/physics_system.dart';
@@ -40,6 +52,20 @@ List<ScannableField> _box2DPhysicsSystem(Object object) {
   ];
 }
 
+const List<Type> _supertypes$Box2DPhysicsSystem = <Type>[
+  Box2DPhysicsSystem,
+  GameSystem,
+  GameListenerBase,
+  GameListener,
+  EventBus,
+  Scannable,
+  Coroutines,
+  ScannableField,
+  FixedTickable,
+  EntitySpawnListener,
+  SceneLoadListener,
+];
+
 /// Every class `package:goo2d_physics_box2d` can instantiate that holds a
 /// declaration, and how to read one.
 ///
@@ -51,7 +77,11 @@ const GeneratedDeclarations goo2dPhysicsBox2dDeclarations =
     GeneratedDeclarations(
       package: 'goo2d_physics_box2d',
       collectors: <DeclarationCollector>[
-        DeclarationCollector(Box2DPhysicsSystem, _box2DPhysicsSystem),
+        DeclarationCollector(
+          Box2DPhysicsSystem,
+          _box2DPhysicsSystem,
+          _supertypes$Box2DPhysicsSystem,
+        ),
       ],
       dependencies: <GeneratedDeclarations>[
         goo2dDeclarations,

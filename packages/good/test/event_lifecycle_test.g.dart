@@ -18,6 +18,17 @@
 // package's lib/ holds privately. That is another library,
 // so nothing here can read it - it keeps its place so that
 // what the row is missing, and where, is visible.
+//
+// Beside each list is every type an instance of that fixture
+// is, the fixture itself first, then the names in its
+// extends, with and implements clauses in that order, each
+// followed by its own supertypes. Nothing reads that order
+// positionally; it is fixed so two machines write one file.
+//
+// A type the generator did not read is not listed. A type it
+// read and this part cannot name keeps its place as a
+// comment - a part writes no imports of its own, so what it
+// may name is what its library already does.
 part of 'event_lifecycle_test.dart';
 
 List<ScannableField> _collect$Unit(Object object) {
@@ -27,20 +38,68 @@ List<ScannableField> _collect$Unit(Object object) {
   ];
 }
 
+const List<Type> _supertypes$Unit = <Type>[
+  _Unit,
+  EntityStruct,
+  // Coroutines: the library this part belongs to does not import it.
+  // Animations: the library this part belongs to does not import it.
+  MultiComponent,
+  Component,
+  Scannable,
+  ScannableField,
+  _Marked,
+];
+
 List<ScannableField> _collect$Watcher(Object object) {
   object as _Watcher;
   return const <ScannableField>[];
 }
+
+const List<Type> _supertypes$Watcher = <Type>[
+  _Watcher,
+  GameSystem,
+  // GameListenerBase: the library this part belongs to does not import it.
+  // GameListener: the library this part belongs to does not import it.
+  // EventBus: the library this part belongs to does not import it.
+  Scannable,
+  // Coroutines: the library this part belongs to does not import it.
+  ScannableField,
+  GameLifecycleListener,
+];
 
 List<ScannableField> _collect$Bystander(Object object) {
   object as _Bystander;
   return const <ScannableField>[];
 }
 
+const List<Type> _supertypes$Bystander = <Type>[
+  _Bystander,
+  GameSystem,
+  // GameListenerBase: the library this part belongs to does not import it.
+  // GameListener: the library this part belongs to does not import it.
+  // EventBus: the library this part belongs to does not import it.
+  Scannable,
+  // Coroutines: the library this part belongs to does not import it.
+  ScannableField,
+];
+
 List<ScannableField> _collect$Observing(Object object) {
   object as _Observing;
   return const <ScannableField>[];
 }
+
+const List<Type> _supertypes$Observing = <Type>[
+  _Observing,
+  GameSystem,
+  // GameListenerBase: the library this part belongs to does not import it.
+  // GameListener: the library this part belongs to does not import it.
+  // EventBus: the library this part belongs to does not import it.
+  Scannable,
+  // Coroutines: the library this part belongs to does not import it.
+  ScannableField,
+  SceneLoadListener,
+  EntitySpawnListener,
+];
 
 List<ScannableField> _collect$Level(Object object) {
   final owner = object as _Level;
@@ -49,10 +108,24 @@ List<ScannableField> _collect$Level(Object object) {
   ];
 }
 
+const List<Type> _supertypes$Level = <Type>[
+  _Level,
+  SceneStruct,
+  // Coroutines: the library this part belongs to does not import it.
+  Scannable,
+];
+
 List<ScannableField> _collect$Observer(Object object) {
   object as _Observer;
   return const <ScannableField>[];
 }
+
+const List<Type> _supertypes$Observer = <Type>[
+  _Observer,
+  SceneStruct,
+  // Coroutines: the library this part belongs to does not import it.
+  Scannable,
+];
 
 List<ScannableField> _collect$NosyScene(Object object) {
   final owner = object as _NosyScene;
@@ -61,12 +134,31 @@ List<ScannableField> _collect$NosyScene(Object object) {
   ];
 }
 
+const List<Type> _supertypes$NosyScene = <Type>[
+  _NosyScene,
+  SceneStruct,
+  // Coroutines: the library this part belongs to does not import it.
+  Scannable,
+];
+
 List<ScannableField> _collect$Tracked(Object object) {
   final owner = object as _Tracked;
   return <ScannableField>[
     owner.mark,
   ];
 }
+
+const List<Type> _supertypes$Tracked = <Type>[
+  _Tracked,
+  EntityStruct,
+  // Coroutines: the library this part belongs to does not import it.
+  // Animations: the library this part belongs to does not import it.
+  MultiComponent,
+  Component,
+  Scannable,
+  ScannableField,
+  _Marked,
+];
 
 List<ScannableField> _collect$Indexed(Object object) {
   final owner = object as _Indexed;
@@ -75,10 +167,34 @@ List<ScannableField> _collect$Indexed(Object object) {
   ];
 }
 
+const List<Type> _supertypes$Indexed = <Type>[
+  _Indexed,
+  EntityStruct,
+  // Coroutines: the library this part belongs to does not import it.
+  // Animations: the library this part belongs to does not import it.
+  MultiComponent,
+  Component,
+  Scannable,
+  ScannableField,
+  _Marked,
+];
+
 List<ScannableField> _collect$Census(Object object) {
   object as _Census;
   return const <ScannableField>[];
 }
+
+const List<Type> _supertypes$Census = <Type>[
+  _Census,
+  GameSystem,
+  // GameListenerBase: the library this part belongs to does not import it.
+  // GameListener: the library this part belongs to does not import it.
+  // EventBus: the library this part belongs to does not import it.
+  Scannable,
+  // Coroutines: the library this part belongs to does not import it.
+  ScannableField,
+  EntitySpawnListener,
+];
 
 List<ScannableField> _collect$TrackedScene(Object object) {
   final owner = object as _TrackedScene;
@@ -87,6 +203,13 @@ List<ScannableField> _collect$TrackedScene(Object object) {
     owner.indexed,
   ];
 }
+
+const List<Type> _supertypes$TrackedScene = <Type>[
+  _TrackedScene,
+  SceneStruct,
+  // Coroutines: the library this part belongs to does not import it.
+  Scannable,
+];
 
 List<ScannableField> _collect$LifecycleState(Object object) {
   final owner = object as _LifecycleState;
@@ -108,10 +231,27 @@ List<ScannableField> _collect$LifecycleState(Object object) {
   ];
 }
 
+const List<Type> _supertypes$LifecycleState = <Type>[
+  _LifecycleState,
+  GameState,
+  // GameListenerBase: the library this part belongs to does not import it.
+  // GameListener: the library this part belongs to does not import it.
+  // EventBus: the library this part belongs to does not import it.
+  Scannable,
+  // Coroutines: the library this part belongs to does not import it.
+];
+
 List<ScannableField> _collect$LifecycleGame(Object object) {
   object as _LifecycleGame;
   return const <ScannableField>[];
 }
+
+const List<Type> _supertypes$LifecycleGame = <Type>[
+  _LifecycleGame,
+  Game,
+  // RandomOwner: the library this part belongs to does not import it.
+  Scannable,
+];
 
 /// Every fixture this library declares, and how to read one.
 ///
@@ -122,19 +262,47 @@ const GeneratedDeclarations _eventLifecycleTestDeclarations =
     GeneratedDeclarations(
       package: 'good/test/event_lifecycle_test.dart',
       collectors: <DeclarationCollector>[
-        DeclarationCollector(_Unit, _collect$Unit),
-        DeclarationCollector(_Watcher, _collect$Watcher),
-        DeclarationCollector(_Bystander, _collect$Bystander),
-        DeclarationCollector(_Observing, _collect$Observing),
-        DeclarationCollector(_Level, _collect$Level),
-        DeclarationCollector(_Observer, _collect$Observer),
-        DeclarationCollector(_NosyScene, _collect$NosyScene),
-        DeclarationCollector(_Tracked, _collect$Tracked),
-        DeclarationCollector(_Indexed, _collect$Indexed),
-        DeclarationCollector(_Census, _collect$Census),
-        DeclarationCollector(_TrackedScene, _collect$TrackedScene),
-        DeclarationCollector(_LifecycleState, _collect$LifecycleState),
-        DeclarationCollector(_LifecycleGame, _collect$LifecycleGame),
+        DeclarationCollector(_Unit, _collect$Unit, _supertypes$Unit),
+        DeclarationCollector(_Watcher, _collect$Watcher, _supertypes$Watcher),
+        DeclarationCollector(
+          _Bystander,
+          _collect$Bystander,
+          _supertypes$Bystander,
+        ),
+        DeclarationCollector(
+          _Observing,
+          _collect$Observing,
+          _supertypes$Observing,
+        ),
+        DeclarationCollector(_Level, _collect$Level, _supertypes$Level),
+        DeclarationCollector(
+          _Observer,
+          _collect$Observer,
+          _supertypes$Observer,
+        ),
+        DeclarationCollector(
+          _NosyScene,
+          _collect$NosyScene,
+          _supertypes$NosyScene,
+        ),
+        DeclarationCollector(_Tracked, _collect$Tracked, _supertypes$Tracked),
+        DeclarationCollector(_Indexed, _collect$Indexed, _supertypes$Indexed),
+        DeclarationCollector(_Census, _collect$Census, _supertypes$Census),
+        DeclarationCollector(
+          _TrackedScene,
+          _collect$TrackedScene,
+          _supertypes$TrackedScene,
+        ),
+        DeclarationCollector(
+          _LifecycleState,
+          _collect$LifecycleState,
+          _supertypes$LifecycleState,
+        ),
+        DeclarationCollector(
+          _LifecycleGame,
+          _collect$LifecycleGame,
+          _supertypes$LifecycleGame,
+        ),
       ],
       dependencies: <GeneratedDeclarations>[
         goodDeclarations,

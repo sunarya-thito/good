@@ -18,6 +18,17 @@
 // package's lib/ holds privately. That is another library,
 // so nothing here can read it - it keeps its place so that
 // what the row is missing, and where, is visible.
+//
+// Beside each list is every type an instance of that fixture
+// is, the fixture itself first, then the names in its
+// extends, with and implements clauses in that order, each
+// followed by its own supertypes. Nothing reads that order
+// positionally; it is fixed so two machines write one file.
+//
+// A type the generator did not read is not listed. A type it
+// read and this part cannot name keeps its place as a
+// comment - a part writes no imports of its own, so what it
+// may name is what its library already does.
 part of 'main.dart';
 
 List<ScannableField> _collect$Breath(Object object) {
@@ -27,6 +38,12 @@ List<ScannableField> _collect$Breath(Object object) {
     owner.pulse,
   ];
 }
+
+const List<Type> _supertypes$Breath = <Type>[
+  Breath,
+  TimelineStruct,
+  Scannable,
+];
 
 List<ScannableField> _collect$Player(Object object) {
   final owner = object as Player;
@@ -57,6 +74,22 @@ List<ScannableField> _collect$Player(Object object) {
   ];
 }
 
+const List<Type> _supertypes$Player = <Type>[
+  Player,
+  EntityStruct,
+  Coroutines,
+  Animations,
+  MultiComponent,
+  Component,
+  Scannable,
+  ScannableField,
+  Transform2D,
+  WorldTransform2D,
+  Child,
+  Parent,
+  Renderable2D,
+];
+
 List<ScannableField> _collect$Enemy(Object object) {
   final owner = object as Enemy;
   return <ScannableField>[
@@ -82,6 +115,21 @@ List<ScannableField> _collect$Enemy(Object object) {
     owner.transformRotation,
   ];
 }
+
+const List<Type> _supertypes$Enemy = <Type>[
+  Enemy,
+  EntityStruct,
+  Coroutines,
+  Animations,
+  MultiComponent,
+  Component,
+  Scannable,
+  ScannableField,
+  Transform2D,
+  WorldTransform2D,
+  Child,
+  Renderable2D,
+];
 
 List<ScannableField> _collect$Wingman(Object object) {
   final owner = object as Wingman;
@@ -109,6 +157,21 @@ List<ScannableField> _collect$Wingman(Object object) {
   ];
 }
 
+const List<Type> _supertypes$Wingman = <Type>[
+  Wingman,
+  EntityStruct,
+  Coroutines,
+  Animations,
+  MultiComponent,
+  Component,
+  Scannable,
+  ScannableField,
+  Transform2D,
+  WorldTransform2D,
+  Child,
+  Renderable2D,
+];
+
 List<ScannableField> _collect$Eye(Object object) {
   final owner = object as Eye;
   return <ScannableField>[
@@ -133,6 +196,20 @@ List<ScannableField> _collect$Eye(Object object) {
   ];
 }
 
+const List<Type> _supertypes$Eye = <Type>[
+  Eye,
+  EntityStruct,
+  Coroutines,
+  Animations,
+  MultiComponent,
+  Component,
+  Scannable,
+  ScannableField,
+  Transform2D,
+  WorldTransform2D,
+  Camera,
+];
+
 List<ScannableField> _collect$MainScene(Object object) {
   final owner = object as MainScene;
   return <ScannableField>[
@@ -143,6 +220,13 @@ List<ScannableField> _collect$MainScene(Object object) {
   ];
 }
 
+const List<Type> _supertypes$MainScene = <Type>[
+  MainScene,
+  SceneStruct,
+  Coroutines,
+  Scannable,
+];
+
 List<ScannableField> _collect$SpinSystem(Object object) {
   final owner = object as SpinSystem;
   return <ScannableField>[
@@ -150,12 +234,32 @@ List<ScannableField> _collect$SpinSystem(Object object) {
   ];
 }
 
+const List<Type> _supertypes$SpinSystem = <Type>[
+  SpinSystem,
+  GameSystem,
+  GameListenerBase,
+  GameListener,
+  EventBus,
+  Scannable,
+  Coroutines,
+  ScannableField,
+  FixedTickable,
+];
+
 List<ScannableField> _collect$SpawnEnemy(Object object) {
   final owner = object as SpawnEnemy;
   return <ScannableField>[
     owner.value,
   ];
 }
+
+const List<Type> _supertypes$SpawnEnemy = <Type>[
+  SpawnEnemy,
+  ValueSupplier,
+  SupplierCommand,
+  GameCommandBase,
+  Scannable,
+];
 
 List<ScannableField> _collect$MyGameState(Object object) {
   final owner = object as MyGameState;
@@ -176,10 +280,31 @@ List<ScannableField> _collect$MyGameState(Object object) {
   ];
 }
 
+const List<Type> _supertypes$MyGameState = <Type>[
+  MyGameState,
+  GameState2D,
+  GameState,
+  GameListenerBase,
+  GameListener,
+  EventBus,
+  Scannable,
+  Coroutines,
+  Renderer2DState,
+];
+
 List<ScannableField> _collect$MyAwesomeGame(Object object) {
   object as MyAwesomeGame;
   return const <ScannableField>[];
 }
+
+const List<Type> _supertypes$MyAwesomeGame = <Type>[
+  MyAwesomeGame,
+  Game2D,
+  Game,
+  // RandomOwner: the library this part belongs to does not import it.
+  Scannable,
+  Renderer2D,
+];
 
 /// Every fixture this library declares, and how to read one.
 ///
@@ -190,16 +315,36 @@ const GeneratedDeclarations _mainDeclarations =
     GeneratedDeclarations(
       package: 'goo2d/example/lib/main.dart',
       collectors: <DeclarationCollector>[
-        DeclarationCollector(Breath, _collect$Breath),
-        DeclarationCollector(Player, _collect$Player),
-        DeclarationCollector(Enemy, _collect$Enemy),
-        DeclarationCollector(Wingman, _collect$Wingman),
-        DeclarationCollector(Eye, _collect$Eye),
-        DeclarationCollector(MainScene, _collect$MainScene),
-        DeclarationCollector(SpinSystem, _collect$SpinSystem),
-        DeclarationCollector(SpawnEnemy, _collect$SpawnEnemy),
-        DeclarationCollector(MyGameState, _collect$MyGameState),
-        DeclarationCollector(MyAwesomeGame, _collect$MyAwesomeGame),
+        DeclarationCollector(Breath, _collect$Breath, _supertypes$Breath),
+        DeclarationCollector(Player, _collect$Player, _supertypes$Player),
+        DeclarationCollector(Enemy, _collect$Enemy, _supertypes$Enemy),
+        DeclarationCollector(Wingman, _collect$Wingman, _supertypes$Wingman),
+        DeclarationCollector(Eye, _collect$Eye, _supertypes$Eye),
+        DeclarationCollector(
+          MainScene,
+          _collect$MainScene,
+          _supertypes$MainScene,
+        ),
+        DeclarationCollector(
+          SpinSystem,
+          _collect$SpinSystem,
+          _supertypes$SpinSystem,
+        ),
+        DeclarationCollector(
+          SpawnEnemy,
+          _collect$SpawnEnemy,
+          _supertypes$SpawnEnemy,
+        ),
+        DeclarationCollector(
+          MyGameState,
+          _collect$MyGameState,
+          _supertypes$MyGameState,
+        ),
+        DeclarationCollector(
+          MyAwesomeGame,
+          _collect$MyAwesomeGame,
+          _supertypes$MyAwesomeGame,
+        ),
       ],
       dependencies: <GeneratedDeclarations>[
         goo2dDeclarations,

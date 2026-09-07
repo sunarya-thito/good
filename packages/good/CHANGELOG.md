@@ -2,6 +2,36 @@
 
 ### Added
 
+* **`collectSupertypes` says which types an object is** (#381). The generated
+  declaration table carried a class's fields; it now carries the types the same
+  walk went through, so a run can enumerate what an object is instead of only
+  testing one type at a time:
+
+  ```dart
+  // Every component this prefab applies, and the prefab class itself.
+  for (final type in collectSupertypes(player)) { ... }
+  ```
+
+  `entity.has<T>()` is `prefab is T`, which answers one question and cannot be
+  enumerated, and a component mixin that declares no column of its own leaves
+  nothing behind in the field list - so nothing could report which components a
+  prefab applies. The prefab's own class is in the answer, because a prefab
+  registers itself as a component.
+
+  The parameter is the object and not its `Type`, the way `collectDeclarations`
+  takes one: nothing at run time takes `<Enemy>` off `Spawner<Enemy>`, so a
+  table keyed by the literal `Spawner` is unreachable from every instance of
+  it. A generic class is matched by a type test the generator wrote instead.
+
+  The list holds the class, then the names in its `extends`, `with` and
+  `implements` clauses in that order, each followed by its own supertypes. That
+  order is read by nothing; it is fixed so two machines generating from one
+  checkout write one file. A type the generator never read - anything in
+  `dart:`, or in a package outside the run - is not in it.
+
+  Nothing in the engine reads it yet. `describeType` still writes the archetype
+  signature, and moving that onto this is the next step of #381.
+
 * **A `GameSystem` may declare an event, and it reaches the whole game**
   (#384). There is one binder for the run: every dispatcher is created first,
   then the composition is walked once and each listener offered to all of
@@ -110,6 +140,18 @@
   own repository; a component in your game's `lib/` is not in it.
 
 ### Breaking
+
+* **`DeclarationCollector` takes the type list as well** (#381).
+  `DeclarationCollector(Player, _player)` becomes
+  `DeclarationCollector(Player, _player, _supertypes$Player)`, and
+  `DeclarationCollector.generic` takes it after the type test. Every table this
+  appears in is generated, so the fix is to run `good generate` for a project
+  or `dart run good_tool` for a package; a hand-written table is the case that
+  has to be edited.
+
+  Required rather than defaulted to an empty list, because every generated
+  entry holds at least the class itself - an empty one would be a class that is
+  not even itself, and a default would let that read as an answer.
 
 * **Events have no scope, and the local lifecycle pairs are methods** (#384).
   `EntityLifecycleListener`, `SceneLifecycleListener` and

@@ -580,19 +580,103 @@ List<ScannableField> collectDeclarations(Scannable object) {
       'so the list is read out of the source at build time and installed '
       'before anything registers.\n'
       '\n'
-      'Either the table holding ${object.runtimeType} was never named to '
-      '`Game.declarations` - a scene brought up without a `Game` names it '
-      'itself, through `DeclarationRegistry.installGenerated` - or the '
-      'generator never read the file ${object.runtimeType} is written in.\n'
-      '\n'
-      'In a project: run `good generate`, which writes '
-      '`lib/src/declarations.g.dart` for the classes you wrote, and name it to '
-      '`Game.declarations`. In an engine package: run `dart run good_tool '
-      '--dir <directory>` and commit what it writes.',
+      '${_neverGenerated(object)}',
     );
   }
   return collect(object);
 }
+
+/// Every type [object]'s class **is**, most derived first.
+///
+/// The other half of what one walk over a class's `extends`, `with`, `on` and
+/// `implements` clauses can say. [collectDeclarations] hands back the fields
+/// that walk found; this hands back the types it walked through. That is a
+/// fact a run cannot otherwise get at from an instance: `entity.has<T>()` is
+/// `prefab is T`, which can be asked one type at a time and never enumerated,
+/// and a component mixin declaring no column of its own leaves no trace in the
+/// field list at all. So "which components does this prefab apply" had no
+/// answer, and an inspector, a serialiser and replication each had to be told
+/// rather than being able to ask.
+///
+/// # The order
+///
+/// [object]'s own class first, then the names written in its `extends`, `with`
+/// and `implements` clauses in that order - `on` then `implements` for a mixin
+/// - with each name's own supertypes following it before the next name beside
+/// it, and a name reached twice keeping the first place it got. A depth-first
+/// walk of the clauses as they are written.
+///
+/// It is a function of the source and of nothing else, so two machines
+/// generating from one checkout write one list. That is all the order is for.
+/// The field list beside it *is* the row layout, and reordering it relays out
+/// every entity of the archetype; nothing reads this one positionally - the
+/// caller it exists for ORs component bits together, and an OR does not care.
+/// It is fixed and written down so that a diff of a generated table means
+/// something.
+///
+/// # What is not in it
+///
+/// What the generator read and the generated file can name, and nothing else.
+///
+/// A type the generator never read is absent and unmarked - `Object`, which
+/// is written in no clause, everything else in `dart:`, and anything from a
+/// package outside the run. Nothing that reads this list can act on such a
+/// name either, because a component bit comes out of the same scan.
+///
+/// A type it did read and the generated library cannot name - a private
+/// supertype, most often - is commented out in the place it would have had,
+/// so the hole is visible in the file that has it.
+///
+/// # The prefab's own class is in it
+///
+/// Because a prefab registers itself as a component: `EntityStruct`'s
+/// `describeType` is `component.has(type: runtimeType)`. A query matches on
+/// the prefab type the same way it matches on a mixin, so a list that left it
+/// out would answer a different question from the one a signature asks.
+///
+/// # Nothing in `good` reads it yet
+///
+/// `describeType` still writes the archetype signature, through the only
+/// `componentSignature |=` there is. Said outright, because a list that ships
+/// and is read by nothing reads like one something depends on. #381 is the
+/// change that moves the signature onto this and deletes the hook.
+///
+/// # What a missing entry means
+///
+/// [collectDeclarations]' answer, for its reason: a lookup that answered
+/// "none" on a miss would hand back an empty type list for a class nothing
+/// ever scanned, and an archetype signature ORed from an empty list is a
+/// prefab that matches no query and says nothing about it.
+Iterable<Type> collectSupertypes(Scannable object) {
+  final entry = DeclarationRegistry.entryForInstance(object);
+  if (entry == null) {
+    throw StateError(
+      'No generated collector for ${object.runtimeType}, so nothing can say '
+      'which types it is. A run cannot walk a class\'s supertypes any more '
+      'than it can list its fields - both are read out of the source at build '
+      'time and installed before anything registers.\n'
+      '\n'
+      '${_neverGenerated(object)}',
+    );
+  }
+  return entry.supertypes;
+}
+
+/// The half of a missing-entry message that is the same whichever half of the
+/// entry was being read.
+///
+/// One table, one miss, one thing to do about it, so the two readers cannot
+/// drift into telling a person two different stories about one absence.
+String _neverGenerated(Object object) =>
+    'Either the table holding ${object.runtimeType} was never named to '
+    '`Game.declarations` - a scene brought up without a `Game` names it '
+    'itself, through `DeclarationRegistry.installGenerated` - or the '
+    'generator never read the file ${object.runtimeType} is written in.\n'
+    '\n'
+    'In a project: run `good generate`, which writes '
+    '`lib/src/declarations.g.dart` for the classes you wrote, and name it to '
+    '`Game.declarations`. In an engine package: run `dart run good_tool '
+    '--dir <directory>` and commit what it writes.';
 
 /// One package's generated collectors, keyed by the class each one reads.
 ///
@@ -656,7 +740,8 @@ class DeclarationCollector {
   ///
   /// A subclass gets its own entry, holding its own fields as well as these,
   /// so exact is the whole of the match.
-  const DeclarationCollector(this.type, this.collect) : matches = null;
+  const DeclarationCollector(this.type, this.collect, this.supertypes)
+    : matches = null;
 
   /// A generic class, matched against every instantiation of it.
   ///
@@ -692,7 +777,12 @@ class DeclarationCollector {
   /// its superclass's declarations instead of throwing "never scanned". That
   /// is the trade: it is only ever a class no generator saw, which is what
   /// `good_tool --check` in CI is for.
-  const DeclarationCollector.generic(this.type, this.collect, this.matches);
+  const DeclarationCollector.generic(
+    this.type,
+    this.collect,
+    this.matches,
+    this.supertypes,
+  );
 
   /// The class this reads.
   final Type type;
@@ -704,6 +794,13 @@ class DeclarationCollector {
   /// Whether an object is an instantiation of a generic [type], or null for
   /// a class with no type parameters. See [DeclarationCollector.generic].
   final bool Function(Object object)? matches;
+
+  /// Every type an instance of [type] **is**, [type] itself first. See
+  /// [collectSupertypes] for the order and for what is left out of it.
+  ///
+  /// A `const` list the generator wrote, shared by every instance, so asking
+  /// for it allocates nothing.
+  final List<Type> supertypes;
 }
 
 /// Every installed collector, keyed by the class it reads.
@@ -713,8 +810,8 @@ class DeclarationCollector {
 /// registration and from an event bind, neither of which has a `Game` in
 /// scope, and a scene brought up headlessly never has one at all.
 abstract final class DeclarationRegistry {
-  static final Map<Type, List<ScannableField> Function(Object)> _collectors =
-      <Type, List<ScannableField> Function(Object)>{};
+  static final Map<Type, DeclarationCollector> _collectors =
+      <Type, DeclarationCollector>{};
 
   /// The entries for generic classes, which no `runtimeType` ever equals.
   ///
@@ -728,8 +825,8 @@ abstract final class DeclarationRegistry {
   /// Kept apart from [_collectors] so that installing a table later cannot
   /// find one of these sitting in the place its own entry belongs; the whole
   /// cache is dropped whenever anything is installed.
-  static final Map<Type, List<ScannableField> Function(Object)> _matched =
-      <Type, List<ScannableField> Function(Object)>{};
+  static final Map<Type, DeclarationCollector> _matched =
+      <Type, DeclarationCollector>{};
 
   /// The packages installed so far.
   static final Set<String> _packages = <String>{};
@@ -764,7 +861,7 @@ abstract final class DeclarationRegistry {
             'version of it.',
           );
         }
-        _collectors[collector.type] = collector.collect;
+        _collectors[collector.type] = collector;
         if (collector.matches != null) _generic.add(collector);
       }
       for (final dependency in table.dependencies) {
@@ -796,7 +893,17 @@ abstract final class DeclarationRegistry {
   /// generator and read back off a table already committed.
   static List<ScannableField> Function(Object)? collectorForInstance(
     Scannable object,
-  ) {
+  ) => entryForInstance(object)?.collect;
+
+  /// The whole entry [collectorForInstance] takes the collect function off,
+  /// or null when nothing installed holds one.
+  ///
+  /// One lookup answers both questions a generated entry carries - the field
+  /// list and the type list - so the two can never disagree about which class
+  /// an instance reached. Splitting them would mean two walks over [_generic]
+  /// with two chances to resolve an instantiation differently, and the second
+  /// of those is the kind of disagreement nothing reports.
+  static DeclarationCollector? entryForInstance(Scannable object) {
     final type = object.runtimeType;
     final exact = _collectors[type];
     if (exact != null) return exact;
@@ -818,7 +925,7 @@ abstract final class DeclarationRegistry {
       found = candidate;
     }
     if (found == null) return null;
-    return _matched[type] = found.collect;
+    return _matched[type] = found;
   }
 
   /// Forgets everything installed.

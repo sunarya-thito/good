@@ -18,6 +18,17 @@
 // package's lib/ holds privately. That is another library,
 // so nothing here can read it - it keeps its place so that
 // what the row is missing, and where, is visible.
+//
+// Beside each list is every type an instance of that fixture
+// is, the fixture itself first, then the names in its
+// extends, with and implements clauses in that order, each
+// followed by its own supertypes. Nothing reads that order
+// positionally; it is fixed so two machines write one file.
+//
+// A type the generator did not read is not listed. A type it
+// read and this part cannot name keeps its place as a
+// comment - a part writes no imports of its own, so what it
+// may name is what its library already does.
 part of 'query_test.dart';
 
 List<ScannableField> _collect$Player(Object object) {
@@ -32,6 +43,20 @@ List<ScannableField> _collect$Player(Object object) {
   ];
 }
 
+const List<Type> _supertypes$Player = <Type>[
+  _Player,
+  EntityStruct,
+  // Coroutines: the library this part belongs to does not import it.
+  // Animations: the library this part belongs to does not import it.
+  MultiComponent,
+  Component,
+  Scannable,
+  ScannableField,
+  _Position,
+  _Health,
+  Child,
+];
+
 List<ScannableField> _collect$Rock(Object object) {
   final owner = object as _Rock;
   return <ScannableField>[
@@ -40,12 +65,36 @@ List<ScannableField> _collect$Rock(Object object) {
   ];
 }
 
+const List<Type> _supertypes$Rock = <Type>[
+  _Rock,
+  EntityStruct,
+  // Coroutines: the library this part belongs to does not import it.
+  // Animations: the library this part belongs to does not import it.
+  MultiComponent,
+  Component,
+  Scannable,
+  ScannableField,
+  _Position,
+];
+
 List<ScannableField> _collect$Trigger(Object object) {
   final owner = object as _Trigger;
   return <ScannableField>[
     owner.hitPoints,
   ];
 }
+
+const List<Type> _supertypes$Trigger = <Type>[
+  _Trigger,
+  EntityStruct,
+  // Coroutines: the library this part belongs to does not import it.
+  // Animations: the library this part belongs to does not import it.
+  MultiComponent,
+  Component,
+  Scannable,
+  ScannableField,
+  _Health,
+];
 
 List<ScannableField> _collect$Level(Object object) {
   final owner = object as _Level;
@@ -56,6 +105,13 @@ List<ScannableField> _collect$Level(Object object) {
   ];
 }
 
+const List<Type> _supertypes$Level = <Type>[
+  _Level,
+  SceneStruct,
+  // Coroutines: the library this part belongs to does not import it.
+  Scannable,
+];
+
 /// Every fixture this library declares, and how to read one.
 ///
 /// It carries the package's own generated table as a
@@ -65,10 +121,10 @@ const GeneratedDeclarations _queryTestDeclarations =
     GeneratedDeclarations(
       package: 'good/test/query_test.dart',
       collectors: <DeclarationCollector>[
-        DeclarationCollector(_Player, _collect$Player),
-        DeclarationCollector(_Rock, _collect$Rock),
-        DeclarationCollector(_Trigger, _collect$Trigger),
-        DeclarationCollector(_Level, _collect$Level),
+        DeclarationCollector(_Player, _collect$Player, _supertypes$Player),
+        DeclarationCollector(_Rock, _collect$Rock, _supertypes$Rock),
+        DeclarationCollector(_Trigger, _collect$Trigger, _supertypes$Trigger),
+        DeclarationCollector(_Level, _collect$Level, _supertypes$Level),
       ],
       dependencies: <GeneratedDeclarations>[
         goodDeclarations,

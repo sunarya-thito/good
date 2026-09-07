@@ -18,6 +18,17 @@
 // package's lib/ holds privately. That is another library,
 // so nothing here can read it - it keeps its place so that
 // what the row is missing, and where, is visible.
+//
+// Beside each list is every type an instance of that fixture
+// is, the fixture itself first, then the names in its
+// extends, with and implements clauses in that order, each
+// followed by its own supertypes. Nothing reads that order
+// positionally; it is fixed so two machines write one file.
+//
+// A type the generator did not read is not listed. A type it
+// read and this part cannot name keeps its place as a
+// comment - a part writes no imports of its own, so what it
+// may name is what its library already does.
 part of 'joints.dart';
 
 List<ScannableField> _collect$Anchor(Object object) {
@@ -47,6 +58,21 @@ List<ScannableField> _collect$Anchor(Object object) {
   ];
 }
 
+const List<Type> _supertypes$Anchor = <Type>[
+  Anchor,
+  EntityStruct,
+  Coroutines,
+  Animations,
+  MultiComponent,
+  Component,
+  Scannable,
+  ScannableField,
+  Transform2D,
+  Renderable2D,
+  Collider2D,
+  RigidBody2D,
+];
+
 List<ScannableField> _collect$Link(Object object) {
   final owner = object as Link;
   return <ScannableField>[
@@ -74,6 +100,21 @@ List<ScannableField> _collect$Link(Object object) {
   ];
 }
 
+const List<Type> _supertypes$Link = <Type>[
+  Link,
+  EntityStruct,
+  Coroutines,
+  Animations,
+  MultiComponent,
+  Component,
+  Scannable,
+  ScannableField,
+  Transform2D,
+  Renderable2D,
+  Collider2D,
+  RigidBody2D,
+];
+
 List<ScannableField> _collect$Weight(Object object) {
   final owner = object as Weight;
   return <ScannableField>[
@@ -100,6 +141,21 @@ List<ScannableField> _collect$Weight(Object object) {
     owner.transformRotation,
   ];
 }
+
+const List<Type> _supertypes$Weight = <Type>[
+  Weight,
+  EntityStruct,
+  Coroutines,
+  Animations,
+  MultiComponent,
+  Component,
+  Scannable,
+  ScannableField,
+  Transform2D,
+  Renderable2D,
+  Collider2D,
+  RigidBody2D,
+];
 
 List<ScannableField> _collect$Wheel(Object object) {
   final owner = object as Wheel;
@@ -129,6 +185,21 @@ List<ScannableField> _collect$Wheel(Object object) {
   ];
 }
 
+const List<Type> _supertypes$Wheel = <Type>[
+  Wheel,
+  EntityStruct,
+  Coroutines,
+  Animations,
+  MultiComponent,
+  Component,
+  Scannable,
+  ScannableField,
+  Transform2D,
+  Renderable2D,
+  Collider2D,
+  RigidBody2D,
+];
+
 List<ScannableField> _collect$Eye(Object object) {
   final owner = object as Eye;
   return <ScannableField>[
@@ -153,6 +224,20 @@ List<ScannableField> _collect$Eye(Object object) {
   ];
 }
 
+const List<Type> _supertypes$Eye = <Type>[
+  Eye,
+  EntityStruct,
+  Coroutines,
+  Animations,
+  MultiComponent,
+  Component,
+  Scannable,
+  ScannableField,
+  Transform2D,
+  WorldTransform2D,
+  Camera,
+];
+
 List<ScannableField> _collect$JointScene(Object object) {
   final owner = object as JointScene;
   return <ScannableField>[
@@ -164,10 +249,29 @@ List<ScannableField> _collect$JointScene(Object object) {
   ];
 }
 
+const List<Type> _supertypes$JointScene = <Type>[
+  JointScene,
+  SceneStruct,
+  Coroutines,
+  Scannable,
+];
+
 List<ScannableField> _collect$JointSystem(Object object) {
   object as JointSystem;
   return const <ScannableField>[];
 }
+
+const List<Type> _supertypes$JointSystem = <Type>[
+  JointSystem,
+  GameSystem,
+  GameListenerBase,
+  GameListener,
+  EventBus,
+  Scannable,
+  Coroutines,
+  ScannableField,
+  FixedTickable,
+];
 
 List<ScannableField> _collect$JointState(Object object) {
   final owner = object as JointState;
@@ -196,10 +300,35 @@ List<ScannableField> _collect$JointState(Object object) {
   ];
 }
 
+const List<Type> _supertypes$JointState = <Type>[
+  JointState,
+  DemoState,
+  GameState2D,
+  GameState,
+  GameListenerBase,
+  GameListener,
+  EventBus,
+  Scannable,
+  Coroutines,
+  Renderer2DState,
+];
+
 List<ScannableField> _collect$JointStats(Object object) {
   object as _JointStats;
   return const <ScannableField>[];
 }
+
+const List<Type> _supertypes$JointStats = <Type>[
+  _JointStats,
+  GameSystem,
+  GameListenerBase,
+  GameListener,
+  EventBus,
+  Scannable,
+  Coroutines,
+  ScannableField,
+  Tickable,
+];
 
 List<ScannableField> _collect$JointGame(Object object) {
   final owner = object as JointGame;
@@ -221,6 +350,16 @@ List<ScannableField> _collect$JointGame(Object object) {
   ];
 }
 
+const List<Type> _supertypes$JointGame = <Type>[
+  JointGame,
+  DemoGame,
+  Game2D,
+  Game,
+  // RandomOwner: the library this part belongs to does not import it.
+  Scannable,
+  Renderer2D,
+];
+
 /// Every fixture this library declares, and how to read one.
 ///
 /// It carries the generated tables this library imports,
@@ -232,16 +371,36 @@ const GeneratedDeclarations _jointsDeclarations =
     GeneratedDeclarations(
       package: 'goo2d/example/lib/demo/joints.dart',
       collectors: <DeclarationCollector>[
-        DeclarationCollector(Anchor, _collect$Anchor),
-        DeclarationCollector(Link, _collect$Link),
-        DeclarationCollector(Weight, _collect$Weight),
-        DeclarationCollector(Wheel, _collect$Wheel),
-        DeclarationCollector(Eye, _collect$Eye),
-        DeclarationCollector(JointScene, _collect$JointScene),
-        DeclarationCollector(JointSystem, _collect$JointSystem),
-        DeclarationCollector(JointState, _collect$JointState),
-        DeclarationCollector(_JointStats, _collect$JointStats),
-        DeclarationCollector(JointGame, _collect$JointGame),
+        DeclarationCollector(Anchor, _collect$Anchor, _supertypes$Anchor),
+        DeclarationCollector(Link, _collect$Link, _supertypes$Link),
+        DeclarationCollector(Weight, _collect$Weight, _supertypes$Weight),
+        DeclarationCollector(Wheel, _collect$Wheel, _supertypes$Wheel),
+        DeclarationCollector(Eye, _collect$Eye, _supertypes$Eye),
+        DeclarationCollector(
+          JointScene,
+          _collect$JointScene,
+          _supertypes$JointScene,
+        ),
+        DeclarationCollector(
+          JointSystem,
+          _collect$JointSystem,
+          _supertypes$JointSystem,
+        ),
+        DeclarationCollector(
+          JointState,
+          _collect$JointState,
+          _supertypes$JointState,
+        ),
+        DeclarationCollector(
+          _JointStats,
+          _collect$JointStats,
+          _supertypes$JointStats,
+        ),
+        DeclarationCollector(
+          JointGame,
+          _collect$JointGame,
+          _supertypes$JointGame,
+        ),
       ],
       dependencies: <GeneratedDeclarations>[
         goo2dPhysicsBox2dDeclarations,

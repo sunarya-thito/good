@@ -18,6 +18,17 @@
 // package's lib/ holds privately. That is another library,
 // so nothing here can read it - it keeps its place so that
 // what the row is missing, and where, is visible.
+//
+// Beside each list is every type an instance of that fixture
+// is, the fixture itself first, then the names in its
+// extends, with and implements clauses in that order, each
+// followed by its own supertypes. Nothing reads that order
+// positionally; it is fixed so two machines write one file.
+//
+// A type the generator did not read is not listed. A type it
+// read and this part cannot name keeps its place as a
+// comment - a part writes no imports of its own, so what it
+// may name is what its library already does.
 part of 'debug_draw_2d_test.dart';
 
 List<ScannableField> _collect$Box(Object object) {
@@ -43,6 +54,20 @@ List<ScannableField> _collect$Box(Object object) {
   ];
 }
 
+const List<Type> _supertypes$Box = <Type>[
+  _Box,
+  EntityStruct,
+  Coroutines,
+  Animations,
+  MultiComponent,
+  Component,
+  Scannable,
+  ScannableField,
+  Transform2D,
+  WorldTransform2D,
+  Renderable2D,
+];
+
 List<ScannableField> _collect$Eye(Object object) {
   final owner = object as _Eye;
   return <ScannableField>[
@@ -67,6 +92,20 @@ List<ScannableField> _collect$Eye(Object object) {
   ];
 }
 
+const List<Type> _supertypes$Eye = <Type>[
+  _Eye,
+  EntityStruct,
+  Coroutines,
+  Animations,
+  MultiComponent,
+  Component,
+  Scannable,
+  ScannableField,
+  Transform2D,
+  WorldTransform2D,
+  Camera,
+];
+
 List<ScannableField> _collect$Scene(Object object) {
   final owner = object as _Scene;
   return <ScannableField>[
@@ -75,10 +114,29 @@ List<ScannableField> _collect$Scene(Object object) {
   ];
 }
 
+const List<Type> _supertypes$Scene = <Type>[
+  _Scene,
+  SceneStruct,
+  Coroutines,
+  Scannable,
+];
+
 List<ScannableField> _collect$Painter(Object object) {
   object as _Painter;
   return const <ScannableField>[];
 }
+
+const List<Type> _supertypes$Painter = <Type>[
+  _Painter,
+  GameSystem,
+  GameListenerBase,
+  GameListener,
+  EventBus,
+  Scannable,
+  Coroutines,
+  ScannableField,
+  FixedTickable,
+];
 
 List<ScannableField> _collect$State(Object object) {
   final owner = object as _State;
@@ -99,10 +157,31 @@ List<ScannableField> _collect$State(Object object) {
   ];
 }
 
+const List<Type> _supertypes$State = <Type>[
+  _State,
+  GameState2D,
+  GameState,
+  GameListenerBase,
+  GameListener,
+  EventBus,
+  Scannable,
+  Coroutines,
+  Renderer2DState,
+];
+
 List<ScannableField> _collect$DebugGame(Object object) {
   object as _DebugGame;
   return const <ScannableField>[];
 }
+
+const List<Type> _supertypes$DebugGame = <Type>[
+  _DebugGame,
+  Game2D,
+  Game,
+  // RandomOwner: the library this part belongs to does not import it.
+  Scannable,
+  Renderer2D,
+];
 
 /// Every fixture this library declares, and how to read one.
 ///
@@ -113,12 +192,16 @@ const GeneratedDeclarations _debugDraw2dTestDeclarations =
     GeneratedDeclarations(
       package: 'goo2d/test/debug_draw_2d_test.dart',
       collectors: <DeclarationCollector>[
-        DeclarationCollector(_Box, _collect$Box),
-        DeclarationCollector(_Eye, _collect$Eye),
-        DeclarationCollector(_Scene, _collect$Scene),
-        DeclarationCollector(_Painter, _collect$Painter),
-        DeclarationCollector(_State, _collect$State),
-        DeclarationCollector(_DebugGame, _collect$DebugGame),
+        DeclarationCollector(_Box, _collect$Box, _supertypes$Box),
+        DeclarationCollector(_Eye, _collect$Eye, _supertypes$Eye),
+        DeclarationCollector(_Scene, _collect$Scene, _supertypes$Scene),
+        DeclarationCollector(_Painter, _collect$Painter, _supertypes$Painter),
+        DeclarationCollector(_State, _collect$State, _supertypes$State),
+        DeclarationCollector(
+          _DebugGame,
+          _collect$DebugGame,
+          _supertypes$DebugGame,
+        ),
       ],
       dependencies: <GeneratedDeclarations>[
         goo2dDeclarations,

@@ -132,7 +132,19 @@ String emitDeclarations(
     ..writeln('// A commented-out line is a declaration held by a private')
     ..writeln('// field. Dart privacy is per library and this is a different')
     ..writeln('// one, so nothing here can read it - it keeps its place so')
-    ..writeln('// that what the row is missing, and where, is visible.');
+    ..writeln('// that what the row is missing, and where, is visible.')
+    ..writeln('//')
+    ..writeln('// Beside each list is every type an instance of that class')
+    ..writeln('// is, the class itself first, then the names in its extends,')
+    ..writeln('// with and implements clauses in that order, each followed by')
+    ..writeln('// its own supertypes. Nothing reads that order positionally;')
+    ..writeln('// it is fixed so two machines write one file.')
+    ..writeln('//')
+    ..writeln('// A type the generator did not read - anything in dart: or in')
+    ..writeln('// a package outside the run - is not listed, because nothing')
+    ..writeln('// downstream of this file can act on a name it never saw. A')
+    ..writeln('// type it did read and this library cannot name keeps its')
+    ..writeln('// place as a comment.');
   if (entries.any((entry) => entry.isGeneric)) {
     buffer
       ..writeln('//')
@@ -168,25 +180,29 @@ String emitDeclarations(
         ..writeln('  return const <$scannableFieldType>[];')
         ..writeln('}')
         ..writeln();
-      continue;
+    } else {
+      buffer.writeln('  return <$scannableFieldType>[');
+      for (final field in entry.fields) {
+        // A private one keeps its place, commented out. Written into the file
+        // rather than only into a `--verbose` line: this is the file that lays
+        // the row out, so a column missing from it is missing where somebody
+        // reading a diff is looking, and it is missing from where it would
+        // have been.
+        buffer.writeln(
+          field.isPrivate
+              ? '    // ${field.owner}.${field.name}: private, unreachable.'
+              : '    owner.${field.name},',
+        );
+      }
+      buffer
+        ..writeln('  ];')
+        ..writeln('}')
+        ..writeln();
     }
-    buffer.writeln('  return <$scannableFieldType>[');
-    for (final field in entry.fields) {
-      // A private one keeps its place, commented out. Written into the file
-      // rather than only into a `--verbose` line: this is the file that lays
-      // the row out, so a column missing from it is missing where somebody
-      // reading a diff is looking, and it is missing from where it would
-      // have been.
-      buffer.writeln(
-        field.isPrivate
-            ? '    // ${field.owner}.${field.name}: private, unreachable.'
-            : '    owner.${field.name},',
-      );
-    }
-    buffer
-      ..writeln('  ];')
-      ..writeln('}')
-      ..writeln();
+    // Beside the field list rather than in a block of its own, because the two
+    // are one class's answer to two questions and a reader looking at either
+    // is looking at the same place.
+    buffer.writeln(emitSupertypes(entry.supertypesName, entry.supertypes));
   }
 
   for (final entry in entries) {
@@ -236,25 +252,23 @@ String emitDeclarations(
     ..writeln("$indent  package: '${package.name}',")
     ..writeln('$indent  collectors: <$declarationCollectorType>[');
   for (final entry in entries) {
-    if (!entry.isGeneric) {
-      buffer.writeln(
-        '$indent    $declarationCollectorType(${entry.type}, '
-        '${entry.functionName}),',
-      );
-      continue;
-    }
-    final line =
-        '$indent    $declarationCollectorType.generic(${entry.type}, '
-        '${entry.functionName}, ${entry.matcherName}),';
     // Wrapped only when it has to be, the way the accessor emitter wraps a
     // setter. `dart format` is not run over a generated file.
+    final arguments = <String>[
+      entry.type,
+      entry.functionName,
+      if (entry.isGeneric) entry.matcherName,
+      entry.supertypesName,
+    ];
+    final constructor = entry.isGeneric
+        ? '$declarationCollectorType.generic'
+        : declarationCollectorType;
+    final line = '$indent    $constructor(${arguments.join(', ')}),';
     buffer.writeln(
       line.length <= 80
           ? line
-          : '$indent    $declarationCollectorType.generic(\n'
-                '$indent      ${entry.type},\n'
-                '$indent      ${entry.functionName},\n'
-                '$indent      ${entry.matcherName},\n'
+          : '$indent    $constructor(\n'
+                '${arguments.map((a) => '$indent      $a,\n').join()}'
                 '$indent    ),',
     );
   }
@@ -268,6 +282,29 @@ String emitDeclarations(
   }
   buffer.writeln(opening.length <= 80 ? ');' : '    );');
   return buffer.toString();
+}
+
+/// The `const List<Type>` a collector's last argument names.
+///
+/// One shape for both emitters - a package's `declarations.g.dart` and the
+/// part beside a test - for the reason `declaration_collectors.dart` opens
+/// with: it is one artifact, read by one function, and two spellings of it is
+/// the generator that disagrees about what is current.
+///
+/// A type the file cannot name keeps its place as a comment, exactly as an
+/// unreadable field does in the list above it. The list is short either way;
+/// this is what says by how much and where.
+String emitSupertypes(String name, List<CollectedSupertype> supertypes) {
+  if (supertypes.isEmpty) return 'const List<Type> $name = <Type>[];\n';
+  final buffer = StringBuffer()..writeln('const List<Type> $name = <Type>[');
+  for (final supertype in supertypes) {
+    buffer.writeln(
+      supertype.isWritable
+          ? '  ${supertype.name},'
+          : '  // ${supertype.name}: ${supertype.problem}.',
+    );
+  }
+  return (buffer..writeln('];')).toString();
 }
 
 /// Every package whose entry library does not export its generated table.

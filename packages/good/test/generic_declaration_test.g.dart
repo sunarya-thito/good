@@ -19,6 +19,17 @@
 // so nothing here can read it - it keeps its place so that
 // what the row is missing, and where, is visible.
 //
+// Beside each list is every type an instance of that fixture
+// is, the fixture itself first, then the names in its
+// extends, with and implements clauses in that order, each
+// followed by its own supertypes. Nothing reads that order
+// positionally; it is fixed so two machines write one file.
+//
+// A type the generator did not read is not listed. A type it
+// read and this part cannot name keeps its place as a
+// comment - a part writes no imports of its own, so what it
+// may name is what its library already does.
+//
 // A generic fixture also gets an `is` test. Nothing at run
 // time can take the type arguments off a `Type`, so the
 // literal in the table below never equals an instance's
@@ -32,12 +43,34 @@ List<ScannableField> _collect$Enemy(Object object) {
   ];
 }
 
+const List<Type> _supertypes$Enemy = <Type>[
+  _Enemy,
+  EntityStruct,
+  // Coroutines: the library this part belongs to does not import it.
+  // Animations: the library this part belongs to does not import it.
+  MultiComponent,
+  Component,
+  Scannable,
+  ScannableField,
+];
+
 List<ScannableField> _collect$Pickup(Object object) {
   final owner = object as _Pickup;
   return <ScannableField>[
     owner.value,
   ];
 }
+
+const List<Type> _supertypes$Pickup = <Type>[
+  _Pickup,
+  EntityStruct,
+  // Coroutines: the library this part belongs to does not import it.
+  // Animations: the library this part belongs to does not import it.
+  MultiComponent,
+  Component,
+  Scannable,
+  ScannableField,
+];
 
 List<ScannableField> _collect$Spawner(Object object) {
   final owner = object as _Spawner;
@@ -47,12 +80,34 @@ List<ScannableField> _collect$Spawner(Object object) {
   ];
 }
 
+const List<Type> _supertypes$Spawner = <Type>[
+  _Spawner,
+  EntityStruct,
+  // Coroutines: the library this part belongs to does not import it.
+  // Animations: the library this part belongs to does not import it.
+  MultiComponent,
+  Component,
+  Scannable,
+  ScannableField,
+];
+
 List<ScannableField> _collect$Base(Object object) {
   final owner = object as _Base;
   return <ScannableField>[
     owner.base,
   ];
 }
+
+const List<Type> _supertypes$Base = <Type>[
+  _Base,
+  EntityStruct,
+  // Coroutines: the library this part belongs to does not import it.
+  // Animations: the library this part belongs to does not import it.
+  MultiComponent,
+  Component,
+  Scannable,
+  ScannableField,
+];
 
 List<ScannableField> _collect$Derived(Object object) {
   final owner = object as _Derived;
@@ -61,6 +116,18 @@ List<ScannableField> _collect$Derived(Object object) {
     owner.base,
   ];
 }
+
+const List<Type> _supertypes$Derived = <Type>[
+  _Derived,
+  _Base,
+  EntityStruct,
+  // Coroutines: the library this part belongs to does not import it.
+  // Animations: the library this part belongs to does not import it.
+  MultiComponent,
+  Component,
+  Scannable,
+  ScannableField,
+];
 
 /// Whether an object is a _Spawner, whatever its type arguments are.
 bool _is$Spawner(Object object) => object is _Spawner;
@@ -80,11 +147,26 @@ const GeneratedDeclarations _genericDeclarationTestDeclarations =
     GeneratedDeclarations(
       package: 'good/test/generic_declaration_test.dart',
       collectors: <DeclarationCollector>[
-        DeclarationCollector(_Enemy, _collect$Enemy),
-        DeclarationCollector(_Pickup, _collect$Pickup),
-        DeclarationCollector.generic(_Spawner, _collect$Spawner, _is$Spawner),
-        DeclarationCollector.generic(_Base, _collect$Base, _is$Base),
-        DeclarationCollector.generic(_Derived, _collect$Derived, _is$Derived),
+        DeclarationCollector(_Enemy, _collect$Enemy, _supertypes$Enemy),
+        DeclarationCollector(_Pickup, _collect$Pickup, _supertypes$Pickup),
+        DeclarationCollector.generic(
+          _Spawner,
+          _collect$Spawner,
+          _is$Spawner,
+          _supertypes$Spawner,
+        ),
+        DeclarationCollector.generic(
+          _Base,
+          _collect$Base,
+          _is$Base,
+          _supertypes$Base,
+        ),
+        DeclarationCollector.generic(
+          _Derived,
+          _collect$Derived,
+          _is$Derived,
+          _supertypes$Derived,
+        ),
       ],
       dependencies: <GeneratedDeclarations>[
         goodDeclarations,

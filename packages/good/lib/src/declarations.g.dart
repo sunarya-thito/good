@@ -22,7 +22,20 @@
 // field. Dart privacy is per library and this is a different
 // one, so nothing here can read it - it keeps its place so
 // that what the row is missing, and where, is visible.
+//
+// Beside each list is every type an instance of that class
+// is, the class itself first, then the names in its extends,
+// with and implements clauses in that order, each followed by
+// its own supertypes. Nothing reads that order positionally;
+// it is fixed so two machines write one file.
+//
+// A type the generator did not read - anything in dart: or in
+// a package outside the run - is not listed, because nothing
+// downstream of this file can act on a name it never saw. A
+// type it did read and this library cannot name keeps its
+// place as a comment.
 
+import 'package:good/src/command/command.dart';
 import 'package:good/src/game.dart';
 import 'package:good/src/scannable.dart';
 
@@ -35,12 +48,26 @@ List<ScannableField> _reportDisabledSystemCommand(Object object) {
   ];
 }
 
+const List<Type> _supertypes$ReportDisabledSystemCommand = <Type>[
+  ReportDisabledSystemCommand,
+  SinkCommand,
+  GameCommandBase,
+  Scannable,
+];
+
 List<ScannableField> _setPausedCommand(Object object) {
   final owner = object as SetPausedCommand;
   return <ScannableField>[
     owner.paused,
   ];
 }
+
+const List<Type> _supertypes$SetPausedCommand = <Type>[
+  SetPausedCommand,
+  SinkCommand,
+  GameCommandBase,
+  Scannable,
+];
 
 List<ScannableField> _setTimeScaleCommand(Object object) {
   final owner = object as SetTimeScaleCommand;
@@ -49,6 +76,14 @@ List<ScannableField> _setTimeScaleCommand(Object object) {
   ];
 }
 
+const List<Type> _supertypes$SetTimeScaleCommand = <Type>[
+  SetTimeScaleCommand,
+  ValueSink,
+  SinkCommand,
+  GameCommandBase,
+  Scannable,
+];
+
 List<ScannableField> _setVisibleCommand(Object object) {
   final owner = object as SetVisibleCommand;
   return <ScannableField>[
@@ -56,10 +91,24 @@ List<ScannableField> _setVisibleCommand(Object object) {
   ];
 }
 
+const List<Type> _supertypes$SetVisibleCommand = <Type>[
+  SetVisibleCommand,
+  SinkCommand,
+  GameCommandBase,
+  Scannable,
+];
+
 List<ScannableField> _stepOnceCommand(Object object) {
   object as StepOnceCommand;
   return const <ScannableField>[];
 }
+
+const List<Type> _supertypes$StepOnceCommand = <Type>[
+  StepOnceCommand,
+  SignalCommand,
+  GameCommandBase,
+  Scannable,
+];
 
 /// Every class `package:good` can instantiate that holds a
 /// declaration, and how to read one.
@@ -71,10 +120,30 @@ List<ScannableField> _stepOnceCommand(Object object) {
 const GeneratedDeclarations goodDeclarations = GeneratedDeclarations(
   package: 'good',
   collectors: <DeclarationCollector>[
-    DeclarationCollector(ReportDisabledSystemCommand, _reportDisabledSystemCommand),
-    DeclarationCollector(SetPausedCommand, _setPausedCommand),
-    DeclarationCollector(SetTimeScaleCommand, _setTimeScaleCommand),
-    DeclarationCollector(SetVisibleCommand, _setVisibleCommand),
-    DeclarationCollector(StepOnceCommand, _stepOnceCommand),
+    DeclarationCollector(
+      ReportDisabledSystemCommand,
+      _reportDisabledSystemCommand,
+      _supertypes$ReportDisabledSystemCommand,
+    ),
+    DeclarationCollector(
+      SetPausedCommand,
+      _setPausedCommand,
+      _supertypes$SetPausedCommand,
+    ),
+    DeclarationCollector(
+      SetTimeScaleCommand,
+      _setTimeScaleCommand,
+      _supertypes$SetTimeScaleCommand,
+    ),
+    DeclarationCollector(
+      SetVisibleCommand,
+      _setVisibleCommand,
+      _supertypes$SetVisibleCommand,
+    ),
+    DeclarationCollector(
+      StepOnceCommand,
+      _stepOnceCommand,
+      _supertypes$StepOnceCommand,
+    ),
   ],
 );
