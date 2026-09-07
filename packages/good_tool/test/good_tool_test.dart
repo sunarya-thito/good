@@ -1670,6 +1670,251 @@ class _Spawner<T extends EntityStruct> extends EntityStruct {
       expect(written, isNot(contains('_is\$Enemy')));
     });
 
+    // The type half of the same walk. A component mixin that declares no
+    // column of its own leaves nothing behind in the field list, so nothing
+    // could answer "which components does this prefab apply" - and the
+    // prefab's own class belongs in the answer because a prefab registers
+    // itself as a component (`EntityStruct.describeType` is
+    // `component.has(type: runtimeType)`), so a query can match on it.
+    test('lists a class as itself and everything above it', () async {
+      final repo = fakeRepo(<FakePackage>[
+        declarationKernel(),
+        const FakePackage(
+          'demo',
+          dependencies: <String>['good'],
+          files: <String, String>{
+            'demo.dart': "export 'src/enemy.dart';\n",
+            'src/enemy.dart': '''
+import 'package:good/good.dart';
+
+mixin Marked on Component {}
+
+mixin Stated on Component {
+  final speed = Field.float64(1);
+}
+
+class Enemy extends EntityStruct with Marked, Stated {
+  final hp = Field.int32(3);
+}
+''',
+          },
+        ),
+      ]);
+      final packages = repoPackages(repo);
+      final sources = await readPackageSources(packages);
+      final scan = scanDeclarationCollectors(
+        packages: packages,
+        sources: sources,
+      );
+      final enemy = scan.entries.singleWhere((e) => e.type == 'Enemy');
+
+      // Depth first over the clauses as written: the class, then what
+      // `extends` names and everything above *that*, then the `with` names
+      // left to right. `Component` landing before `Marked` is what separates
+      // it from a breadth-first walk, and `Marked` before `Stated` from the
+      // field list, which reverses the `with` clause because that is the
+      // order Dart runs the initialisers in - `good`'s
+      // supertype_collection_test.dart holds the two side by side on real
+      // columns.
+      //
+      // `Marked` is in it at all although it declares nothing. That is the
+      // gap this closed: a mixin with no column of its own leaves no trace
+      // in a field list, so nothing could report that a prefab applies it.
+      expect(<String>[for (final above in enemy.supertypes) above.name], <
+        String
+      >[
+        'Enemy',
+        'EntityStruct',
+        'Component',
+        'Scannable',
+        'ScannableField',
+        'Marked',
+        'Stated',
+      ]);
+
+      final demo = packages.singleWhere((p) => p.name == 'demo');
+      final imports = Imports(
+        declaredIn: declaredIn(sources),
+        byLibDir: <String, EnginePackage>{
+          for (final package in packages) package.libDir: package,
+        },
+        units: sources.units,
+        packages: packages,
+      );
+      final written = emitDeclarations(
+        scan.byPackage['demo']!,
+        package: demo,
+        tableImports: imports
+            .importFor(generatedDeclarationsType, demo)
+            .imports,
+        dependencies: const <EnginePackage>[],
+        regenerate: const <String>['Regenerate with `dart run good_tool`.'],
+      );
+      expect(
+        written,
+        contains(
+          'const List<Type> _supertypes\$Enemy = <Type>[\n'
+          '  Enemy,\n'
+          '  EntityStruct,\n'
+          '  Component,\n'
+          '  Scannable,\n'
+          '  ScannableField,\n'
+          '  Marked,\n'
+          '  Stated,\n'
+          '];',
+        ),
+      );
+    });
+
+    // Two absences that are not the same absence, and the file has to read
+    // differently for each. A name the run never saw is outside what the
+    // generator knows about at all - a bit comes out of this same walk, so
+    // nothing downstream could act on it - while one it did see and cannot
+    // spell is a hole in an answer it otherwise has.
+    test('drops a supertype it never read and marks one it cannot name',
+        () async {
+      final repo = fakeRepo(<FakePackage>[
+        declarationKernel(),
+        const FakePackage(
+          'demo',
+          dependencies: <String>['good'],
+          files: <String, String>{
+            'demo.dart': "export 'src/enemy.dart';\n",
+            'src/enemy.dart': '''
+import 'package:good/good.dart';
+
+mixin _Secret on Component {}
+
+class Enemy extends EntityStruct with _Secret implements Comparable<Enemy> {
+  final hp = Field.int32(3);
+
+  @override
+  int compareTo(Enemy other) => 0;
+}
+''',
+          },
+        ),
+      ]);
+      final packages = repoPackages(repo);
+      final sources = await readPackageSources(packages);
+      final scan = scanDeclarationCollectors(
+        packages: packages,
+        sources: sources,
+      );
+      final enemy = scan.entries.singleWhere((e) => e.type == 'Enemy');
+
+      // `Comparable` is in `dart:core`, which no scan reads, so it is not in
+      // the list at all - not even as a comment. `_Secret` was read, so its
+      // place is kept and the file says why it is empty.
+      expect(<String>[
+        for (final above in enemy.supertypes) above.name,
+      ], isNot(contains('Comparable')));
+      expect(<String>[for (final above in enemy.supertypes) above.name], <
+        String
+      >[
+        'Enemy',
+        'EntityStruct',
+        'Component',
+        'Scannable',
+        'ScannableField',
+        '_Secret',
+      ]);
+      expect(
+        enemy.supertypes.where((above) => !above.isWritable).map(
+          (above) => above.name,
+        ),
+        <String>['_Secret'],
+      );
+      expect(scan.skipped['Enemy._Secret'], contains('private supertype'));
+
+      // The entry survives. A supertype it cannot name costs this class one
+      // line; the class's own name failing to resolve is what costs it the
+      // collector, and that is a different branch.
+      expect(scan.byPackage['demo']!.map((e) => e.type), contains('Enemy'));
+
+      final demo = packages.singleWhere((p) => p.name == 'demo');
+      final imports = Imports(
+        declaredIn: declaredIn(sources),
+        byLibDir: <String, EnginePackage>{
+          for (final package in packages) package.libDir: package,
+        },
+        units: sources.units,
+        packages: packages,
+      );
+      final written = emitDeclarations(
+        scan.byPackage['demo']!,
+        package: demo,
+        tableImports: imports
+            .importFor(generatedDeclarationsType, demo)
+            .imports,
+        dependencies: const <EnginePackage>[],
+        regenerate: const <String>['Regenerate with `dart run good_tool`.'],
+      );
+      expect(
+        written,
+        contains(
+          '  ScannableField,\n'
+          '  // _Secret: it is a private supertype, and this file is a '
+          'different library from the one that declares it - so it is left '
+          'out of what this class reports itself to be, and out of any '
+          'component bit read off that.\n'
+          '];',
+        ),
+      );
+    });
+
+    // A part writes no imports of its own, so what it may name is what the
+    // library it is compiled into already names - which is narrower than the
+    // map the supertype walk crosses libraries with. Getting that wrong does
+    // not produce a shorter list, it produces a part that does not compile,
+    // and `--tests --check` would call it current.
+    test('leaves a fixture supertype its library never imported out', () async {
+      final repo = fakeRepo(<FakePackage>[declarationKernel()]);
+      final root = p.join(repo.path, 'packages', 'good');
+      File(p.join(root, 'test', 'level_test.dart'))
+        ..parent.createSync(recursive: true)
+        ..writeAsStringSync('''
+import 'package:good/src/scannable.dart';
+
+class _Level extends EntityStruct {}
+''');
+      final packages = repoPackages(repo);
+      final scan = scanFixtures(
+        packages: packages,
+        sources: await readFixtureSources(packages, packages),
+        tabled: <String>{'good'},
+      );
+      final level = scan.libraries.single.collectors.single;
+
+      // `EntityStruct`, `Scannable` and `ScannableField` are declared in the
+      // one file this library imports. `Component` is in `struct.dart`, which
+      // `scannable.dart` imports and this library does not - and an import is
+      // not transitive in Dart, so the name is out of reach here while being
+      // squarely in the supertype walk's map.
+      expect(<String>[for (final above in level.supertypes) above.name], <
+        String
+      >['_Level', 'EntityStruct', 'Component', 'Scannable', 'ScannableField']);
+      expect(
+        level.supertypes.where((above) => !above.isWritable).map(
+          (above) => above.name,
+        ),
+        <String>['Component'],
+      );
+      expect(
+        emitFixtureDeclarations(scan.libraries.single),
+        contains(
+          'const List<Type> _supertypes\$Level = <Type>[\n'
+          '  _Level,\n'
+          '  EntityStruct,\n'
+          '  // Component: the library this part belongs to does not import '
+          'it.\n'
+          '  Scannable,\n'
+          '  ScannableField,\n'
+          '];',
+        ),
+      );
+    });
+
     // A cache column has to stay plain public - the collector that reads it
     // is generated into whatever package applies the mixin - and still has no
     // business being `entity<Cached>().shut`. `@hide` is how a column says
