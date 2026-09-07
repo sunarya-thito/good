@@ -394,3 +394,24 @@ List<EnginePackage> repoPackages(Directory repo) =>
     enginePackages(<Directory>[
       Directory(p.join(repo.path, 'packages')),
     ]).packages;
+
+/// The repository this suite is running inside.
+///
+/// The fixture repositories above are written into a temp directory and are
+/// the right subject for a question about the scan. This is for the questions
+/// about **this** checkout - whether the committed generated files are current,
+/// and what bit order the projects here get - which have no fixture because
+/// the checkout is the subject.
+Directory repositoryRoot() {
+  var dir = Directory.current;
+  for (var i = 0; i < 6; i++) {
+    if (File(p.join(dir.path, 'mkdocs.yml')).existsSync() &&
+        Directory(p.join(dir.path, 'packages')).existsSync()) {
+      return dir;
+    }
+    final parent = dir.parent;
+    if (parent.path == dir.path) break;
+    dir = parent;
+  }
+  fail('run this suite from inside the repository');
+}

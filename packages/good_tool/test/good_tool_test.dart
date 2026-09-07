@@ -957,7 +957,7 @@ void main() {
     // the same check as a step of its own; this puts it in the suite too, so it
     // fails on the machine that made the change.
     test('has the accessor files the generator would write', () async {
-      final root = _actualRepoRoot();
+      final root = repositoryRoot();
       final packages = repoPackages(root);
       final scan = scanAccessors(
         packages: packages,
@@ -1016,7 +1016,7 @@ void main() {
     // attributed to whichever owner was under construction when the
     // initialiser finally ran, which on a second isolate is a different one.
     test('holds every declaration on the field that declares it', () async {
-      final root = _actualRepoRoot();
+      final root = repositoryRoot();
       final found = enginePackages(<Directory>[
         Directory(p.join(root.path, 'packages')),
       ]);
@@ -1096,7 +1096,7 @@ void main() {
     // library. What is left is a name written nowhere at all, and this is
     // what says so.
     test('has no doc reference naming something written nowhere', () async {
-      final root = _actualRepoRoot();
+      final root = repositoryRoot();
       final found = enginePackages(<Directory>[
         Directory(p.join(root.path, 'packages')),
       ]);
@@ -1139,7 +1139,7 @@ void main() {
     // class a run can hand to `collectDeclarations` has a line to find,
     // including the ones with nothing to say.
     test('has a collector for every class it can instantiate', () async {
-      final root = _actualRepoRoot();
+      final root = repositoryRoot();
       final packages = repoPackages(root);
       final sources = await readPackageSources(packages);
       final scan = scanDeclarationCollectors(
@@ -1727,7 +1727,7 @@ mixin Cached on Component {
     });
 
     test('has the component-bit table the generator would write', () async {
-      final root = _actualRepoRoot();
+      final root = repositoryRoot();
       final packages = repoPackages(root);
       final sources = await readSources(
         root,
@@ -1904,19 +1904,4 @@ Directory _standaloneTree() {
       }),
     );
   return tree;
-}
-
-/// The repository this suite is running inside.
-Directory _actualRepoRoot() {
-  var dir = Directory.current;
-  for (var i = 0; i < 6; i++) {
-    if (File(p.join(dir.path, 'mkdocs.yml')).existsSync() &&
-        Directory(p.join(dir.path, 'packages')).existsSync()) {
-      return dir;
-    }
-    final parent = dir.parent;
-    if (parent.path == dir.path) break;
-    dir = parent;
-  }
-  fail('run this suite from inside the repository');
 }
