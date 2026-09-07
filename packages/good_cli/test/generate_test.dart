@@ -1027,28 +1027,32 @@ good:
 
     /// [source] with its comments removed.
     ///
-    /// The templates talk *about* the 2D side - what `Game2D` declares for you
-    /// that a 3D game declares by hand - so a search for `2D` over the whole
-    /// file finds prose. What must not appear is a 2D name in the code.
+    /// A template names what it has not got - `Renderable3D` in the prefab's
+    /// prose, because leaving that unsaid reads as an oversight - so a search
+    /// for a type over the whole file finds the sentence saying it is absent.
+    /// What must not appear is the name in the code.
     String code(String source) => source
         .split('\n')
         .where((line) => !line.trimLeft().startsWith('//'))
         .join('\n');
 
-    test('imports goo3d and names nothing 2D', () {
+    test('imports goo3d and names nothing 2D, prose included', () {
       for (final entry in files().entries) {
         if (!entry.key.endsWith('.dart')) continue;
         expect(
-          code(entry.value),
+          entry.value,
           isNot(contains('goo2d')),
           reason: '${entry.key} imports the wrong engine',
         );
         expect(
-          code(entry.value),
+          entry.value,
           isNot(contains('2D')),
           reason:
               '${entry.key} names a 2D type - Transform2D, Renderable2D and '
-              'Game2D are all things a goo3d project cannot resolve',
+              'Game2D are all things a goo3d project cannot resolve. The '
+              'comments are read too: they explained what Game2D declared '
+              'that a 3D game wrote by hand, and Game3D is what a 3D game '
+              'has now',
         );
       }
     });
@@ -1076,38 +1080,59 @@ good:
       );
     });
 
-    test('declares the view it shows, and a camera entity to occupy it', () {
+    test('takes its view from Game3D rather than declaring one', () {
       final scaffolded = files();
       final game = scaffolded['lib/game/demo_game.dart']!;
-      expect(game, contains('mainView'));
       expect(
         game,
-        contains('describeCameras'),
-        reason: 'Game2D declares a default view for you; plain Game does not',
+        contains('class DemoGame extends Game3D {'),
+        reason:
+            'Game3D declares the view a camera entity is pointed at (#92); a '
+            'project extending plain Game writes that itself',
+      );
+      expect(
+        code(game),
+        isNot(contains('describeCameras')),
+        reason:
+            'the view Game3D declares is the one this project shows, so an '
+            'override here is the ceremony #92 removed, written again',
       );
       expect(
         scaffolded['lib/main.dart'],
-        contains('GameView(camera: game.mainView)'),
+        contains('GameView(camera: game.defaultCamera)'),
       );
       expect(scaffolded.keys, contains('lib/game/prefabs/eye.dart'));
       expect(
         scaffolded['lib/game/scenes/main_scene.dart'],
-        contains('eye.cameraView[camera] ='),
+        contains('eye.cameraView[camera] = (game as Game3D).defaultCamera;'),
         reason: 'a camera occupying no view is a camera nothing would show',
       );
     });
 
-    test('declares the composition pass nothing else declares', () {
+    test('takes the composition pass from GameState3D', () {
+      final game = files()['lib/game/demo_game.dart']!;
       expect(
-        files()['lib/game/demo_game.dart'],
-        contains(
-          '@system\n  final worldTransform = WorldTransform3DSystem();',
-        ),
+        game,
+        contains('class DemoState extends GameState3D<DemoGame> {'),
         reason:
-            'Renderer2DState declares the 2D twin for you. Without this a '
-            'child never moves with its parent - and without the marker the '
-            'field holds a spare, the system is never declared, and the '
-            'project still analyzes clean',
+            'GameState3D is what declares WorldTransform3DSystem (#92). '
+            'Without that pass a child never moves with its parent, and a '
+            'state that reaches it by extending GameState instead is a '
+            'project that analyzes clean and composes nothing',
+      );
+      expect(
+        code(game),
+        isNot(contains('WorldTransform3DSystem()')),
+        reason:
+            'constructing one here declares a second composition pass beside '
+            "the one this state's superclass already declares",
+      );
+      expect(
+        game,
+        contains('@system\n  final spin = SpinSystem();'),
+        reason:
+            'the marker is what makes a field a declaration, and the one '
+            'system this project owns is where a reader meets it',
       );
     });
 

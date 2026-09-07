@@ -2,6 +2,17 @@
 
 ### Changed
 
+* **A scaffolded 3D project extends `Game3D`.** `good create --3d` wrote a
+  `describeCameras` override for the view `main.dart` shows and a
+  `@system final worldTransform` line for the composition pass, with comments
+  saying no `Game3D` existed to declare either. It does now, so the game class
+  extends `Game3D`, its state extends `GameState3D`, and the camera entity in
+  `MainScene` is pointed at `defaultCamera` (#92).
+
+  The comments went with them. There is still no 3D renderer - issue #43 - and
+  the templates still say so; what a fresh project no longer carries is the
+  ceremony around it.
+
 * **The scene scan reads field initialisers, not only method bodies.** It kept
   `describeAssets` and `describeScene` bodies and skipped everything else, so
   `final texture = Asset.of(Textures.player)` was attributed to no scene. That

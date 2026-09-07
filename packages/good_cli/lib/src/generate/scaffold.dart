@@ -66,7 +66,7 @@ Map<String, String> scaffoldFiles({
         ? _game3D(className, gameClass, package, projectName)
         : _game2D(className, gameClass, package, projectName),
     'lib/game/scenes/main_scene.dart': engine == GoodEngine.threeD
-        ? _scene3D(gameClass, gameFile, package)
+        ? _scene3D(package)
         : _scene2D(package),
     'lib/game/prefabs/player.dart': engine == GoodEngine.threeD
         ? _player3D(package)
@@ -435,7 +435,7 @@ String _main3D(
     return Stack(
       fit: StackFit.expand,
       children: <Widget>[
-        GameView(camera: game.mainView),
+        GameView(camera: game.defaultCamera),
         _NoRendererYet(game: game),
       ],
     );''',
@@ -563,39 +563,26 @@ import 'systems/spin_system.dart';
 /// The **main isolate** half: what the game *is*. Declarations live here -
 /// systems, buffers, cameras - and no simulation runs on this side.
 ///
-/// `Game` and not a `Game3D`: there is no such class, because what `Game2D`
-/// gives you over `Game` is a renderer and a default camera view to point it
-/// at, and `goo3d` has no renderer yet (issue #43). Everything a 3D game
-/// declares, it declares here by hand - which is two overrides, both below.
-class $gameClass extends Game {
+/// `Game3D` and not `Game`, for two declarations that then need writing
+/// nowhere. `defaultCamera` is the view `main.dart` shows and the one the
+/// camera entity in `MainScene` is pointed at - a view is declared at boot
+/// because its storage is allocated before the simulation isolate is spawned.
+/// The state below gets the pass that composes every entity's local
+/// `Transform3D` against its ancestors into its `WorldTransform3D`, once per
+/// tick; a game without it has children that never move with their parents.
+///
+/// No renderer comes with it. There is none yet - issue #43 - and `Game3D`
+/// removes the ceremony rather than that gap. A game wanting a second view
+/// declares it here in its own `describeCameras`, calling `super` first so
+/// `defaultCamera` keeps the address `main.dart` shows.
+class $gameClass extends Game3D {
 ${_declarationsOverride(projectName)}
-  /// The view `main.dart` shows, and the one the camera entity in
-  /// `MainScene` is pointed at.
-  ///
-  /// A view is a place a game is drawn, declared at boot because its storage
-  /// is allocated before the simulation isolate is spawned. `Game2D` declares
-  /// one called `defaultCamera` on your behalf; nothing does that here.
-  late final CameraView mainView;
-
   @override
-  void describeCameras(CameraDescriptor descriptor) {
-    super.describeCameras(descriptor);
-    mainView = descriptor.has();
-  }
-
-  @override
-  GameState<$gameClass> createState() => ${className}State();
+  GameState3D<$gameClass> createState() => ${className}State();
 }
 
 /// The **game isolate** half: what the game *does*.
-class ${className}State extends GameState<$gameClass> {
-  // Composes every entity's local `Transform3D` against its ancestors into
-  // its `WorldTransform3D`, once per tick. Without it a child never moves
-  // with its parent - and again, `Game2D` declares the 2D twin of this for
-  // you while nothing declares this one.
-  @system
-  final worldTransform = WorldTransform3DSystem();
-
+class ${className}State extends GameState3D<$gameClass> {
   // `@system` is what says a field is a declaration. Drop it and the line is
   // an ordinary field holding a spare - legal, and it declares nothing.
   @system
@@ -633,11 +620,10 @@ class MainScene extends SceneStruct {
 }
 ''';
 
-String _scene3D(String gameClass, String gameFile, String package) =>
+String _scene3D(String package) =>
     '''
 import 'package:$package/$package.dart';
 
-import '../$gameFile.dart';
 import '../prefabs/eye.dart';
 import '../prefabs/player.dart';
 
@@ -662,7 +648,11 @@ class MainScene extends SceneStruct {
     // Nothing shows it today either - there is no renderer to read this - but
     // the wiring is the wiring, and it is the line that will stop being
     // inert when issue #43 lands.
-    eye.cameraView[camera] = (game as $gameClass).mainView;
+    //
+    // The cast is to `Game3D` and not to this project's own game class: a
+    // scene is handed its game as a `Game`, and `defaultCamera` is what every
+    // 3D game has. Nothing here needs to know which one it was loaded into.
+    eye.cameraView[camera] = (game as Game3D).defaultCamera;
     // Backed off along +Z. A camera looks down its own -Z, and this one's
     // rotation is left at identity, so from here it faces the origin - where
     // the player is. `camera<Transform3D>().lookAt(x, y, z)` is the general
