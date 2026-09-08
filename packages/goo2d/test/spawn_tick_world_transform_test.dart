@@ -52,9 +52,9 @@ class _NodeRequest {
 
 class _Scene extends SceneStruct {
   late Scene handle;
-  @sub
+  @prefab
   final leaf = _Leaf();
-  @sub
+  @prefab
   final node = _Node();
 
   @override

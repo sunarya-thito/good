@@ -152,15 +152,15 @@ class Eye extends EntityStruct with Transform2D, WorldTransform2D, Camera {}
 class JointScene extends SceneStruct {
   late Scene handle;
 
-  @sub
+  @prefab
   final anchor = Anchor();
-  @sub
+  @prefab
   final link = Link();
-  @sub
+  @prefab
   final weight = Weight();
-  @sub
+  @prefab
   final wheel = Wheel();
-  @sub
+  @prefab
   final eye = Eye();
 
   /// The three chains, top link first, so [JointSystem] can stitch each run

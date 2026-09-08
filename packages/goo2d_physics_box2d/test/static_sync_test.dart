@@ -32,7 +32,7 @@ class _Slab extends EntityStruct with Transform2D, Collider2D, RigidBody2D {
 }
 
 class _Scene extends SceneStruct {
-  @sub
+  @prefab
   final slab = _Slab();
 }
 

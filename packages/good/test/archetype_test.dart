@@ -63,9 +63,9 @@ class _Level extends SceneStruct {
 
   _Level();
 
-  @sub
+  @prefab
   final player = _Player();
-  @sub
+  @prefab
   final enemy = _Enemy();
 }
 

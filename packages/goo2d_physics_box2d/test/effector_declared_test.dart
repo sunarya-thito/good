@@ -80,17 +80,17 @@ class _Loose extends EntityStruct with Transform2D, Collider2D, Effector2D {
 }
 
 class _LooseScene extends SceneStruct {
-  @sub
+  @prefab
   final zone = _Loose();
 }
 
 class _Scene extends SceneStruct {
   late Scene handle;
-  @sub
+  @prefab
   final box = _Box();
-  @sub
+  @prefab
   final zone = _Zone();
-  @sub
+  @prefab
   final waterZone = _Pool();
 
   late Entity zoneEntity;

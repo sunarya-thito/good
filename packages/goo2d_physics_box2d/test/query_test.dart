@@ -36,9 +36,9 @@ class _Hidden extends EntityStruct with Transform2D, Collider2D, RigidBody2D {
 
 class _Scene extends SceneStruct {
   late Scene handle;
-  @sub
+  @prefab
   final wall = _Wall();
-  @sub
+  @prefab
   final hidden = _Hidden();
 
   @override

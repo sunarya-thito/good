@@ -60,6 +60,29 @@
 
 ### Changed
 
+* **A scaffolded scene declares its prefab with `@prefab`** (#398). `good
+  create` wrote `@sub` on the scene's `player` field, which is the marker for a
+  child entity inside a prefab; a scene holds prefabs. Existing projects go on
+  working - `@sub` on a scene still registers the prefab - and
+  `good_tool --declarations` names each one.
+
+* **A marker naming the wrong kind is reported.** `scanDeclarations` reads
+  what each marker accepts off the `@Marks` written on it, and reports a field
+  whose value or whose owner is not what the marker names (#398):
+
+  ```
+  MainScene.player - @sub marks an EntityStruct on a Component, and MainScene
+  is not a Component. @prefab is what fits it.
+  ```
+
+  It prints without `--verbose`, sets no exit code, and the field is collected
+  either way - `misplaced`'s settlement, for `misplaced`'s reason. Markers are
+  still found by walking every `ScannableAnnotation` subtype, so a marker added
+  in `good` is read here with nothing edited, and one carrying no `@Marks`
+  constrains nothing. The advice naming what fits is derived from the same
+  walk, so `--declarations --verbose` no longer offers `@sub` for a field on a
+  scene.
+
 * **A `.psd` or an `.aseprite` in the source directory now ships. Move your
   working files out of `asset-source:` before the next build.** Normalisation
   copied across only what it recognised, so a layered source file kept beside

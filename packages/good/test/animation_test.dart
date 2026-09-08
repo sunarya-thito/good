@@ -55,7 +55,7 @@ class _Bare extends TimelineStruct {
 }
 
 class _Scene extends SceneStruct {
-  @sub
+  @prefab
   final enemy = _Enemy();
 }
 

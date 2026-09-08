@@ -185,18 +185,18 @@ class _BudgetScene extends SceneStruct {
 
   // Declaration order is archetype order is fill order. The whole file
   // depends on it, so it is stated once, here.
-  @sub
+  @prefab
   final first = _First();
-  @sub
+  @prefab
   final panel = _Panel();
-  @sub
+  @prefab
   final second = _Second();
 
   // Appended, so the three above keep the encounter order the equal-`zIndex`
   // tie-break puts them in.
-  @sub
+  @prefab
   final bar = _Bar();
-  @sub
+  @prefab
   final column = _Column();
 }
 

@@ -321,43 +321,43 @@ class _SpriteScene extends SceneStruct {
 
   _SpriteScene();
 
-  @sub
+  @prefab
   final sprite = _Sprite();
-  @sub
+  @prefab
   final invisible = _Invisible();
-  @sub
+  @prefab
   final group = _Group();
-  @sub
+  @prefab
   final twoSprite = _TwoSprite();
-  @sub
+  @prefab
   final halfHidden = _HalfHidden();
-  @sub
+  @prefab
   final stack = _Stack();
-  @sub
+  @prefab
   final topLeft = _TopLeft();
-  @sub
+  @prefab
   final eye = _Eye();
 
   /// Registered last on purpose: archetype registration order is the encounter
   /// order the z-sort ties break on, so a new prefab has to go on the end or
   /// it would reshuffle the ordering tests below.
-  @sub
+  @prefab
   final texturedPair = _Textured();
-  @sub
+  @prefab
   final panel = _Panel();
-  @sub
+  @prefab
   final unsizedPanel = _UnsizedPanel();
-  @sub
+  @prefab
   final borderedUntextured = _BorderedUntextured();
-  @sub
+  @prefab
   final flat = _Flat();
-  @sub
+  @prefab
   final pivotBody = _PivotBody();
-  @sub
+  @prefab
   final plainPanel = _PlainPanel();
-  @sub
+  @prefab
   final horizontalBar = _HorizontalBar();
-  @sub
+  @prefab
   final singleCellPanel = _SingleCellPanel();
 }
 

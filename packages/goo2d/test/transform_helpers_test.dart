@@ -25,9 +25,9 @@ class _Scene extends SceneStruct {
 
   _Scene();
 
-  @sub
+  @prefab
   final turret = _Turret();
-  @sub
+  @prefab
   final enemy = _Enemy();
 }
 

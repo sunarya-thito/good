@@ -191,7 +191,7 @@ class ScannedImport {
 /// initialiser's spelling to decide what the field is.
 ///
 /// Two things are still read off the initialiser, and neither of them is a
-/// type. [isBareConstruction] is what the `@sub` rule is about - how the line
+/// type. [isBareConstruction] is what the marker rule is about - how the line
 /// reads to a person - and [readsFields] is what a `late` initialiser touches
 /// on the way to its value, which is what closes a `LateInitializationError`
 /// ring.
@@ -1838,6 +1838,128 @@ Set<String> scannableAnnotationNames(ScanSources sources) {
   return names;
 }
 
+/// The annotation a marker carries to say what it accepts - see `Marks` in
+/// `good/lib/src/scannable.dart`.
+const String marksRoot = 'Marks';
+
+/// What one marker accepts, read off the `@Marks` written on it.
+///
+/// Two facts and not one, because the value alone does not separate the
+/// markers that exist: `@sub` and `@prefab` both hold an `EntityStruct`, and
+/// what tells them apart is the class the field is written on.
+@immutable
+class MarkerKind {
+  const MarkerKind({
+    required this.marker,
+    required this.written,
+    required this.declaration,
+    required this.owner,
+  });
+
+  /// The marker's type - `Sub`, `Prefab`, `System`.
+  final String marker;
+
+  /// The spelling a field carries, without the `@` - `sub`, `prefab`.
+  ///
+  /// The const, where the marker has one, and the type where it does not. A
+  /// report naming `Sub` when the source says `@sub` names something the
+  /// reader cannot find on the line.
+  final String written;
+
+  /// The declaration root a field carrying it may hold - `EntityStruct`.
+  final String declaration;
+
+  /// The root the class writing that field has to be - `SceneStruct`,
+  /// `Component`.
+  final String owner;
+}
+
+/// What every marker accepts, keyed by every name it can be written as.
+///
+/// Both spellings map to one kind, for [scannableAnnotationNames]' reason:
+/// `@sub` names a const and `@Sub()` would name the type, and a walk holding
+/// only one of them answers nothing about a field written the other way.
+///
+/// **A marker carrying no `@Marks` is absent from this map, and absent is not
+/// empty.** It is `describedDeclarations` returning null rather than the empty
+/// set: `@LoadBefore(PhysicsSystem)` is a [scannableAnnotationRoot] that names
+/// no kind and constrains nothing, and a marker from a package that has not
+/// adopted the annotation is left alone rather than told every field it marks
+/// is wrong.
+///
+/// Nothing here holds a list of markers, the way nothing in
+/// [scannableAnnotationNames] does: the walk is over every type that is a
+/// [scannableAnnotationRoot], so a marker added in `good` is read here with no
+/// edit to this file.
+Map<String, MarkerKind> markerKinds(ScanSources sources) {
+  final typesByName = sources.typesByName;
+  final byType = <String, MarkerKind>{};
+  final paths = sources.units.keys.toList()..sort();
+  for (final path in paths) {
+    final unit = sources.units[path]!;
+    for (final type in unit.types) {
+      if (!isSubtypeOf(type.name, scannableAnnotationRoot, typesByName)) {
+        continue;
+      }
+      for (final annotation in type.annotations) {
+        if (annotationName(annotation) != marksRoot) continue;
+        final arguments = _annotationArguments(annotation);
+        if (arguments.length < 2) continue;
+        final declaration = TypeSource.parse(_argumentValue(arguments[0]));
+        final owner = TypeSource.parse(_argumentValue(arguments[1]));
+        if (declaration == null || owner == null) continue;
+        byType[type.name] = MarkerKind(
+          marker: type.name,
+          written: type.name,
+          declaration: declaration.name,
+          owner: owner.name,
+        );
+      }
+    }
+  }
+  final kinds = <String, MarkerKind>{...byType};
+  for (final path in paths) {
+    final unit = sources.units[path]!;
+    for (final variable in unit.variables) {
+      final declared = variable.valueType;
+      if (declared == null) continue;
+      final parsed = TypeSource.parse(declared);
+      if (parsed == null) continue;
+      final kind = byType[parsed.name];
+      if (kind == null) continue;
+      final written = MarkerKind(
+        marker: kind.marker,
+        written: variable.name,
+        declaration: kind.declaration,
+        owner: kind.owner,
+      );
+      kinds[variable.name] = written;
+      // The const is what the source says, so it is what a report has to
+      // name - and it replaces the type's own entry rather than sitting
+      // beside it, so `@Sub()` and `@sub` both report `@sub`.
+      kinds[kind.marker] = written;
+    }
+  }
+  return kinds;
+}
+
+/// The value of one annotation argument, with a `name:` label taken off.
+///
+/// `@Marks(EntityStruct, on: SceneStruct)` splits into `EntityStruct` and
+/// `on: SceneStruct`, and the second is a type with a label in front of it.
+/// Only a bare identifier before the colon is a label, so a type that carries
+/// one for another reason is left whole.
+String _argumentValue(String argument) {
+  final text = argument.trim();
+  final colon = text.indexOf(':');
+  if (colon < 0) return text;
+  final label = text.substring(0, colon).trim();
+  if (!_labelPattern.hasMatch(label)) return text;
+  return text.substring(colon + 1).trim();
+}
+
+final RegExp _labelPattern = RegExp(r'^[A-Za-z_$][A-Za-z0-9_$]*$');
+
 /// What a field holds, or why the walk cannot say.
 ///
 /// Null - the return of [resolveValueType] rather than a state of this class -
@@ -1983,13 +2105,13 @@ bool isDeclarationField(
 /// `Barrel` is a prefab with its own collector, its own declarations and its
 /// own registration, and it is complete whether or not a parent declares it;
 /// the two shapes are the same type by construction and no amount of type
-/// information separates them, which is why `@sub` is always required on a
-/// sub-entity. A declaration value that is not itself scanned has no life
+/// information separates them, which is why a marker is always required on a
+/// declared struct. A declaration value that is not itself scanned has no life
 /// outside the field that holds it, and nothing to be mistaken for.
 ///
 /// `EntityStruct` and `GameSystem` are the two types in the engine that are
-/// both, which is the same statement as "`@sub` and `@system` are the markers
-/// the rule reaches". A system is the second because it is exactly the same
+/// both, which is the same statement as "`@sub`, `@prefab` and `@system` are
+/// the markers the rule reaches". A system is the second because it is exactly the same
 /// shape of thing: `MovementSystem()` builds a complete object with its own
 /// queries, actions and dispatchers, and one held in a field of a `GameState`
 /// is either that state's declared system or a spare, by the same
@@ -2270,6 +2392,7 @@ class DeclarationScan {
     required this.unmarked,
     this.deferred = const <String, String>{},
     this.misplaced = const <String, String>{},
+    this.mismarked = const <String, String>{},
   });
 
   /// Classes holding at least one declaration, in path order.
@@ -2400,6 +2523,40 @@ class DeclarationScan {
   /// those name shapes that are legal, and this one does not.
   final Map<String, String> misplaced;
 
+  /// Declarations whose marker names a kind they are not, keyed `Class.field`,
+  /// to why.
+  ///
+  /// The fifth thing a field can end up being, and a separate statement from
+  /// [misplaced]. That one is about the owner and the *value*: the pass that
+  /// reads the owner has no descriptor to hand the declaration to. This is
+  /// about the owner and the **line**: the value is one a descriptor can take,
+  /// and the marker written above it names a different kind of declaration
+  /// from the one the field holds, or a different kind of class from the one
+  /// it is written on.
+  ///
+  /// ```dart
+  /// class MainScene extends SceneStruct {
+  ///   @sub final player = Player();   // @sub marks a child of a Component
+  /// }
+  /// ```
+  ///
+  /// Nothing said so until [MarkerKind] existed, and while `@sub` was the only
+  /// marker a prefab could carry, nothing could: the marker said a field
+  /// declared something and not what, so a scene's prefab and a prefab's child
+  /// were one spelling covering two kinds - see `Marks` in
+  /// `good/lib/src/scannable.dart`.
+  ///
+  /// **Reported and not refused**, and the field is still collected, which is
+  /// exactly [misplaced]'s settlement and taken for [misplaced]'s reason: a
+  /// rule that refuses in the change that invents it has no run behind it to
+  /// have been read against. Leaving the field out of the collector instead
+  /// would be worse than either - a scene whose prefab is still spelled `@sub`
+  /// would come up with that entity unregistered and nothing said. What is
+  /// wrong is the kind the line claims, not whether the walk understood it.
+  /// Like [misplaced] and unlike the three lists above, it prints without
+  /// `--verbose`.
+  final Map<String, String> mismarked;
+
   int get declarationCount {
     var count = 0;
     for (final declarer in declarers) {
@@ -2483,7 +2640,9 @@ DeclarationScan scanDeclarations(ScanSources sources) {
   final unmarked = <String, String>{};
   final deferred = <String, String>{};
   final misplaced = <String, String>{};
+  final mismarked = <String, String>{};
   final markers = scannableAnnotationNames(sources);
+  final kinds = markerKinds(sources);
 
   final lateRings = <DeclarationRefusal>[];
 
@@ -2565,15 +2724,39 @@ DeclarationScan scanDeclarations(ScanSources sources) {
               'tell those apart, so it is said rather than refused';
         }
         if (!isCollectedDeclarationField(field, scope, markers)) {
+          // The markers named here are the ones that would accept *this*
+          // field, derived from the same walk that reads them - so a marker
+          // added in `good` turns up in the advice with no list edited here,
+          // and a field is never told to write one that would then be
+          // reported as the wrong kind. See [markerKinds].
+          final fitting = _fittingMarkers(
+            kinds: kinds,
+            owner: type,
+            parsedValue: TypeSource.parse(valueType),
+            typesByName: scope,
+          );
           unmarked['${type.name}.${field.name}'] =
               'a bare constructor call holds it and nothing at the line says '
               'it declares anything - `$valueType()` is spelled the way a '
-              'field holding an ordinary object is. Write the marker that '
-              'says so - `@sub` for a child prefab, `@system` for a system - '
+              'field holding an ordinary object is. '
+              '${fitting.isEmpty ? 'Write the marker that says so' : 'Write '
+                    '${fitting.map((name) => '@$name').join(' or ')}, which '
+                    'says so,'} '
               'or leave it as it is if it is a spare';
           continue;
         }
         final parsedValue = TypeSource.parse(valueType);
+        final mismark = _mismarked(
+          field: field,
+          owner: type,
+          valueType: valueType,
+          parsedValue: parsedValue,
+          kinds: kinds,
+          typesByName: scope,
+        );
+        if (mismark != null) {
+          mismarked['${type.name}.${field.name}'] = mismark;
+        }
         if (described != null &&
             parsedValue != null &&
             !isDescribedDeclaration(parsedValue, described, scope)) {
@@ -2632,7 +2815,100 @@ DeclarationScan scanDeclarations(ScanSources sources) {
     unmarked: unmarked,
     deferred: deferred,
     misplaced: misplaced,
+    mismarked: mismarked,
   );
+}
+
+/// Why the marker on [field] names a kind the field is not, or null.
+///
+/// Two questions, asked of every marker the field carries that says what it
+/// accepts - see [MarkerKind]. Both halves are needed and neither is a
+/// refinement of the other: `@sub` and `@prefab` hold the same value and
+/// differ only in the owner they go on, while `@system` and `@sub` go on
+/// different owners *and* hold different values.
+///
+/// The owner is [owner] itself and not whichever class applies it, so a marker
+/// written wrong in a mixin is one line of output rather than one per user of
+/// it - the split [scanDeclarations] makes everywhere else.
+///
+/// A marker the walk has no kind for is skipped rather than reported, which is
+/// what leaves `@LoadBefore(PhysicsSystem)` and any marker a third-party
+/// package has not annotated alone; see [markerKinds].
+String? _mismarked({
+  required ScannedField field,
+  required ScannedType owner,
+  required String valueType,
+  required TypeSource? parsedValue,
+  required Map<String, MarkerKind> kinds,
+  required Map<String, ScannedType> typesByName,
+}) {
+  for (final annotation in field.annotations) {
+    final kind = kinds[annotationName(annotation)];
+    if (kind == null) continue;
+    final wrongValue =
+        parsedValue != null &&
+        !isSubtypeOf(parsedValue.name, kind.declaration, typesByName);
+    final wrongOwner = !isSubtypeOf(owner.name, kind.owner, typesByName);
+    if (!wrongValue && !wrongOwner) continue;
+    final said = StringBuffer(
+      '@${kind.written} marks ${_article(kind.declaration)} '
+      '${kind.declaration} on ${_article(kind.owner)} ${kind.owner}, and ',
+    );
+    if (wrongValue && wrongOwner) {
+      said.write(
+        'this field holds ${_article(valueType)} $valueType on '
+        '${_article(owner.name)} ${owner.name}',
+      );
+    } else if (wrongValue) {
+      said.write('this field holds ${_article(valueType)} $valueType');
+    } else {
+      said.write('${owner.name} is not ${_article(kind.owner)} ${kind.owner}');
+    }
+    final fitting = _fittingMarkers(
+      kinds: kinds,
+      owner: owner,
+      parsedValue: parsedValue,
+      typesByName: typesByName,
+    )..remove(kind.written);
+    if (fitting.isEmpty) {
+      said.write(
+        '. No marker this walk read accepts it, so either the value or the '
+        'class it is written on is not the one that was meant',
+      );
+    } else {
+      said.write(
+        '. ${fitting.map((name) => '@$name').join(' or ')} '
+        '${fitting.length == 1 ? 'is' : 'are'} what fits it',
+      );
+    }
+    said.write(
+      '. The field is collected either way - what is wrong is the kind the '
+      'line claims, not whether the walk could read it',
+    );
+    return said.toString();
+  }
+  return null;
+}
+
+/// Every marker that would accept this field, in the spelling it is written.
+///
+/// Derived from the same map the report is derived from, so a marker added in
+/// `good` turns up in the advice with no list edited here. Sorted, because a
+/// message is compared against in tests and walk order is not a promise.
+List<String> _fittingMarkers({
+  required Map<String, MarkerKind> kinds,
+  required ScannedType owner,
+  required TypeSource? parsedValue,
+  required Map<String, ScannedType> typesByName,
+}) {
+  final fitting = <String>{};
+  for (final kind in kinds.values) {
+    if (parsedValue == null) continue;
+    if (!isSubtypeOf(parsedValue.name, kind.declaration, typesByName)) continue;
+    if (!isSubtypeOf(owner.name, kind.owner, typesByName)) continue;
+    fitting.add(kind.written);
+  }
+  return fitting.toList()..sort();
 }
 
 /// Every ring of `late` fields whose initialisers read each other.
@@ -2778,7 +3054,7 @@ List<DeclarationRefusal> _declarationCycles(
 /// declarations walked through so the caller can name the ring rather than
 /// just report that there is one.
 ///
-/// Every constructed child is an edge, marked or not. `@sub` decides whether
+/// Every constructed child is an edge, marked or not. A marker decides whether
 /// a field is *collected*; it decides nothing about whether Dart builds the
 /// object, and it is the building that does not terminate.
 List<ScannedDeclaration>? _ringFrom(
@@ -3049,6 +3325,32 @@ String misplacedDeclarationMessage(DeclarationScan scan) {
       'describeStruct(DataDescriptor). Either move the declaration to a class '
       'that describes it, or write @Describes on the owner if it is meant to '
       'hold one.',
+    );
+  return lines.toString();
+}
+
+/// What a run reporting a marker that names the wrong kind says.
+///
+/// Keyed `Class.field` and naming no file, for [misplacedDeclarationMessage]'s
+/// reason: what is wrong is the pairing of a line with what it marks, and both
+/// names are in the key.
+String mismarkedDeclarationMessage(DeclarationScan scan) {
+  final lines = StringBuffer()
+    ..writeln('A declaration carries a marker naming a kind it is not:')
+    ..writeln();
+  final keys = scan.mismarked.keys.toList()..sort();
+  for (final key in keys) {
+    lines.writeln('  $key - ${scan.mismarked[key]}');
+  }
+  lines
+    ..writeln()
+    ..writeln(
+      'Each of these is collected, so nothing about the running game changes '
+      'when this is fixed. What changes is that the line says what it is: a '
+      'marker names one kind of declaration on one kind of owner, and a '
+      'reader who takes it at its word is being told the wrong thing. Write '
+      'the marker that fits, or move the field to a class the one you wrote '
+      'goes on.',
     );
   return lines.toString();
 }

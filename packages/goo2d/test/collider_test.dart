@@ -66,15 +66,15 @@ class _Scene extends SceneStruct {
 
   _Scene();
 
-  @sub
+  @prefab
   final player = _Player();
-  @sub
+  @prefab
   final wall = _Wall();
-  @sub
+  @prefab
   final polygon = _Polygon();
-  @sub
+  @prefab
   final capsule = _Capsule();
-  @sub
+  @prefab
   final concave = _Concave();
 }
 
@@ -92,7 +92,7 @@ class _WidePolygon extends EntityStruct with Transform2D, Collider2D {
 }
 
 class _WidePolygonScene extends SceneStruct {
-  @sub
+  @prefab
   final polygon = _WidePolygon();
 }
 

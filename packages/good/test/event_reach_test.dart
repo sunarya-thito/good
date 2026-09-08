@@ -58,7 +58,7 @@ class _SelfishSystem extends GameSystem with _Ping {
 class _PingUnit extends EntityStruct {}
 
 class _PingScene extends SceneStruct {
-  @sub
+  @prefab
   final unit = _PingUnit();
 }
 

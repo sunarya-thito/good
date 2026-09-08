@@ -278,7 +278,7 @@ void main() {
       _write(repo, 'bin/main.dart', '''
 import 'package:goo2d/goo2d.dart';
 
-class Player extends Prefab with Transform2D {}
+class Player extends MountedStruct with Transform2D {}
 
 void main() {
   mounted = Player();
@@ -311,7 +311,7 @@ void main() {
       _write(repo, 'bin/one_import.dart', '''
 import 'package:goo2d/goo2d.dart';
 
-class Player extends Prefab with Transform2D {}
+class Player extends MountedStruct with Transform2D {}
 
 void main() {
   mounted = Player();
@@ -1086,6 +1086,41 @@ void main() {
         ],
         isEmpty,
         reason: declarationCycleMessage(scan, (path) => path),
+      );
+
+    });
+
+    // Asked of the fixtures and not of the `lib/` above, because that is where
+    // the markers are. Every `@sub` and `@prefab` in this repository is in a
+    // test or in goo2d's example - `packages/*/lib` holds none at all - so the
+    // same expectation written into the run above passes with `Prefab` bound
+    // to the wrong owner, and a guard whose removal nothing notices is not a
+    // guard. Verified by binding it wrong and watching each run.
+    //
+    // It matters more than a report usually would: this is a report and not a
+    // refusal, so nothing else in a CI run goes red over a marker naming the
+    // wrong kind, and #265 rewrites these same declarations next.
+    test('marks every declaration with the kind it is', () async {
+      final root = repositoryRoot();
+      final found = enginePackages(<Directory>[
+        Directory(p.join(root.path, 'packages')),
+      ]);
+      final sources = await readFixtureSources(found.packages, <EnginePackage>[
+        ...found.packages,
+        ...found.dependencies,
+      ]);
+      final scan = scanDeclarations(sources);
+
+      // The pass has to be able to fail, and it goes vacuous the same way the
+      // one above does: no markers read is no markers to judge.
+      expect(sources.unparsed, isEmpty, reason: sources.unparsed.join(', '));
+      expect(markerKinds(sources).keys, containsAll(<String>['sub', 'prefab']));
+      expect(scan.declarationCount, greaterThan(600));
+
+      expect(
+        scan.mismarked,
+        isEmpty,
+        reason: mismarkedDeclarationMessage(scan),
       );
     });
 

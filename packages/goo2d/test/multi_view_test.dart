@@ -62,11 +62,11 @@ class _Level extends SceneStruct {
 
   late Scene handle;
 
-  @sub
+  @prefab
   final sprite = _Sprite();
-  @sub
+  @prefab
   final eye = _Eye();
-  @sub
+  @prefab
   final target = _Target();
 }
 
@@ -79,11 +79,11 @@ class _Overlay extends SceneStruct {
 
   late Scene handle;
 
-  @sub
+  @prefab
   final sprite = _Sprite();
-  @sub
+  @prefab
   final eye = _Eye();
-  @sub
+  @prefab
   final target = _Target();
 }
 

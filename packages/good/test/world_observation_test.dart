@@ -36,13 +36,13 @@ final List<String> order = <String>[];
 
 class _Scene extends SceneStruct {
   late Scene handle;
-  @sub
+  @prefab
   final rock = _Rock();
-  @sub
+  @prefab
   final tree = _Tree();
-  @sub
+  @prefab
   final node = _Node();
-  @sub
+  @prefab
   final watched = _Watched();
 
   @override

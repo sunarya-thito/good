@@ -72,11 +72,11 @@ class _Lieutenant extends EntityStruct with _Body {
 class _Squad extends SceneStruct {
   late final Scene handle;
 
-  @sub
+  @prefab
   final grunt = _Grunt();
-  @sub
+  @prefab
   final captain = _Captain();
-  @sub
+  @prefab
   final lieutenant = _Lieutenant();
 }
 

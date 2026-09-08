@@ -100,13 +100,13 @@ class _Scene extends SceneStruct {
   Entity addEntity<T extends EntityStruct>(T prefab) =>
       handle.addEntity(prefab);
 
-  @sub
+  @prefab
   final quad = _Quad();
-  @sub
+  @prefab
   final flat = _Flat();
-  @sub
+  @prefab
   final panel = _Panel();
-  @sub
+  @prefab
   final eye = _Eye();
 }
 

@@ -229,12 +229,16 @@ FakePackage componentKernel({String name = 'good'}) => FakePackage(
 
 /// The `good` stand-in a collector fixture needs.
 ///
-/// [componentKernel] plus the three scan markers and the `@sub` and `@hide`
-/// consts. What decides whether a field reaches a collector is read off this
-/// source - the supertype walk finds `ScannableField` above `EntityStruct`,
-/// and the const's written type is what makes `@sub` a marker - so a fixture
-/// spelling any of them differently gets a different answer with nothing
-/// hard-coded.
+/// [componentKernel] plus the three scan markers and the `@sub`, `@prefab` and
+/// `@hide` consts. What decides whether a field reaches a collector is read off
+/// this source - the supertype walk finds `ScannableField` above
+/// `EntityStruct`, and the const's written type is what makes `@sub` a marker -
+/// so a fixture spelling any of them differently gets a different answer with
+/// nothing hard-coded.
+///
+/// `@Marks` is carried too, so what each marker accepts is read the same way.
+/// A fixture writing `@sub` on a `SceneStruct` is reported here rather than
+/// passing, which is what makes these fixtures stand in for user code.
 ///
 /// `Hide` deliberately implements nothing. Implementing `ScannableAnnotation`
 /// would put `hide` in the set `isCollectedDeclarationField` tests a bare
@@ -259,12 +263,27 @@ abstract interface class ScannableField {}
 abstract interface class ScannableAnnotation {}
 
 abstract class EntityStruct implements Component, Scannable, ScannableField {}
+abstract class SceneStruct implements Scannable {}
 
+class Marks {
+  const Marks(this.declaration, {required this.on});
+  final Type declaration;
+  final Type on;
+}
+
+@Marks(EntityStruct, on: Component)
 class Sub implements ScannableAnnotation {
   const Sub._();
 }
 
 const Sub sub = Sub._();
+
+@Marks(EntityStruct, on: SceneStruct)
+class Prefab implements ScannableAnnotation {
+  const Prefab._();
+}
+
+const Prefab prefab = Prefab._();
 
 class Hide {
   const Hide._();
@@ -327,11 +346,11 @@ import 'data.dart';
 
 abstract interface class Component {}
 
-abstract class Prefab implements Component {}
+abstract class MountedStruct implements Component {}
 
 /// What `Accessor.component` resolves to in this stand-in. The real engine
 /// reaches the archetype registry; nothing under test depends on which.
-Prefab? mounted;
+MountedStruct? mounted;
 
 extension type const Entity(int value) implements int {
   int get archetypeId => (value >> 48) & 0xFFFF;

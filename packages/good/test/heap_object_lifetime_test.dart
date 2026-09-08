@@ -70,7 +70,7 @@ class _Thing extends EntityStruct with _Holder, Child, Parent {}
 class _Level extends SceneStruct {
   late final Scene handle;
 
-  @sub
+  @prefab
   final thing = _Thing();
 
   Entity add({Entity? parent}) => handle.addEntity(thing, parent: parent);
@@ -96,7 +96,7 @@ bool _registerGrewTable() {
 late Game run;
 
 class _GameLevel extends SceneStruct {
-  @sub
+  @prefab
   final thing = _Thing();
 
   static const int spawnPerMount = 3;

@@ -103,7 +103,7 @@ class _MoverScene extends SceneStruct {
 
   _MoverScene();
 
-  @sub
+  @prefab
   final mover = _Mover();
 
   @override
@@ -592,7 +592,7 @@ class _TexturedScene extends SceneStruct {
 
   _TexturedScene();
 
-  @sub
+  @prefab
   final textured = _Textured();
 
   @override
@@ -676,7 +676,7 @@ class _LateProp extends EntityStruct {
 }
 
 class _LateScene extends SceneStruct {
-  @sub
+  @prefab
   final prop = _LateProp();
 
   @override
@@ -1110,7 +1110,7 @@ mixin _Counted on Component {
 class _Pebble extends EntityStruct with _Counted {}
 
 class _CensusScene extends SceneStruct {
-  @sub
+  @prefab
   final pebble = _Pebble();
 
   @override

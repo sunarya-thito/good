@@ -26,7 +26,7 @@ class _Box extends EntityStruct with Transform2D, Collider2D, RigidBody2D {
 
 class _Scene extends SceneStruct {
   late Scene handle;
-  @sub
+  @prefab
   final box = _Box();
 
   @override
