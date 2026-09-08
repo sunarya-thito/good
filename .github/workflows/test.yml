@@ -25,7 +25,11 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
+      # Whole history, because the format step below diffs against the commit
+      # this change branched from and a depth-1 checkout has no such commit.
       - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
 
       - uses: subosito/flutter-action@v2
         with:
@@ -88,6 +92,47 @@ jobs:
           echo "::group::flutter pub get doc_snippets"
           (cd packages/doc_snippets && flutter pub get)
           echo "::endgroup::"
+
+      # Not `dart format` over the tree. It would rewrite 210 files, 96 of them
+      # generated, and blame on every line of them, which every later defect
+      # hunt then has to `--follow` across. So this asks the narrower question:
+      # is what this change touches formatted. New work cannot add drift, and a
+      # file that drifted before this step existed is formatted by whoever next
+      # edits it for another reason (#170).
+      #
+      # After Resolve, and not before it. dart format reads the language
+      # version out of .dart_tool/package_config.json and formats to a
+      # different style without one - in an unresolved good_cli it reports nine
+      # files that are formatted, and a check that is wrong when run in the
+      # wrong place is worse than no check.
+      #
+      # *.g.dart is excluded, because the two answers cannot both be green.
+      # good_tool builds its output as text - dart_style appears nowhere in it
+      # - and the steps below compare what is committed against that text byte
+      # for byte, so a formatted declarations.g.dart is by definition a stale
+      # one. box2d.g.dart is ffigen's and checked the same way. Nothing
+      # generated is read as source by a person, and nothing here is lost by
+      # not asking. packages/doc_snippets/lib/pages needs no exclusion: it is
+      # git-ignored, so it never appears in a diff.
+      - name: Check the format of the files this change touches
+        run: |
+          set -e
+          if [ "$GITHUB_EVENT_NAME" = pull_request ]; then
+            base=$(git merge-base "origin/$GITHUB_BASE_REF" HEAD)
+          else
+            base=HEAD^
+          fi
+          # ACMR and not the default: a deleted file has no formatting, and
+          # naming one to dart format is an error rather than a pass.
+          files=$(git diff --name-only --diff-filter=ACMR "$base" HEAD \
+            -- '*.dart' ':(exclude)*.g.dart')
+          if [ -z "$files" ]; then
+            echo "No Dart files changed."
+            exit 0
+          fi
+          echo "$files"
+          echo "$files" | tr '\n' '\0' \
+            | xargs -0 dart format --output=none --set-exit-if-changed
 
       # The fenced dart blocks in docs/, compiled against the real packages, so
       # a rename breaks here rather than being found by a person reading the
