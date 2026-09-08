@@ -827,26 +827,38 @@ abstract class DataArrayPointer<T> implements ScannableField {
   /// Settable in the same window [InitialPointer.initialValue] is settable
   /// in: reading it never throws, and writing it throws once the column has
   /// been given its row space, which happens after the describe passes have
-  /// run and before the archetype is sealed. Until then nothing has been
-  /// reserved, so a component can declare a length its prefabs adjust:
+  /// run and before the archetype is sealed.
   ///
-  /// ```dart
-  /// final textCodeUnits = Field.array(.uint16, 32);   // in the component
-  /// textCodeUnits.length = 8;                         // in a prefab
-  /// ```
-  ///
-  /// A length sizes the column, so this is only implementable because a
+  /// A length sizes the column, so this is only settable at all because a
   /// declaration reserves nothing where it is written - see `Field`. While
   /// `Field.array` took its elements from the row cursor on the spot, there
   /// was nothing left to move: the slots were already spoken for and the next
   /// column sat immediately behind them.
   ///
-  /// That is also what a length has instead of an override point. A `int get
-  /// textCapacity => 8` a component read back while declaring would be
-  /// configuration that sizes a column, and a value that sizes a column is a
-  /// declaration - it belongs on the declaration, where a reader finds it
-  /// next to the storage it costs, and where a field initialiser (which
-  /// cannot reach `this`) does not have to.
+  /// What a component wanting its prefabs to choose a length declares is an
+  /// abstract `int` getter, supplied by each prefab as a `final` field, and
+  /// reads it from a `late final` declaration - which is how `goo2d`'s
+  /// `Text2D` sizes a label:
+  ///
+  /// ```dart
+  /// // in the component
+  /// int get textCapacity;
+  /// late final textCodeUnits = Field.array(.uint16, textCapacity);
+  ///
+  /// // in a prefab
+  /// class Score({@override final textCapacity = 8}) extends EntityStruct
+  ///     with Text2D;
+  /// ```
+  ///
+  /// `late final` because an ordinary field initialiser cannot reach `this`,
+  /// and the collector reads the field while the archetype is described, so
+  /// the initialiser runs inside the window this setter is open in.
+  ///
+  /// A defaulted `int get textCapacity => 8` overridden by the prefab is the
+  /// shape to avoid, and not because of the read-back: a getter is a method
+  /// and may answer differently on every call, while the engine reads it once
+  /// and remembers, so an override written as if it were live has no effect
+  /// and no error (#265). A `final` field cannot answer twice.
   int get length;
   set length(int newLength);
 
