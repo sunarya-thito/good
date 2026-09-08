@@ -69,11 +69,11 @@ class _Level extends SceneStruct {
 
   _Level();
 
-  @sub
+  @prefab
   final player = _Player();
-  @sub
+  @prefab
   final rock = _Rock();
-  @sub
+  @prefab
   final trigger = _Trigger();
 }
 

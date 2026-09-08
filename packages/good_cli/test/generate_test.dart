@@ -1006,7 +1006,7 @@ good:
       expect(player, isNot(contains('describeStruct')));
     });
 
-    test('a prefab is the field that holds it, and says so with @sub', () {
+    test('a prefab is the field that holds it, and says so with @prefab', () {
       for (final engine in GoodEngine.values) {
         final files = scaffoldFiles(
           projectName: 'demo',
@@ -1015,10 +1015,12 @@ good:
         );
         expect(
           files['lib/game/scenes/main_scene.dart'],
-          contains('@sub\n  final player = Player();'),
+          contains('@prefab\n  final player = Player();'),
           reason:
               'a bare constructor call tells a reader nothing on its own, so '
-              'the marker is what says the line declares a prefab. Without it '
+              'the marker is what says the line declares a prefab, and a '
+              'scene holds a prefab rather than a sub-entity (#398). Without '
+              'it '
               'the field holds a spare Player, the scene registers no '
               'archetype, and the project still analyzes clean - which is why '
               'scaffold_analyze_test cannot stand in for this one',

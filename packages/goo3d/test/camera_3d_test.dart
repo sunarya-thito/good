@@ -29,9 +29,9 @@ class _Scene extends SceneStruct {
 
   _Scene();
 
-  @sub
+  @prefab
   final defaultEye = _DefaultEye();
-  @sub
+  @prefab
   final wideEye = _WideEye();
 }
 

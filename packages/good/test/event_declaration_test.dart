@@ -54,9 +54,9 @@ class _UnitA extends EntityStruct {}
 class _UnitB extends EntityStruct {}
 
 class _NotedScene extends SceneStruct {
-  @sub
+  @prefab
   final a = _UnitA();
-  @sub
+  @prefab
   final b = _UnitB();
 }
 

@@ -203,26 +203,26 @@ class _Scene extends SceneStruct {
 
   _Scene();
 
-  @sub
+  @prefab
   final button = _Button();
-  @sub
+  @prefab
   final panel = _Panel();
-  @sub
+  @prefab
   final zone = _Zone();
-  @sub
+  @prefab
   final naked = _Naked();
-  @sub
+  @prefab
   final eye = _Eye();
 
   // Declared last, so the archetype registration order the z tie-break
   // cases above lean on is the order they were written for.
-  @sub
+  @prefab
   final satellite = _Satellite();
-  @sub
+  @prefab
   final compound = _Compound();
-  @sub
+  @prefab
   final pad = _Pad();
-  @sub
+  @prefab
   final glass = _Glass();
 }
 

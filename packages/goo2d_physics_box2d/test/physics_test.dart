@@ -78,17 +78,17 @@ class _Marker extends EntityStruct with Transform2D {}
 class _Scene extends SceneStruct {
   late Scene handle;
 
-  @sub
+  @prefab
   final crate = _Crate();
-  @sub
+  @prefab
   final floor = _Floor();
-  @sub
+  @prefab
   final ball = _Ball();
-  @sub
+  @prefab
   final pinned = _Pinned();
-  @sub
+  @prefab
   final platform = _Platform();
-  @sub
+  @prefab
   final marker = _Marker();
 
   @override

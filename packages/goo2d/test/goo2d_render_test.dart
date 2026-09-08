@@ -64,9 +64,9 @@ class _Scene extends SceneStruct {
 
   _Scene();
 
-  @sub
+  @prefab
   final sprite = _Sprite();
-  @sub
+  @prefab
   final billboard = _Billboard();
 }
 

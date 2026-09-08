@@ -187,25 +187,25 @@ class _Stage extends SceneStruct {
 
   late Scene handle;
 
-  @sub
+  @prefab
   final world = _World();
-  @sub
+  @prefab
   final rig = _Rig();
-  @sub
+  @prefab
   final eye = _Eye();
-  @sub
+  @prefab
   final pinned = _Pinned();
-  @sub
+  @prefab
   final corner = _Corner();
-  @sub
+  @prefab
   final backdrop = _Backdrop();
-  @sub
+  @prefab
   final banner = _Banner();
-  @sub
+  @prefab
   final panel = _Panel();
-  @sub
+  @prefab
   final spinner = _Spinner();
-  @sub
+  @prefab
   final label = _Label();
 }
 
@@ -824,11 +824,11 @@ class _LabelClash extends EntityStruct
     with Transform2D, ScreenTransform2D, Text2D {}
 
 class _ClashScene extends SceneStruct {
-  @sub
+  @prefab
   final clash = _Clash();
 }
 
 class _LabelClashScene extends SceneStruct {
-  @sub
+  @prefab
   final clash = _LabelClash();
 }

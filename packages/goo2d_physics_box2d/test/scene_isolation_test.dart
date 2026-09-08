@@ -47,9 +47,9 @@ class _Ball extends EntityStruct with Transform2D, Collider2D, RigidBody2D {
 }
 
 class _PhysScene extends SceneStruct {
-  @sub
+  @prefab
   final wall = _Wall();
-  @sub
+  @prefab
   final ball = _Ball();
 }
 

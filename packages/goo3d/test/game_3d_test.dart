@@ -19,9 +19,9 @@ class _Scene extends SceneStruct {
 
   late Scene handle;
 
-  @sub
+  @prefab
   final node = _Node();
-  @sub
+  @prefab
   final eye = _Eye();
 }
 

@@ -90,7 +90,7 @@ class _Observing extends GameSystem
 }
 
 class _Level extends SceneStruct {
-  @sub
+  @prefab
   final unit = _Unit();
   Entity? spawned;
 
@@ -117,7 +117,7 @@ class _Observer extends SceneStruct {
 }
 
 class _NosyScene extends SceneStruct {
-  @sub
+  @prefab
   final unit = _Unit();
 
   @override
@@ -174,9 +174,9 @@ class _Census extends GameSystem with EntitySpawnListener {
 }
 
 class _TrackedScene extends SceneStruct {
-  @sub
+  @prefab
   final tracked = _Tracked();
-  @sub
+  @prefab
   final indexed = _Indexed();
 }
 

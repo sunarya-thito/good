@@ -25,11 +25,11 @@ class MainScene extends SceneStruct {
 
   MainScene();
 
-  @sub
+  @prefab
   final playerPrefab = Player();
-  @sub
+  @prefab
   final enemyPrefab = Enemy();
-  @sub
+  @prefab
   final rockPrefab = Rock();
 }
 

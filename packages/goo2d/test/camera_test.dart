@@ -22,7 +22,7 @@ class _Scene extends SceneStruct {
 
   _Scene();
 
-  @sub
+  @prefab
   final cam = _CamEntity();
 }
 

@@ -608,9 +608,10 @@ import '../prefabs/player.dart';
 class MainScene extends SceneStruct {
   // Declares the prefab: bringing the scene up registers its archetype and
   // runs its describe passes. The field is the handle to spawn from, and
-  // `@sub` is what says the line does any of that - without it the field
-  // holds a spare Player and declares nothing.
-  @sub
+  // `@prefab` is what says the line does any of that - without it the field
+  // holds a spare Player and declares nothing. A child entity *inside* a
+  // prefab is `@sub`; this is a root, so it is not one.
+  @prefab
   final player = Player();
 
   @override
@@ -632,11 +633,12 @@ import '../prefabs/player.dart';
 class MainScene extends SceneStruct {
   // Declares the prefabs: bringing the scene up registers each archetype and
   // runs its describe passes. The fields are the handles to spawn from, and
-  // `@sub` is what says the lines do any of that - without it a field holds
-  // a spare and declares nothing.
-  @sub
+  // `@prefab` is what says the lines do any of that - without it a field
+  // holds a spare and declares nothing. A child entity *inside* a prefab is
+  // `@sub`; these are roots, so they are not.
+  @prefab
   final player = Player();
-  @sub
+  @prefab
   final eye = Eye();
 
   @override

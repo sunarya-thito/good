@@ -146,9 +146,9 @@ class Mote extends EntityStruct with Transform2D, Renderable2D {
 class Eye extends EntityStruct with Transform2D, WorldTransform2D, Camera {}
 
 class Galaxy extends SceneStruct {
-  @sub
+  @prefab
   final mote = Mote();
-  @sub
+  @prefab
   final eye = Eye();
 
 

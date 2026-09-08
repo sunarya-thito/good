@@ -46,11 +46,11 @@ class _Scene extends SceneStruct {
 
   _Scene();
 
-  @sub
+  @prefab
   final node = _Node();
-  @sub
+  @prefab
   final leaf = _Leaf();
-  @sub
+  @prefab
   final plain = _Plain();
 }
 

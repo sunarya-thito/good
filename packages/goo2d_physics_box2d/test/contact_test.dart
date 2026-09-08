@@ -96,11 +96,11 @@ class _Zone extends EntityStruct with Transform2D, Collider2D, RigidBody2D {
 
 class _Scene extends SceneStruct {
   late Scene handle;
-  @sub
+  @prefab
   final crate = _Crate();
-  @sub
+  @prefab
   final floor = _Floor();
-  @sub
+  @prefab
   final zone = _Zone();
 
   @override

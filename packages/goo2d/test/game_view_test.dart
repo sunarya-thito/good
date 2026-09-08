@@ -43,7 +43,7 @@ class _Scene extends SceneStruct {
 
   _Scene();
 
-  @sub
+  @prefab
   final sprite = _Sprite();
 }
 

@@ -135,25 +135,25 @@ class _Level extends SceneStruct {
 
   _Level();
 
-  @sub
+  @prefab
   final node = _Node();
-  @sub
+  @prefab
   final leaf = _Leaf();
-  @sub
+  @prefab
   final noChild = _NoChild();
-  @sub
+  @prefab
   final bareNode = _BareNode();
-  @sub
+  @prefab
   final turret = _Turret();
-  @sub
+  @prefab
   final rig = _Rig();
-  @sub
+  @prefab
   final deepTurret = _DeepTurret();
-  @sub
+  @prefab
   final probed = _Probed();
-  @sub
+  @prefab
   final probedSuperLast = _ProbedSuperLast();
-  @sub
+  @prefab
   final probedNoSuper = _ProbedNoSuper();
 }
 

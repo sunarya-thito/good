@@ -23,11 +23,11 @@ class _Bare extends EntityStruct with Child {}
 class _Forward extends SceneStruct {
   _Forward();
 
-  @sub
+  @prefab
   final ship = _Ship();
-  @sub
+  @prefab
   final eye = _Eye();
-  @sub
+  @prefab
   final bare = _Bare();
 }
 
@@ -36,11 +36,11 @@ class _Forward extends SceneStruct {
 class _Reversed extends SceneStruct {
   _Reversed();
 
-  @sub
+  @prefab
   final bare = _Bare();
-  @sub
+  @prefab
   final eye = _Eye();
-  @sub
+  @prefab
   final ship = _Ship();
 }
 
