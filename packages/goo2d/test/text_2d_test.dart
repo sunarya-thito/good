@@ -73,16 +73,22 @@ class _Enemy extends EntityStruct
 /// The label. Eight code units of capacity, which is deliberately small - the
 /// overflow tests need a capacity a test string can reach.
 class _Damage extends EntityStruct with Transform2D, WorldTransform2D, Text2D {
+  @override
+  final textCapacity = 8;
+
   final atlas = Asset.of(_atlasKey);
 
-  /// How many times [textFont] has been read. The override builds a font, so
-  /// a read allocates one, and a frame that reached the getter would allocate
-  /// one per archetype per frame.
-  int fontReads = 0;
+  /// How many `BitmapFont`s this prefab has built. The field's initialiser
+  /// runs once, so anything above one means something reached past the field
+  /// and built a font again - which is what an overridable getter did on
+  /// every read.
+  int fontBuilds = 0;
 
   @override
-  BitmapFont get textFont {
-    fontReads++;
+  late final textFont = _buildFont();
+
+  BitmapFont _buildFont() {
+    fontBuilds++;
     return BitmapFont(
       texture: atlas,
       columns: _columns,
@@ -94,7 +100,6 @@ class _Damage extends EntityStruct with Transform2D, WorldTransform2D, Text2D {
   @override
   void describeStruct(DataDescriptor data) {
     super.describeStruct(data);
-    textCodeUnits.length = 8;
     textCellWidth.initialValue = _cell;
     textCellHeight.initialValue = _cell;
     textColor.initialValue = _labelColor;
@@ -103,8 +108,18 @@ class _Damage extends EntityStruct with Transform2D, WorldTransform2D, Text2D {
 }
 
 /// A label prefab that declares no font. Every entity of it draws nothing,
-/// whatever its text says.
+/// whatever its text says. It says so - `null` is written out, because the
+/// mixin's getter is abstract and there is no default to fall through to.
+///
+/// Its capacity is 32 where [_Damage]'s is 8, so the two archetypes disagree
+/// about the size of a column the mixin declares.
 class _Silent extends EntityStruct with Transform2D, WorldTransform2D, Text2D {
+  @override
+  final BitmapFont? textFont = null;
+
+  @override
+  final textCapacity = 32;
+
   @override
   void describeStruct(DataDescriptor data) {
     super.describeStruct(data);
@@ -315,30 +330,58 @@ void main() {
       expect(_renderer.lastRecordCount, 6);
     });
 
-    test('the font is read while the archetype is described, and no '
-        'more', () async {
+    test('the font is built once, whatever draws it', () async {
       final game = await _game();
       final scene = _scene();
       _eyeAt(game, scene);
       _labelAt(scene, '-24', y: 20);
       _labelAt(scene, '99', x: 40);
-      final described = scene.damage.fontReads;
-      expect(described, 1, reason: 'once for the archetype, not per entity');
-      final resolved = scene.damage.textFontResolved;
-      expect(resolved, isNotNull);
 
       run.state.advance(_step);
       run.state.advance(_step);
-
       expect(_batch(game), hasLength(5), reason: 'both labels drew');
+
+      final built = scene.damage.fontBuilds;
       expect(
-        scene.damage.fontReads,
-        described,
+        built,
+        1,
         reason:
-            'the write pass reads textFontResolved, and reaching the getter '
-            'would build a BitmapFont per archetype per frame',
+            'once for the archetype - not once per entity, and not once per '
+            'frame, which is what a getter body constructing a BitmapFont '
+            'cost on every read',
       );
-      expect(scene.damage.textFontResolved, same(resolved));
+      final font = scene.damage.textFont;
+
+      run.state.advance(_step);
+      run.state.advance(_step);
+      expect(_batch(game), hasLength(5));
+
+      expect(scene.damage.fontBuilds, built, reason: 'still once');
+      expect(
+        scene.damage.textFont,
+        same(font),
+        reason:
+            'a final field answers with the same instance every time it is '
+            'read, which is the whole of what #265 buys',
+      );
+    });
+
+    test('each prefab sizes its own label column', () async {
+      await _game();
+      final scene = _scene();
+
+      expect(
+        scene.damage.textCodeUnits.length,
+        8,
+        reason: 'textCapacity sizes textCodeUnits, and _Damage declares 8',
+      );
+      expect(
+        scene.silent.textCodeUnits.length,
+        32,
+        reason:
+            'the mixin declares one column and each prefab gives it a length, '
+            'so two archetypes of one component hold different-width rows',
+      );
     });
 
     test('the glyphs sit above the entity they label', () async {

@@ -42,6 +42,65 @@
   own repository; a component in your game's `lib/` is not in it.
 
 ### Breaking
+* **`Text2D.textFont` and `Text2D.textCapacity` are abstract, and a prefab
+  supplies each as a `final` field** (#265). A prefab that mixes `Text2D` in
+  and declares neither no longer compiles, `textFontResolved` is gone, and
+  sizing a label in `describeStruct` is gone with it.
+
+  ```dart
+  // before
+  class DamageNumber extends EntityStruct
+      with Transform2D, WorldTransform2D, Text2D {
+    final atlas = Asset.of(fontAtlasKey);
+
+    @override
+    BitmapFont get textFont =>
+        BitmapFont(texture: atlas, columns: 16, rows: 6);
+
+    @override
+    void describeStruct(DataDescriptor data) {
+      super.describeStruct(data);
+      textCodeUnits.length = 8;
+    }
+  }
+
+  // after
+  class DamageNumber extends EntityStruct
+      with Transform2D, WorldTransform2D, Text2D {
+    final atlas = Asset.of(fontAtlasKey);
+
+    @override
+    final textCapacity = 8;
+
+    @override
+    late final textFont = BitmapFont(texture: atlas, columns: 16, rows: 6);
+  }
+  ```
+
+  A getter is a method and may answer differently on every call, and the
+  engine reads this one once and remembers - so `int get textCapacity =>
+  hardMode ? 24 : 8` compiled, read as live, and silently had no effect after
+  the first read. A `final` field cannot answer twice, and the guarantee is
+  the language's.
+
+  Making them abstract is the second half: a defaulted `textFont` returning
+  null gave "this prefab draws no text" and "this prefab forgot its font"
+  the same value. A prefab that draws nothing now writes `@override final
+  BitmapFont? textFont = null` and says so.
+
+  `textFontResolved` was the cache the old getter needed - the renderer read
+  it once per archetype per frame rather than calling `textFont` and
+  allocating a `BitmapFont` per read. The field is the resolved value, so
+  both renderer passes read `textFont` directly. Nothing reads it while the
+  archetype is described any more, which puts a plain `final`'s font on the
+  prefab's construction and a `late final`'s on the first frame a label of
+  the prefab draws; either way it is built once.
+
+  `textCodeUnits.length` is still settable, and `DataArrayPointer.length`
+  still documents the window it is settable in. `Text2D` no longer uses it:
+  the column is `late final textCodeUnits = Field.array(.uint16,
+  textCapacity)`, which is a size a prefab states rather than one it moves
+  afterwards, and `describeStruct` is on its way out (#287).
 * **`CollisionListener` is `on GameListener`, not `on Component`.** It goes on a
   `GameSystem` (or the `GameState`), and mixing it into a prefab no longer
   compiles (#384, #381). The six dispatchers are declared on

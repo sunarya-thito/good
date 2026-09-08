@@ -119,23 +119,13 @@ final class BitmapFont {
 /// ```dart
 /// class DamageNumber extends EntityStruct
 ///     with Transform2D, WorldTransform2D, Text2D {
-///   late final TextureAsset atlas;
+///   final atlas = Asset.of(fontAtlasKey);
 ///
 ///   @override
-///   void describeStruct(DataDescriptor data) {
-///     super.describeStruct(data);
-///     textCodeUnits.length = 8;
-///   }
+///   final textCapacity = 8;
 ///
 ///   @override
-///   void describeAssets(AssetDescriptor descriptor) {
-///     super.describeAssets(descriptor);
-///     atlas = descriptor.has(fontAtlasKey);
-///   }
-///
-///   @override
-///   BitmapFont get textFont =>
-///       BitmapFont(texture: atlas, columns: 16, rows: 6);
+///   late final textFont = BitmapFont(texture: atlas, columns: 16, rows: 6);
 ///
 ///   @override
 ///   void describeStruct(DataDescriptor data) {
@@ -168,7 +158,7 @@ final class BitmapFont {
 ///
 /// # What a label costs
 ///
-/// The row holds `textCodeUnits.length` `uint16` code units and about fifty
+/// The row holds `textCapacity` `uint16` code units and about fifty
 /// more bytes; the font, its metrics and the atlas address are on the
 /// component, which is per archetype. So a 16-character label is roughly a
 /// 220-byte row. Declared as sixteen sprites it would be a 2.5 KiB row, and
@@ -187,25 +177,70 @@ final class BitmapFont {
 /// a cell for it and skipped if not, and it advances either way. Two lines
 /// are two entities.
 mixin Text2D on Component {
-  /// The font this prefab's labels draw with. Override it; the default is
-  /// null, and a prefab with no font draws nothing at all.
+  /// The font this prefab's labels draw with, or null for a prefab whose
+  /// labels draw nothing at all.
   ///
-  /// Read once, during `describeStruct`, and kept in [textFontResolved].
-  /// `describeStruct` runs after `describeAssets`, so a [TextureAsset] the
-  /// prefab declared for itself is already populated when an override builds
-  /// a font from it.
+  /// Abstract, so a prefab that mixes `Text2D` in and says nothing about a
+  /// font does not compile. Null then means "declared no font" and only that,
+  /// where a defaulted getter made it the same value as "forgot".
   ///
-  /// An override that constructs a `BitmapFont` allocates one per read, so
-  /// anything wanting a prefab's font after the archetype is described reads
-  /// [textFontResolved].
-  BitmapFont? get textFont => null;
+  /// Supply a `final` field and not a getter body (#265). The renderer reads
+  /// this once per archetype per frame, and a getter constructing a
+  /// `BitmapFont` builds one on every read; a field is built once, whatever
+  /// reads it and however often. `late final` where the font is built from a
+  /// sibling declaration, because an ordinary field initialiser cannot reach
+  /// `this`:
+  ///
+  /// ```dart
+  /// class Score extends EntityStruct with Transform2D, Text2D {
+  ///   final atlas = Asset.of(Textures.font);
+  ///
+  ///   @override
+  ///   late final textFont = BitmapFont(texture: atlas, columns: 16, rows: 6);
+  /// }
+  /// ```
+  ///
+  /// A prefab with a font that needs nothing from it writes the plain form,
+  /// `@override final textFont = BitmapFont(...)`, and one that declares no
+  /// font writes `@override final BitmapFont? textFont = null`.
+  ///
+  /// **When each form is built.** Nothing reads this while the archetype is
+  /// described - a `BitmapFont` is not a declaration, so the collector walks
+  /// straight past it - which puts a plain `final`'s font on the prefab's
+  /// construction and a `late final`'s on the renderer's first read of it,
+  /// the first frame a label of the prefab draws. Either way it is built
+  /// once. What that costs is when `BitmapFont`'s argument checks fire: the
+  /// plain form throws where the prefab is written, the `late final` form
+  /// throws inside the first fill pass. Write the plain form where the font
+  /// needs nothing from a sibling.
+  BitmapFont? get textFont;
 
-  /// What [textFont] answered, stored while the archetype was described, or
-  /// null for a prefab that declares no font.
+  /// The most code units a label of this prefab can hold.
   ///
-  /// This is the frame path's copy: the renderer reads it once per archetype
-  /// per frame and never calls [textFont].
-  BitmapFont? textFontResolved;
+  /// It sizes [textCodeUnits], so it is storage reserved in every row of the
+  /// archetype whether or not an entity uses it - see there for what that
+  /// costs. `1..65535`.
+  ///
+  /// Abstract, and a `final` field on the prefab, for the reason [textFont]
+  /// gives:
+  ///
+  /// ```dart
+  /// class Score extends EntityStruct with Transform2D, Text2D {
+  ///   @override
+  ///   final textCapacity = 8;
+  /// }
+  /// ```
+  ///
+  /// A primary constructor writes the same thing on one line, and there the
+  /// type has to be written out: `strict_top_level_inference` reports a
+  /// primary-constructor parameter with no annotation, where it says nothing
+  /// about the body field above, which infers `int` from this getter.
+  ///
+  /// ```dart
+  /// class Score({@override final int textCapacity = 8})
+  ///     extends EntityStruct with Transform2D, Text2D;
+  /// ```
+  int get textCapacity;
 
   /// The label's characters, as UTF-16 code units, `textLength` of them
   /// live. Written through [Text2DAccessor.setText].
@@ -215,26 +250,28 @@ mixin Text2D on Component {
   /// text a game legitimately has. At two bytes a code unit the whole BMP
   /// stores exactly, and the font decides what draws.
   ///
-  /// Its `length` is the most code units a label of this prefab holds, and it
-  /// is storage - reserved in every row of the archetype whether or not an
-  /// entity uses it, so it is `ColliderBody.polygon`'s `maxPoints` and not a soft
-  /// limit. [Text2DAccessor.setText] asserts on a longer string in debug and
-  /// truncates in release. A prefab that wants a different one moves it in
-  /// its own `describeStruct`, `1..65535`:
+  /// Its length is [textCapacity], and it is storage - reserved in every row
+  /// of the archetype whether or not an entity uses it, so it is
+  /// `ColliderBody.polygon`'s `maxPoints` and not a soft limit.
+  /// [Text2DAccessor.setText] asserts on a longer string in debug and
+  /// truncates in release.
   ///
-  /// ```dart
-  /// @override
-  /// void describeStruct(DataDescriptor data) {
-  ///   super.describeStruct(data);
-  ///   textCodeUnits.length = 8;
-  /// }
-  /// ```
+  /// `late final` so the initialiser can read [textCapacity]; an ordinary
+  /// field initialiser cannot reach `this`. The collector reads this field
+  /// while the archetype is described, which is what runs the initialiser
+  /// then rather than at the first `setText`.
   ///
-  /// It was an overridable `int get textCapacity` and is not one any more:
-  /// a value that sizes a column is a declaration, and it belongs on the
-  /// declaration rather than four lines away in a getter this component then
-  /// had to read back while filling in a `late final`.
-  final textCodeUnits = Field.array(.uint16, 32);
+  /// The size was written straight onto this declaration for a while, with a
+  /// prefab moving it by `textCodeUnits.length = 8` in `describeStruct`, on
+  /// the reasoning that a component "had to read back a getter while filling
+  /// in a `late final`". That aimed at the wrong half. The read-back is fine:
+  /// what was wrong with `int get textCapacity => 8` is that a getter is a
+  /// method and can answer differently on every call, while the engine reads
+  /// it once and remembers - so an override reading a mutable flag compiled,
+  /// read as live, and silently did nothing. A `final` field cannot do that,
+  /// and the guarantee is the language's rather than a doc comment's (#265).
+  /// Do not put the getter back.
+  late final textCodeUnits = Field.array(.uint16, textCapacity);
 
   /// How many of [textCodeUnits] are the label. Zero is an empty label, which
   /// draws nothing and costs no record.
@@ -290,13 +327,13 @@ mixin Text2D on Component {
   final textPivotOffsetY = Field.float64(0);
 
   /// How many code units [Text2DAccessor.setText] has dropped for want of
-  /// `textCodeUnits.length`, summed over every entity of this archetype since
+  /// [textCapacity], summed over every entity of this archetype since
   /// the run started.
   ///
   /// Overflow is a programming error and trips an assert, but an assert is
   /// compiled out of the build people ship, so the count is here as well:
   /// zero means no label has ever been cut, and anything else is how much
-  /// text is missing and by how much `textCodeUnits.length` is short. Same
+  /// text is missing and by how much [textCapacity] is short. Same
   /// reason `GameRenderer2D.lastRecordsOverBudget` reports instead of
   /// dropping quietly.
   int textCodeUnitsDropped = 0;
@@ -321,17 +358,12 @@ mixin Text2D on Component {
     component.has<Text2D>();
   }
 
-  @override
-  void describeStruct(DataDescriptor data) {
-    super.describeStruct(data);
-    textFontResolved = textFont;
-  }
 }
 
 /// Reading and writing one entity's label.
 extension Text2DAccessor on Accessor<Text2D> {
   /// Replaces this label with [value], keeping its first
-  /// `textCodeUnits.length` code units if it is longer.
+  /// [Text2D.textCapacity] code units if it is longer.
   ///
   /// **Overflow is a programming error.** The capacity is declared on the
   /// prefab, so a string that does not fit means the prefab reserved too
@@ -363,7 +395,7 @@ extension Text2DAccessor on Accessor<Text2D> {
       assert(
         false,
         'a label of $capacity code units cannot hold "$value" ($length). '
-        'Raise textCodeUnits.length on the prefab - it is storage reserved '
+        'Raise textCapacity on the prefab - it is storage reserved '
         'per row. A release build keeps the first $capacity and counts the '
         'rest in Text2D.textCodeUnitsDropped.',
       );
@@ -412,7 +444,7 @@ extension Text2DAccessor on Accessor<Text2D> {
       assert(
         false,
         'a label of $capacity code units cannot hold $value ($length). '
-        'Raise textCodeUnits.length on the prefab. A release build keeps '
+        'Raise textCapacity on the prefab. A release build keeps '
         'the first $capacity and counts the rest in '
         'Text2D.textCodeUnitsDropped.',
       );
