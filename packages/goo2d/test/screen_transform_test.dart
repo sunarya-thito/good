@@ -164,16 +164,22 @@ class _Spinner extends EntityStruct
 /// A world-space label sorted above every sprite in the world, so the layer
 /// split is measured against a label that would otherwise draw last.
 class _Label extends EntityStruct with Transform2D, WorldTransform2D, Text2D {
+  @override
+  final textCapacity = 8;
+
   final atlas = Asset.of(_textureKey);
 
   @override
-  BitmapFont get textFont =>
-      BitmapFont(texture: atlas, columns: 16, rows: 6, glyphCount: 95);
+  late final textFont = BitmapFont(
+    texture: atlas,
+    columns: 16,
+    rows: 6,
+    glyphCount: 95,
+  );
 
   @override
   void describeStruct(DataDescriptor data) {
     super.describeStruct(data);
-    textCodeUnits.length = 8;
     textCellWidth.initialValue = 8;
     textCellHeight.initialValue = 8;
     textColor.initialValue = _labelColor;
@@ -821,7 +827,13 @@ class _Clash extends EntityStruct
 
 /// A prefab asking for screen-space text.
 class _LabelClash extends EntityStruct
-    with Transform2D, ScreenTransform2D, Text2D {}
+    with Transform2D, ScreenTransform2D, Text2D {
+  @override
+  final BitmapFont? textFont = null;
+
+  @override
+  final textCapacity = 8;
+}
 
 class _ClashScene extends SceneStruct {
   @prefab
