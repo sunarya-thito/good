@@ -2,6 +2,33 @@
 
 ### Added
 
+* **A prefab can change an inherited column's initial value from the field
+  that holds it**, with no `describeStruct` override (#198).
+  `InitialPointer.initial` sets the value and hands the same column back, so
+  the override is that column rather than a second one:
+
+  ```dart
+  class Fast extends Player {
+    // ignore: overridden_fields
+    @override
+    late final speed = super.speed.initial(12);
+  }
+  ```
+
+  `late` because a field initialiser cannot reach `super`, and because the
+  read has to happen while the archetype is still open -
+  `collectDeclarations` reads every declaration off the constructed prefab
+  before the describe passes run, and that read is what runs the initialiser.
+  Written as a getter instead the body runs on every read, and the read after
+  `seal` throws.
+
+  `ArchetypeDataDescriptor` reserves a column once however many times it is
+  handed the same one. A collector lists a class's own fields and then its
+  superclass's, so an override arrives twice - and both reads go through the
+  override, so both are the same object. It compares identity, so two mixins
+  declaring one name are still two columns and still the defect
+  `good generate` refuses a project over.
+
 * **A `GameSystem` may declare an event, and it reaches the whole game**
   (#384). There is one binder for the run: every dispatcher is created first,
   then the composition is walked once and each listener offered to all of

@@ -1,3 +1,11 @@
+// Every override in _Sergeant and _Scout below is a field overriding a field,
+// which is what `overridden_fields` reports. The lint's own advice - override
+// the getter instead - is what _Runner does, and the test on _Runner is what
+// says that spelling does not work. A game writes `// ignore:
+// overridden_fields` on each declaration; the file-level form keeps eight of
+// them out of the fixtures here.
+// ignore_for_file: overridden_fields
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:good/src/archetype.dart';
 import 'package:good/src/data.dart';
@@ -69,6 +77,60 @@ class _Lieutenant extends EntityStruct with _Body {
   }
 }
 
+/// Changes inherited initial values from its own fields, with no
+/// `describeStruct` override anywhere in it.
+///
+/// Every column here is declared by [_Body], which [_Grunt] applies - so
+/// `super` reaches through a superclass *and* a mixin application to the same
+/// object, and hands that object back for the collector to lay out.
+class _Sergeant extends _Grunt {
+  @override
+  late final speed = super.speed.initial(12);
+  @override
+  late final alive = super.alive.initial(false);
+  @override
+  late final stance = super.stance.initial(_Stance.running);
+  @override
+  late final leader = super.leader.initial(Entity(77));
+  @override
+  late final shield = super.shield.initial(30);
+  @override
+  late final aim = super.aim.initial(null);
+
+  /// Adjusted, not restated: no line here names the number [_Body] chose.
+  @override
+  late final hp = super.hp.initial(super.hp.initialValue + 50);
+}
+
+/// The same override written by the class that applies the mixin itself,
+/// where `super` is the mixin application rather than another prefab.
+class _Scout extends EntityStruct with _Body {
+  @override
+  late final speed = super.speed.initial(20);
+}
+
+/// The same move written as a getter, which is the spelling `overridden_fields`
+/// asks for and the one that does not work.
+///
+/// A getter body runs on every read, not once. The collector's read makes the
+/// declaration correctly, and every read after `seal` runs `initial` again
+/// against a sealed archetype.
+class _Runner extends _Grunt {
+  @override
+  InitialPointer<double> get speed => super.speed.initial(15);
+}
+
+/// Restates the declaration rather than moving the inherited one.
+///
+/// The column [_Body] built is still there and is still what `super.speed`
+/// names, but nothing reaches it: the collector reads `owner.speed` and gets
+/// this one, twice - once for this class's field and once for [_Body]'s - so
+/// the row holds one `speed`, and it is this one.
+class _Cadet extends _Grunt {
+  @override
+  late final speed = Field.float64(99);
+}
+
 class _Squad extends SceneStruct {
   late final Scene handle;
 
@@ -78,6 +140,14 @@ class _Squad extends SceneStruct {
   final captain = _Captain();
   @prefab
   final lieutenant = _Lieutenant();
+  @prefab
+  final sergeant = _Sergeant();
+  @prefab
+  final scout = _Scout();
+  @prefab
+  final runner = _Runner();
+  @prefab
+  final cadet = _Cadet();
 }
 
 _Squad _squad() {
@@ -209,6 +279,130 @@ void main() {
     expect(squad.lieutenant.stance[e], _Stance.walking);
     expect(squad.lieutenant.leader[e], Entity(2));
     expect(squad.lieutenant.aim[e], 0.75);
+  });
+
+  test('a column reached twice takes its row space once', () {
+    final squad = _squad();
+    final e = squad.handle.addEntity(squad.cadet);
+
+    // Every declaration a collector lists for _Cadet is `owner.speed` or one
+    // of _Body's other fields, and `owner.speed` is listed twice - its own
+    // and _Body's - reading the same object both times. Reserving that twice
+    // throws out of _Field._storage.
+    expect(squad.cadet.speed[e], 99);
+    expect(squad.cadet.hp[e], 100);
+    expect(squad.cadet.aim[e], 0.5);
+
+    squad.cadet.speed[e] = 1;
+    squad.cadet.hp[e] = 2;
+    expect(squad.cadet.speed[e], 1);
+    expect(squad.cadet.hp[e], 2);
+  });
+
+  test('a subclass changes an inherited initial value from its own field, '
+      'and the spawned row holds it', () {
+    final squad = _squad();
+    final e = squad.handle.addEntity(squad.sergeant);
+
+    expect(squad.sergeant.speed[e], 12);
+    expect(squad.sergeant.alive[e], isFalse);
+    expect(squad.sergeant.stance[e], _Stance.running);
+    expect(squad.sergeant.leader[e], Entity(77));
+    expect(squad.sergeant.shield[e], 30);
+    expect(squad.sergeant.aim[e], isNull);
+  });
+
+  test('the override adjusts the inherited value instead of restating it', () {
+    final squad = _squad();
+    final e = squad.handle.addEntity(squad.sergeant);
+
+    expect(squad.sergeant.hp[e], 150);
+  });
+
+  test('the mixin\'s own prefab can override it too, where super is the '
+      'mixin application', () {
+    final squad = _squad();
+    final e = squad.handle.addEntity(squad.scout);
+
+    expect(squad.scout.speed[e], 20);
+    expect(squad.scout.hp[e], 100, reason: 'the rest of _Body is untouched');
+  });
+
+  test('the override moves the inherited column rather than adding one, so '
+      'every other column still reads', () {
+    final squad = _squad();
+    final e = squad.handle.addEntity(squad.sergeant);
+
+    // A version handing back a copy would leave _Body's column unrealized and
+    // the row a column short. Writing and reading each one is what says the
+    // row is laid out, not the pointer.
+    squad.sergeant.speed[e] = -1;
+    squad.sergeant.hp[e] = 7;
+    squad.sergeant.stance[e] = _Stance.walking;
+    squad.sergeant.aim[e] = 0.25;
+
+    expect(squad.sergeant.speed[e], -1);
+    expect(squad.sergeant.hp[e], 7);
+    expect(squad.sergeant.stance[e], _Stance.walking);
+    expect(squad.sergeant.aim[e], 0.25);
+  });
+
+  test('a prefab that overrides nothing keeps the component\'s values, so '
+      'this is per archetype', () {
+    final squad = _squad();
+    final sergeant = squad.handle.addEntity(squad.sergeant);
+    final grunt = squad.handle.addEntity(squad.grunt);
+    final scout = squad.handle.addEntity(squad.scout);
+
+    expect(squad.grunt.speed[grunt], 3);
+    expect(squad.grunt.hp[grunt], 100);
+    expect(squad.sergeant.speed[sergeant], 12);
+    expect(squad.scout.speed[scout], 20);
+  });
+
+  test('the moved value reads back off the pointer after seal too', () {
+    final squad = _squad();
+
+    // A guard, not a discriminator, and it is worth saying which: reading the
+    // pointer cannot tell a mutated column from a returned copy, because what
+    // the collector reads and lays out is whatever the overriding field
+    // holds - the copy, if it were one. The spawned rows above are the
+    // assertions that answer for the prototype row.
+    expect(squad.sergeant.speed.initialValue, 12);
+    expect(squad.sergeant.hp.initialValue, 150);
+  });
+
+  test(
+    'initial is the setter, so it refuses after the archetype is sealed',
+    () {
+      final squad = _squad();
+
+      expect(() => squad.sergeant.speed.initial(1), throwsStateError);
+      expect(() => squad.sergeant.aim.initial(1), throwsStateError);
+    },
+  );
+
+  test('written as a getter it is unreadable once the archetype is sealed, '
+      'which is why the override is a late field', () {
+    // Registering it works: the collector\'s read runs the body once, while
+    // the archetype is still open, and the column is declared and realized.
+    final squad = _squad();
+    final e = squad.handle.addEntity(squad.runner);
+
+    // Every read after that runs the body again, now against a sealed
+    // archetype - so the column is unreachable through the name that
+    // declared it. A late field runs once and holds what it made.
+    expect(
+      () => squad.runner.speed[e],
+      throwsA(
+        isA<StateError>().having(
+          (e) => e.message,
+          'message',
+          allOf(contains('sealed'), contains('_Runner')),
+        ),
+      ),
+    );
+    expect(() => squad.runner.speed.initialValue, throwsStateError);
   });
 
   test('reading a default after seal is allowed - it is still true', () {

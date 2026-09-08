@@ -59,12 +59,77 @@ List<ScannableField> _collect$Lieutenant(Object object) {
   ];
 }
 
+List<ScannableField> _collect$Sergeant(Object object) {
+  final owner = object as _Sergeant;
+  return <ScannableField>[
+    owner.speed,
+    owner.alive,
+    owner.stance,
+    owner.leader,
+    owner.shield,
+    owner.aim,
+    owner.hp,
+    owner.speed,
+    owner.hp,
+    owner.alive,
+    owner.stance,
+    owner.leader,
+    owner.shield,
+    owner.aim,
+  ];
+}
+
+List<ScannableField> _collect$Scout(Object object) {
+  final owner = object as _Scout;
+  return <ScannableField>[
+    owner.speed,
+    owner.speed,
+    owner.hp,
+    owner.alive,
+    owner.stance,
+    owner.leader,
+    owner.shield,
+    owner.aim,
+  ];
+}
+
+List<ScannableField> _collect$Runner(Object object) {
+  final owner = object as _Runner;
+  return <ScannableField>[
+    owner.speed,
+    owner.hp,
+    owner.alive,
+    owner.stance,
+    owner.leader,
+    owner.shield,
+    owner.aim,
+  ];
+}
+
+List<ScannableField> _collect$Cadet(Object object) {
+  final owner = object as _Cadet;
+  return <ScannableField>[
+    owner.speed,
+    owner.speed,
+    owner.hp,
+    owner.alive,
+    owner.stance,
+    owner.leader,
+    owner.shield,
+    owner.aim,
+  ];
+}
+
 List<ScannableField> _collect$Squad(Object object) {
   final owner = object as _Squad;
   return <ScannableField>[
     owner.grunt,
     owner.captain,
     owner.lieutenant,
+    owner.sergeant,
+    owner.scout,
+    owner.runner,
+    owner.cadet,
   ];
 }
 
@@ -80,6 +145,10 @@ const GeneratedDeclarations _columnInitialValueTestDeclarations =
         DeclarationCollector(_Grunt, _collect$Grunt),
         DeclarationCollector(_Captain, _collect$Captain),
         DeclarationCollector(_Lieutenant, _collect$Lieutenant),
+        DeclarationCollector(_Sergeant, _collect$Sergeant),
+        DeclarationCollector(_Scout, _collect$Scout),
+        DeclarationCollector(_Runner, _collect$Runner),
+        DeclarationCollector(_Cadet, _collect$Cadet),
         DeclarationCollector(_Squad, _collect$Squad),
       ],
       dependencies: <GeneratedDeclarations>[

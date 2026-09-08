@@ -429,6 +429,16 @@ abstract class DataDescriptor {
 /// name a second time would not do either of them - it allocates a second
 /// column and leaves the first unreachable.
 ///
+/// Moving a value has a field form too, and it needs no hook:
+/// `late final speed = super.speed.initial(12);` moves the inherited column's
+/// value and hands that same column back. `late` because a field initialiser
+/// cannot reach `super`, and `super` because a field overriding a field
+/// replaces the accessor - see [InitialPointer.initial]. It reaches a mixin's
+/// column as well as a superclass's, since a mixin application is a
+/// superclass. What has no field form is a length: [DataArrayPointer] is not
+/// a [DataPointer], so it has nothing like [InitialPointer.initial] to
+/// return, and `describeStruct` is still where a length moves.
+///
 /// **A column whose default is another field's value has no spelling.** A
 /// field initialiser cannot read another field, so a sprite column defaulting
 /// to a texture handle the same class declares cannot be written here - and
@@ -716,10 +726,29 @@ abstract class DataPointer<T> implements ScannableField {
 /// needs: the prefab doubles whatever `Camera3D` chose instead of copying
 /// the number down and having to keep the copy in step.
 ///
-/// Re-declaring `near` in the prefab would not do this. A field declared
-/// twice is an override of the name and not of the column, so both columns
-/// get allocated and one of them is unreachable - see `Field`'s note on two
-/// mixins declaring the same name.
+/// A prefab does not need the hook for it. [initial] moves the value from the
+/// field, and returns the inherited column so the override is that column and
+/// not a second one - and `super` reaches a mixin the prefab itself applies
+/// as readily as a superclass's own declaration:
+///
+/// ```dart
+/// class Fast extends Player {
+///   // ignore: overridden_fields
+///   @override
+///   late final speed = super.speed.initial(12);
+/// }
+/// ```
+///
+/// What that does *not* do is re-declare `speed`. Writing
+/// `late final speed = Field.float64(12)` there declares a column of its own,
+/// which is a different thing to reason about: the inherited one is then
+/// unreachable and unrealized, and the width is stated a second time where it
+/// can disagree with the first.
+///
+/// Two *mixins* declaring one name is a third case again, and still a defect:
+/// neither is an override of the other, both columns are allocated, every row
+/// pays for both and reads reach whichever mixin came last - see `Field`'s
+/// note on it.
 ///
 /// # Which columns have one
 ///
@@ -768,6 +797,74 @@ abstract class InitialPointer<T> extends DataPointer<T> {
   /// a [DataPointer] at all.
   T get initialValue;
   set initialValue(T newValue);
+
+  /// Sets [initialValue] and hands **this same column** back, so a subclass
+  /// can change an inherited one from the field that holds it:
+  ///
+  /// ```dart
+  /// class Fast extends Player {
+  ///   @override
+  ///   late final speed = super.speed.initial(12);
+  /// }
+  /// ```
+  ///
+  /// That is the whole of it - no `describeStruct` override, and no number
+  /// `Player` chose written down a second time.
+  ///
+  /// # Why `late`, and why `super`
+  ///
+  /// `late` because an ordinary field initialiser cannot reach `super`, and
+  /// because the read has to happen inside the window an initial value is
+  /// settable in. `collectDeclarations` reads every declaration off the
+  /// constructed prefab before the describe passes run, and that read is what
+  /// runs the initialiser - the same reason `Text2D.textCodeUnits` is `late`
+  /// to size itself from a field the prefab supplies.
+  ///
+  /// `super` because it is the only spelling that reaches the inherited
+  /// column. A field overriding a field replaces the accessor, so
+  /// `Player.speed`'s object is unreachable through the instance from
+  /// anywhere else, including the generated collector - which reads
+  /// `owner.speed` and so reaches whatever this returns. It reaches a mixin's
+  /// declaration too: in `class Scout extends EntityStruct with Body`,
+  /// `super` is the mixin application, so `super.speed` is `Body`'s column.
+  ///
+  /// # `overridden_fields` reports every use of this
+  ///
+  /// It is in `package:lints/recommended.yaml`, so it is on in this
+  /// repository and in a scaffolded game, and `flutter analyze` exits
+  /// non-zero on it. Write the ignore:
+  ///
+  /// ```dart
+  /// class Fast extends Player {
+  ///   // ignore: overridden_fields
+  ///   @override
+  ///   late final speed = super.speed.initial(12);
+  /// }
+  /// ```
+  ///
+  /// The lint's own advice - override the getter instead - does not work
+  /// here, and the way it fails is worth knowing. A getter body runs on every
+  /// read: the collector's read declares the column correctly, and every read
+  /// after `seal` runs `initial` again against a sealed archetype and throws.
+  /// The column becomes unreachable through the name that declared it.
+  ///
+  /// # What returning `this` buys, and what it does not
+  ///
+  /// Not the value in the row. Restating the declaration instead -
+  /// `late final speed = Field.float64(12)` - also puts 12 in the spawned
+  /// row, because a field overriding a field replaces the accessor and the
+  /// collector reads through it, so the restated column is the one laid out
+  /// and the inherited one is never realized. Both spell a working prefab.
+  ///
+  /// What returning `this` buys is that the width and the kind are never
+  /// restated. `super.speed.initial(12)` names no kind at all; it moves the
+  /// value of a column that already has one. `late final speed =
+  /// Field.uint8(300)` states the width a second time, where it can disagree
+  /// with the first - and 300 in a `uint8` truncates with nothing said.
+  InitialPointer<T> initial(T initialValue) {
+    this.initialValue = initialValue;
+    return this;
+  }
 }
 
 /// A [DataPointer] over an [IntRepresentable], which can additionally hand

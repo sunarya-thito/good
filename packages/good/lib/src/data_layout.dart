@@ -350,6 +350,18 @@ abstract base class _ValueField<T> extends _Field<T>
     _requireUnsealed();
     _default = newValue;
   }
+
+  /// [InitialPointer.initial]'s body, written out because this reaches
+  /// `InitialPointer` through `implements` and not `extends` - `_Field` is
+  /// already the superclass here, and a class takes only the interface from
+  /// what it implements. `_DefaultableOptionalField` carries the same line
+  /// for the same reason; every other column kind extends `InitialPointer`
+  /// and inherits it.
+  @override
+  InitialPointer<T> initial(T initialValue) {
+    this.initialValue = initialValue;
+    return this;
+  }
 }
 
 /// A `bool` view over a one-bit field.
@@ -1263,6 +1275,14 @@ final class _DefaultableOptionalField<T> extends _OptionalField<T>
     _requireUnsealed();
     _initialPresent = newValue != null;
     if (newValue != null) _defaultableValue._default = newValue;
+  }
+
+  /// See `_ValueField.initial` for why this is written out rather than
+  /// inherited.
+  @override
+  InitialPointer<T?> initial(T? initialValue) {
+    this.initialValue = initialValue;
+    return this;
   }
 }
 
@@ -2495,10 +2515,19 @@ final class ArchetypeDataDescriptor extends _ColumnDescriptor {
   /// which is the order of the row.
   final List<_Declared> _columns = <_Declared>[];
 
+  /// The same columns again, by identity, so [declareOne] can tell a second
+  /// declaration of one column from two columns that happen to share a name.
+  final Set<_Declared> _recorded = Set<_Declared>.identity();
+
   @override
   D _declared<D extends ScannableField>(D column) {
-    _columns.add(column as _Declared);
+    _record(column as _Declared);
     return column;
+  }
+
+  void _record(_Declared column) {
+    if (!_recorded.add(column)) return;
+    _columns.add(column);
   }
 
   /// Records the columns a constructed instance's field initialisers
@@ -2519,6 +2548,21 @@ final class ArchetypeDataDescriptor extends _ColumnDescriptor {
   /// `Query` is a declaration too, and what it resolves against is the
   /// component-bit registry rather than a row layout. This descriptor lays
   /// out rows, and says so by taking only what it can lay out.
+  ///
+  /// # One column reached twice takes its space once
+  ///
+  /// A collector lists a class's own fields and then its superclass's, so a
+  /// prefab overriding an inherited declaration is handed the field name
+  /// twice - and both reads go through the override, so both hand back the
+  /// *same object*. That is how `late final speed = super.speed.initial(12)`
+  /// arrives here (see [InitialPointer.initial]), and reserving it twice
+  /// throws out of `_Field._storage`'s `late final` rather than laying the
+  /// row out wrong.
+  ///
+  /// Identity, not equality, and it says nothing about names. Two mixins
+  /// declaring `speed` build two columns, both land in the row, and both are
+  /// paid for - the defect `good generate` refuses a project over, which this
+  /// would hide if it compared anything else.
   void declareOne(ScannableField declaration) {
     // A composite is a name for several columns and is no column itself, so
     // what lands in the row is its members - `Sprite.of(...)` is twenty
@@ -2533,7 +2577,7 @@ final class ArchetypeDataDescriptor extends _ColumnDescriptor {
       return;
     }
     if (declaration is! _Declared) return;
-    _columns.add(declaration);
+    _record(declaration);
   }
 
   /// Gives every column its row space and registers it, so `seal` stamps its
