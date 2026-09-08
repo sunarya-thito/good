@@ -1,3 +1,7 @@
+import 'package:good/src/game_state.dart';
+import 'package:good/src/scene.dart';
+import 'package:good/src/struct.dart';
+import 'package:good/src/system.dart';
 import 'package:meta/meta.dart';
 import 'package:meta/meta_meta.dart';
 
@@ -198,6 +202,89 @@ abstract interface class ScannableAnnotation {}
 // The markers a reader needs
 // ---------------------------------------------------------------------------
 
+/// What a marker annotation accepts: the kind of declaration a field carrying
+/// it may hold, and the kind of class that field may be written on.
+///
+/// ```dart
+/// @Marks(EntityStruct, on: SceneStruct)
+/// class Prefab implements ScannableAnnotation {
+///   const Prefab._();
+/// }
+/// ```
+///
+/// Without this a marker says only *that* a field declares something. [Sub]
+/// and [Prefab] both turn a bare `Barrel()` into a declaration, and while
+/// neither said which kind it was, writing one where the other belonged was
+/// accepted in silence - which is how one marker came to cover a scene's
+/// prefab and a prefab's child at once.
+///
+/// # Two facts, because one does not separate the markers
+///
+/// The value alone cannot tell [sub] from [prefab]: both hold an
+/// `EntityStruct`. What tells them apart is the class the field is written on,
+/// so [on] is half the statement rather than a refinement of it. The value
+/// half is what catches the other pairing - `@system final barrel = Barrel();`
+/// and `@sub final movement = MovementSystem();`.
+///
+/// [Sub] is `on: Component` and not `on: EntityStruct`, because a component
+/// mixin declares children too:
+///
+/// ```dart
+/// mixin Transform2D on Component {
+///   @sub final transformPivot = Pivot();
+/// }
+/// ```
+///
+/// A `SceneStruct` is not a `Component`, so that bound is the line between the
+/// two markers and not a loosened version of it.
+///
+/// # A marker carrying none of this is unconstrained
+///
+/// [Describes]'s rule for [Describes]'s reason. `@LoadBefore(PhysicsSystem)`
+/// is a [ScannableAnnotation] that names no kind and constrains nothing, and
+/// a marker from a package that has not adopted this is left alone rather
+/// than told every field it marks is wrong.
+///
+/// # Reported and not refused
+///
+/// A marker naming a kind the field is not lands in
+/// `DeclarationScan.mismarked`, and the field is collected anyway. That is
+/// what `Describes` settled for a misplaced declaration (#290) and it is taken
+/// for the same reason: a rule that refuses in the change inventing it has no
+/// run behind it to have been read against. Dropping the field instead would
+/// be worse than either - a scene whose prefab is still spelled `@sub` would
+/// come up with that entity unregistered and nothing said, which is the
+/// silence the marker exists to break.
+///
+/// # It is read at build time and never at run time
+///
+/// `good_tool --declarations` reads it off the source. Nothing looks it up
+/// while a game runs, and it reaches no generated table - which is why it does
+/// not implement [ScannableAnnotation], for [Hide]'s reason: that bound's one
+/// reader is the set a bare-constructor field is tested against, so
+/// implementing it would make `@Marks(EntityStruct, on: SceneStruct) final
+/// spare = Turret();` register a child prefab.
+@Target(<TargetKind>{TargetKind.classType})
+class Marks {
+  const Marks(this.declaration, {required this.on});
+
+  /// The [ScannableField] root a field carrying the marker may hold -
+  /// `EntityStruct`, `GameSystem`.
+  ///
+  /// A subtype counts, the way it does for [Describes.declaration]: the
+  /// question is what kind of declaration this is, and `Player` is an
+  /// `EntityStruct`.
+  final Type declaration;
+
+  /// The [Scannable] root the class writing that field has to be -
+  /// `SceneStruct`, `Component`, `GameState`.
+  ///
+  /// Read against the class or mixin the field is written in, not against
+  /// whichever class applies that mixin, so one wrong marker is one line of
+  /// output.
+  final Type on;
+}
+
 /// The type of [sub]. Written `@sub`, never `@Sub()`.
 ///
 /// Public because the generator keys a table by it and a type argument cannot
@@ -219,18 +306,42 @@ abstract interface class ScannableAnnotation {}
 /// taken by the mixin a declared prefab keeps its parent handle on
 /// (`data/hierarchy.dart`), both are exported from `good.dart`, and that is
 /// the only reason the type was ever spelled differently from the annotation.
+@Marks(EntityStruct, on: Component)
 class Sub implements ScannableAnnotation {
   const Sub._();
 }
 
-/// Says the field it is written on declares a child prefab.
+/// Says the field it is written on declares a child entity of this one.
 ///
 /// ```dart
 /// class Turret extends EntityStruct with Transform2D, Parent {
-///   @sub final barrel = Barrel();   // declares a prefab
+///   @sub final barrel = Barrel();   // declares a child entity
 ///   final spare = Barrel();         // declares nothing
 /// }
 /// ```
+///
+/// # A scene's prefab is [prefab] and not this
+///
+/// This marker used to cover both, and the name was only ever right about one
+/// of them. A `Player` a scene holds is not a sub-entity of the scene; it is
+/// the prefab the scene registers and spawns from, and nothing is above it.
+/// So the two are separate markers, each saying its own kind, and `@sub`
+/// means what it says:
+///
+/// ```dart
+/// class MainScene extends SceneStruct {
+///   @prefab final player = Player();   // a prefab the scene registers
+/// }
+///
+/// class Turret extends EntityStruct {
+///   @sub final barrel = Barrel();      // a child entity inside a prefab
+/// }
+/// ```
+///
+/// `@Marks(EntityStruct, on: Component)` is what makes that division
+/// checkable rather than a convention - see [Marks]. `on: Component` and not
+/// `on: EntityStruct`, because a component mixin declares children too, and a
+/// `SceneStruct` is not a `Component`.
 ///
 /// # Why the type is not enough
 ///
@@ -266,6 +377,71 @@ class Sub implements ScannableAnnotation {
 /// --verbose` names every one of them.
 const Sub sub = Sub._();
 
+/// The type of [prefab]. Written `@prefab`, never `@Prefab()`.
+///
+/// Public for the reason [Sub] is - the annotation is written in user code -
+/// and constructed only here, so there is one spelling of it.
+///
+/// The name was checked before it was taken, the way `Child` and `System`
+/// were: no `Prefab` is declared anywhere in this repository outside the
+/// generated `doc_snippets`, `package:flutter` publishes none, and neither
+/// does any `dart:` library. `Scene` could not have been taken the same way -
+/// `extension type const Scene(int value)` is the runtime handle - which is
+/// why the marker for a scene on a game becomes `DeclaredScene` when it
+/// arrives with #287.
+///
+/// A field named `prefab` shadows this const for the whole of its class body,
+/// the way one named `child` did before [sub] was renamed. That is structural
+/// to Dart and the same trade [Sub] records: nothing that *holds* a prefab
+/// calls a field `prefab`, and `good_lint` carries the diagnostic for the
+/// collisions that are left.
+@Marks(EntityStruct, on: SceneStruct)
+class Prefab implements ScannableAnnotation {
+  const Prefab._();
+}
+
+/// Says the field it is written on declares a prefab this scene registers.
+///
+/// ```dart
+/// class MainScene extends SceneStruct {
+///   @prefab final player = Player();   // declares a prefab
+///   final spare = Player();            // declares nothing
+/// }
+/// ```
+///
+/// Bringing the scene up registers the archetype for it and runs its describe
+/// passes, and the field is the handle `scene.addEntity(player)` spawns from.
+///
+/// # Why it is not [sub]
+///
+/// One marker covered both for as long as the scan asked only whether a field
+/// declared anything. It answers *what* now, and the two are different things:
+/// a prefab on a scene is a root, and a `@sub` field is a child of the entity
+/// that holds it. Calling a scene's `Player` a sub-entity said there was
+/// something above it, and there is not.
+///
+/// The check that keeps them apart is [Marks], and what separates them is the
+/// owner rather than the value - both hold an `EntityStruct`. A `SceneStruct`
+/// is not a `Component`, so `@prefab` on a struct's field and `@sub` on a
+/// scene's are each reported.
+///
+/// # Why the type is not enough
+///
+/// [Sub]'s argument unchanged. `final player = Player();` is spelled exactly
+/// like a field holding an ordinary object, and a scene may hold a spare one:
+/// a `Player()` nobody declared is a complete struct with its own columns and
+/// its own children, and it is the same type as the declared one by
+/// construction.
+///
+/// # It is read at build time and never at run time
+///
+/// `good_tool` reads this off the source and leaves an unmarked
+/// bare-constructor field out of the generated collector, so
+/// [collectDeclarations] never sees the difference. An unmarked field is
+/// **reported and not refused** - `good_tool --declarations --verbose` names
+/// every one of them.
+const Prefab prefab = Prefab._();
+
 /// The type of [system]. Written `@system`, never `@System()`.
 ///
 /// Public for the reason [Sub] is - the annotation is written in user code -
@@ -275,6 +451,7 @@ const Sub sub = Sub._();
 /// is no other `System` in this repository, and `package:flutter` publishes
 /// `SystemChannels`, `SystemChrome`, `SystemSound` and `SystemMouseCursors`
 /// but no bare `System`. `dart:io` has none either.
+@Marks(GameSystem, on: GameState)
 class System implements ScannableAnnotation {
   const System._();
 }
