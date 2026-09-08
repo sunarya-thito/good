@@ -1,0 +1,9 @@
+name: spike403
+description: Probes for issue 403 - does an overriding field infer its type from the member it overrides.
+publish_to: none
+
+environment:
+  sdk: ^3.13.0
+
+dev_dependencies:
+  lints: ^6.0.0
