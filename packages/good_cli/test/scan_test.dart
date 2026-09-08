@@ -79,7 +79,8 @@ abstract interface class Component implements Scannable {}
 abstract interface class MultiComponent implements Component {}
 abstract class EntityStruct implements MultiComponent, ScannableField {}
 abstract class SceneStruct implements Scannable {}
-abstract class GameSystem implements Scannable {}
+abstract class GameSystem implements Scannable, ScannableField {}
+abstract class GameState implements Scannable {}
 abstract class TimelineStruct implements Scannable {}
 
 class TimelineAnimation implements ScannableField {
@@ -111,11 +112,32 @@ class LoadBefore implements ScannableAnnotation {
   final Type other;
 }
 
+class Marks {
+  const Marks(this.declaration, {required this.on});
+  final Type declaration;
+  final Type on;
+}
+
+@Marks(EntityStruct, on: Component)
 class Sub implements ScannableAnnotation {
   const Sub._();
 }
 
 const Sub sub = Sub._();
+
+@Marks(EntityStruct, on: SceneStruct)
+class Prefab implements ScannableAnnotation {
+  const Prefab._();
+}
+
+const Prefab prefab = Prefab._();
+
+@Marks(GameSystem, on: GameState)
+class System implements ScannableAnnotation {
+  const System._();
+}
+
+const System system = System._();
 
 abstract class Input<T> implements ScannableField {
   static Input<V> of<V>() => throw UnimplementedError();
@@ -978,6 +1000,181 @@ class Turret extends EntityStruct {
 
       expect(scan.unmarked.keys, <String>['Turret.spare']);
       expect(scan.misplaced, isEmpty);
+    });
+
+    test('a scene marking its prefab @sub is reported, and @prefab is '
+        'named as what fits', () async {
+      // #398, and the whole of what the split is for. Both markers make a bare
+      // `Player()` a declaration and both hold an EntityStruct, so the value
+      // says nothing about which was meant - the owner does. A scene's Player
+      // is the prefab the scene registers and spawns from; calling it a
+      // sub-entity says something is above it, and nothing is.
+      final scan = await _declarations('''
+class Player extends EntityStruct {}
+
+class MainScene extends SceneStruct {
+  @sub
+  final player = Player();
+}
+''');
+
+      expect(scan.refusals, isEmpty);
+      expect(scan.mismarked.keys, <String>['MainScene.player']);
+      expect(scan.mismarked['MainScene.player'], contains('@sub'));
+      // The owner half is the one that failed, so the message has to say which
+      // bound was missed rather than only that one was.
+      expect(scan.mismarked['MainScene.player'], contains('Component'));
+      expect(scan.mismarked['MainScene.player'], contains('@prefab'));
+    });
+
+    test('the field a wrong marker is on is still collected', () async {
+      // Reported and not refused, and the field is not dropped either. A scene
+      // whose prefab is still spelled `@sub` would otherwise come up with that
+      // entity unregistered and nothing said, which is a refusal wearing a
+      // report's clothes and worse than either.
+      final scan = await _declarations('''
+class Player extends EntityStruct {}
+
+class MainScene extends SceneStruct {
+  @sub
+  final player = Player();
+}
+''');
+
+      expect(scan.mismarked.keys, <String>['MainScene.player']);
+      expect(
+        <String>[for (final d in scan.declarers.single.declarations) d.name],
+        <String>['player'],
+      );
+    });
+
+    test('@prefab on a scene and @sub on a struct are each accepted', () async {
+      final scan = await _declarations('''
+class Barrel extends EntityStruct {}
+
+class Turret extends EntityStruct {
+  @sub
+  final barrel = Barrel();
+}
+
+class MainScene extends SceneStruct {
+  @prefab
+  final turret = Turret();
+}
+''');
+
+      expect(scan.mismarked, isEmpty);
+      expect(scan.declarationCount, 2);
+    });
+
+    test('@prefab inside a struct is reported', () async {
+      // The other direction of the same pairing, and it has to be reported for
+      // the split to mean anything: a rule catching only the old spelling
+      // would leave the new one writable anywhere.
+      final scan = await _declarations('''
+class Barrel extends EntityStruct {}
+
+class Turret extends EntityStruct {
+  @prefab
+  final barrel = Barrel();
+}
+''');
+
+      expect(scan.mismarked.keys, <String>['Turret.barrel']);
+      expect(scan.mismarked['Turret.barrel'], contains('SceneStruct'));
+      expect(scan.mismarked['Turret.barrel'], contains('@sub'));
+    });
+
+    test('@sub in a component mixin is accepted', () async {
+      // Why `@sub` is `on: Component` and not `on: EntityStruct`. A mixin
+      // applied to a struct declares that struct's children, and it is written
+      // `on Component` - so a bound of EntityStruct would report every one of
+      // them. A SceneStruct is not a Component, which is what leaves Component
+      // the line between the two markers rather than a loosened version of it.
+      final scan = await _declarations('''
+class Pivot extends EntityStruct {}
+
+mixin Transform2D on Component {
+  @sub
+  final transformPivot = Pivot();
+}
+
+class Turret extends EntityStruct with Transform2D {}
+''');
+
+      expect(scan.mismarked, isEmpty);
+      expect(scan.declarationCount, 1);
+    });
+
+    test('the value half is checked as well as the owner', () async {
+      // The owner alone cannot separate @system from @sub - a GameState is not
+      // a Component either way - and the value alone cannot separate @sub from
+      // @prefab. Both halves are needed, and neither is a refinement of the
+      // other.
+      final scan = await _declarations('''
+class Barrel extends EntityStruct {}
+class Movement extends GameSystem {}
+
+class Turret extends EntityStruct {
+  @sub
+  final movement = Movement();
+}
+
+class MyState extends GameState {
+  @system
+  final barrel = Barrel();
+}
+''');
+
+      expect(
+        scan.mismarked.keys.toList()..sort(),
+        <String>['MyState.barrel', 'Turret.movement'],
+      );
+      expect(scan.mismarked['Turret.movement'], contains('Movement'));
+      expect(scan.mismarked['MyState.barrel'], contains('Barrel'));
+    });
+
+    test('a marker naming no kind constrains nothing', () async {
+      // Absent is not empty, which is `describedDeclarations`' rule and taken
+      // for its reason. `@LoadBefore` is a ScannableAnnotation that says a
+      // field declares something and says nothing about what, and a marker
+      // from a package that has not adopted `@Marks` is left alone rather than
+      // told every field it marks is wrong.
+      final scan = await _declarations('''
+class Player extends EntityStruct {}
+
+class MainScene extends SceneStruct {
+  @LoadBefore(Player)
+  final player = Player();
+}
+''');
+
+      expect(scan.mismarked, isEmpty);
+      expect(scan.unmarked, isEmpty);
+      expect(scan.declarationCount, 1);
+    });
+
+    test('a marker is read wherever it is written, not from a list', () async {
+      // The property the walk has to keep: markers are found by walking every
+      // ScannableAnnotation subtype, so what each one accepts is read the same
+      // way. A marker declared in a fixture and nowhere in the engine is
+      // enforced here, which is what proves nothing is hard-coded.
+      final scan = await _declarations('''
+@Marks(EntityStruct, on: SceneStruct)
+class Spawn implements ScannableAnnotation {
+  const Spawn();
+}
+
+class Player extends EntityStruct {}
+
+class Turret extends EntityStruct {
+  @Spawn()
+  final player = Player();
+}
+''');
+
+      expect(scan.mismarked.keys, <String>['Turret.player']);
+      expect(scan.mismarked['Turret.player'], contains('@Spawn'));
     });
 
     test('a class that is not Scannable declares nothing', () async {

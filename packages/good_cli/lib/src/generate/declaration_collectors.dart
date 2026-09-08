@@ -219,7 +219,7 @@ DeclarationCollectorScan scanDeclarationCollectors({
       final fields = <CollectedDeclaration>[];
       for (final declaration in declarations) {
         // Not a hole in the row, so not a commented-out line either. A bare
-        // constructor call with no `@sub` on it declares nothing at all -
+        // constructor call with no marker on it declares nothing at all -
         // no column is reserved for it and none is missing - and writing a
         // placeholder here would say a column went astray. What names it is
         // `--declarations`.

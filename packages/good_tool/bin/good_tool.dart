@@ -758,6 +758,12 @@ Future<void> _declarations(
     for (final entry in scan.misplaced.entries)
       if (ownDeclarers.contains(entry.key.split('.').first)) entry.key: entry.value,
   };
+  // Filtered the way [misplaced] is, and for its reason: a marker naming the
+  // wrong kind in an upstream package is that package's line to rewrite.
+  final mismarked = <String, String>{
+    for (final entry in scan.mismarked.entries)
+      if (ownDeclarers.contains(entry.key.split('.').first)) entry.key: entry.value,
+  };
   final judged = DeclarationScan(
     declarers: scan.declarers,
     refusals: refusals,
@@ -767,6 +773,7 @@ Future<void> _declarations(
     unmarked: scan.unmarked,
     deferred: scan.deferred,
     misplaced: misplaced,
+    mismarked: mismarked,
   );
 
   if (verbose) {
@@ -799,6 +806,14 @@ Future<void> _declarations(
   // [DeclarationScan.misplaced].
   if (misplaced.isNotEmpty) {
     stderr.writeln(misplacedDeclarationMessage(judged));
+  }
+
+  // Beside the one above and for its reason: a marker naming a kind the field
+  // is not is a line that tells a reader something untrue, and there is no run
+  // in which it is what somebody meant. It sets no exit code yet either - see
+  // [DeclarationScan.mismarked].
+  if (mismarked.isNotEmpty) {
+    stderr.writeln(mismarkedDeclarationMessage(judged));
   }
 
   if (refusals.isEmpty && unresolved.isEmpty && cycles.isEmpty) {

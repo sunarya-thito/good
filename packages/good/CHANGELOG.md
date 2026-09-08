@@ -111,6 +111,52 @@
 
 ### Breaking
 
+* **A scene's prefab is `@prefab`, and `@sub` narrows to a child entity**
+  (#398). One marker covered two relationships and named only the second one
+  correctly: a `Player` a scene holds is not a sub-entity of the scene, it is
+  the prefab the scene registers and spawns from.
+
+  ```dart
+  // before
+  class MainScene extends SceneStruct {
+    @sub final player = Player();
+  }
+
+  // after
+  class MainScene extends SceneStruct {
+    @prefab final player = Player();
+  }
+
+  // unchanged - a child entity inside a prefab
+  class Turret extends EntityStruct with Transform2D, Parent {
+    @sub final barrel = Barrel();
+  }
+  ```
+
+  `@sub` on a scene still compiles and still registers the prefab, so nothing
+  about a running game changes. `good_tool --declarations` reports it, naming
+  `@prefab` as what fits, and reporting rather than refusing is what `Describes`
+  settled for a misplaced declaration: a rule that refuses in the change that
+  invents it has no run behind it to have been read against.
+
+  What makes that check possible is `Marks`, which each marker now carries:
+
+  ```dart
+  @Marks(EntityStruct, on: SceneStruct)
+  class Prefab implements ScannableAnnotation { ... }
+  ```
+
+  Two facts and not one, because the value alone does not separate the markers
+  - `@sub` and `@prefab` both hold an `EntityStruct`, and what tells them apart
+  is the class the field is written on. `@sub` is `on: Component` rather than
+  `on: EntityStruct` so that a component mixin can declare children; a
+  `SceneStruct` is not a `Component`, which is what makes that the line between
+  them. The value half catches the other pairing - `@system` on a struct, or
+  `@sub` on a system.
+
+  `@scene` is not here. Scenes are declared through `describeScenes` until
+  #287 retires it, so there is no field for the marker to go on yet.
+
 * **Events have no scope, and the local lifecycle pairs are methods** (#384).
   `EntityLifecycleListener`, `SceneLifecycleListener` and
   `GameSystemLifecycleListener` are deleted. Their hooks keep their names and
