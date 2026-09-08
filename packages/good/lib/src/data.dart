@@ -162,6 +162,7 @@ abstract class DataDescriptor {
 
   InitialPointer<double?> optFloat32([double? initialValue]);
   InitialPointer<double?> optFloat64([double? initialValue]);
+
   /// A fixed-length inline array of [length] [element]s, one run per entity's
   /// row.
   ///
@@ -619,7 +620,6 @@ abstract final class Field {
   /// See [DataDescriptor.optHeapObject].
   static DataPointer<T?> optHeapObject<T>() =>
       declaredColumns.optHeapObject<T>();
-
 }
 
 abstract class DataPointer<T> implements ScannableField {

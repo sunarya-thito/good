@@ -412,8 +412,7 @@ class _BoolField extends InitialPointer<bool> implements _Declared {
 /// `readPending` is not delegated - `_Int64Field` does not implement it, so
 /// forwarding would only move the `UnsupportedError` to a message naming the
 /// wrong class.
-class _EntityHandleField extends InitialPointer<Entity>
-    implements _Declared {
+class _EntityHandleField extends InitialPointer<Entity> implements _Declared {
   const _EntityHandleField(this._raw);
 
   final _ValueField<int> _raw;
@@ -2027,9 +2026,7 @@ _ValueField<int> _intColumn(int bitWidth, bool signed, int initialValue) {
 }
 
 _ValueField<double> _floatColumn(int bitWidth, double initialValue) =>
-    bitWidth == 32
-    ? _Float32Field(initialValue)
-    : _Float64Field(initialValue);
+    bitWidth == 32 ? _Float32Field(initialValue) : _Float64Field(initialValue);
 
 /// [_intColumn] behind a presence flag, so "no value" is a state of its own.
 _DefaultableOptionalField<int> _optIntColumn(
@@ -2104,21 +2101,19 @@ _ArrayField<T> _arrayColumn<T>(
   switch (element) {
     case IntElement(:final bitWidth, :final signed):
       return _intArrayColumn(
-            length,
-            bitWidth,
-            signed,
-            broadcast as int?,
-            perElement as List<int>?,
-          )
-          as _ArrayField<T>;
+        length,
+        bitWidth,
+        signed,
+        broadcast as int?,
+        perElement as List<int>?,
+      ) as _ArrayField<T>;
     case FloatElement(:final bitWidth):
       return _floatArrayColumn(
-            length,
-            bitWidth,
-            broadcast as double?,
-            perElement as List<double>?,
-          )
-          as _ArrayField<T>;
+        length,
+        bitWidth,
+        broadcast as double?,
+        perElement as List<double>?,
+      ) as _ArrayField<T>;
     case IntRepresentation<IntRepresentable>():
       final repr = element as IntRepresentation<IntRepresentable>;
       if (broadcast == null && perElement == null) {
@@ -2432,10 +2427,7 @@ abstract base class _ColumnDescriptor implements DataDescriptor {
   /// realize. `Asset.of` builds an inert handle, so this reaches no game.
   @override
   PackedPointer<Asset<T>> hasAsset<T>(AssetKey<T> key) => _declared(
-    _AssetField<T>(
-      _intColumn(Assets.addressBitWidth, false, 0),
-      Asset.of(key),
-    ),
+    _AssetField<T>(_intColumn(Assets.addressBitWidth, false, 0), Asset.of(key)),
   );
 
   @override
