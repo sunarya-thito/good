@@ -905,18 +905,23 @@ void main() {
       expect(phase[e], _Phase.values.last);
     });
 
-    test('a list that is not the whole values list is rejected', () {
+    test('a list that is not the whole values list is rejected, at the '
+        'reservation pass and not at the declaration', () {
       // Writing stores `Enum.index`, so a partial list reads back a
       // different member than was written - silent, and only at run time.
-      late Object? error;
-      final h = _Harness((data) {
-        try {
-          data.hasEnum(_Element.values.sublist(1));
-        } catch (e) {
-          error = e;
-        }
+      var declared = false;
+      final error = _reservationError((data) {
+        data.hasEnum(_Element.values.sublist(1));
+        declared = true;
       });
-      addTearDown(h.dispose);
+
+      expect(
+        declared,
+        isTrue,
+        reason:
+            'the declaration holds the list and checks nothing; a column '
+            'nothing collects has to be able to hold a bad one silently',
+      );
       expect(error, isA<AssertionError>());
     });
   });
@@ -1359,27 +1364,33 @@ void main() {
       }
     });
 
-    test('a zero-length array is rejected at declare time', () {
+    test('a zero-length array is rejected at the reservation pass, naming '
+        'the class that declared it', () {
       // Every index into it would be out of range, so it can only ever be a
-      // caller mistake - better one failure at describe time than a
-      // RangeError from every access.
-      late Object? error;
-      final h = _Harness((data) {
-        try {
-          data.hasArray(.uint8, 0);
-        } catch (e) {
-          error = e;
-        }
+      // caller mistake - better one failure while the row is being laid out
+      // than a RangeError from every access.
+      var declared = false;
+      final error = _reservationError((data) {
+        data.hasArray(.uint8, 0);
+        declared = true;
       });
-      addTearDown(h.dispose);
 
-      // On the message, for the reason the per-element case above gives.
-      expect(error, isA<ArgumentError>());
       expect(
-        (error! as ArgumentError).message.toString(),
-        contains('must be at least 1'),
+        declared,
+        isTrue,
+        reason:
+            'the declaration names a column and refuses nothing, which is '
+            'what makes a declaration nothing collects free of effect',
       );
-      expect((error! as ArgumentError).name, 'length');
+      // On the message, for the reason the per-element case above gives.
+      expect(error, isA<StateError>());
+      expect(
+        (error! as StateError).message,
+        allOf(contains('_AdHoc'), contains('must be at least 1')),
+        reason:
+            'the whole point of moving it here is that there is a class to '
+            'name; a field initialiser had none',
+      );
     });
 
     test('nullable array elements carry their own has-bit', () {
@@ -1534,26 +1545,19 @@ void main() {
     });
 
     test('a representation element without an initial value is refused at '
-        'declare time', () {
+        'the reservation pass', () {
       // The bits an unwritten element holds are 0, and a representation is
       // under no obligation to have a value for 0 - so the alternative to
       // this throw is a read that blows up out of `unpack`, per entity, a
       // long way from the declaration that caused it.
-      late Object? error;
-      final h = _Harness((data) {
-        try {
-          data.hasArray(assets.of<_Texture>(), 2);
-        } catch (e) {
-          error = e;
-        }
+      final error = _reservationError((data) {
+        data.hasArray(assets.of<_Texture>(), 2);
       });
-      addTearDown(h.dispose);
 
-      expect(error, isA<ArgumentError>());
-      expect((error! as ArgumentError).name, 'initialValue');
+      expect(error, isA<StateError>());
       expect(
-        (error! as ArgumentError).message.toString(),
-        contains('optArray'),
+        (error! as StateError).message,
+        allOf(contains('_AdHoc'), contains('optArray')),
         reason: 'the message has to name the way out, not just refuse',
       );
     });
@@ -1582,20 +1586,22 @@ void main() {
         declared,
         isTrue,
         reason:
-            'the declaration builds the column and refuses nothing; the '
+            'the declaration names the column and refuses nothing; the '
             'count is only final once every declaration is in',
       );
 
-      // Not `isA<ArgumentError>()` on its own: `RangeError` is an
-      // `ArgumentError`, and with this guard removed the `setRange` behind it
-      // throws one - so the type alone cannot tell the guard from the failure
-      // it exists to pre-empt. The message is what discriminates.
-      expect(error, isA<ArgumentError>());
+      // On the message and not on the type: with this guard removed the
+      // `setRange` behind it throws a `RangeError`, which the reservation
+      // pass wraps into a `StateError` of exactly this shape - so the type
+      // alone cannot tell the guard from the failure it exists to pre-empt.
+      expect(error, isA<StateError>());
       expect(
-        (error! as ArgumentError).message.toString(),
-        contains('more values than the array holds (2)'),
+        (error! as StateError).message,
+        allOf(
+          contains('_AdHoc'),
+          contains('more values than the array holds (2)'),
+        ),
       );
-      expect((error as ArgumentError).name, 'initialValues');
     });
 
     test('an array shortened under its values is refused against the length '
@@ -1609,13 +1615,12 @@ void main() {
         data.hasArrayOf(.float64, 4, const [1.0, 2.0, 3.0]).length = 2;
       });
 
-      expect(error, isA<ArgumentError>());
+      expect(error, isA<StateError>());
       expect(
-        (error! as ArgumentError).message.toString(),
+        (error! as StateError).message,
         contains('more values than the array holds (2)'),
         reason: 'the length the row got, not the 4 the declaration named',
       );
-      expect((error as ArgumentError).name, 'initialValues');
     });
 
     test('an array shortened to exactly the values named keeps every one of '
@@ -1634,45 +1639,39 @@ void main() {
       expect([ramp.get(e, 0), ramp.get(e, 1), ramp.get(e, 2)], [1.0, 2.0, 3.0]);
     });
 
-    test(
-      'a representation element round-trips through its declared table',
-      () {
-        final placeholder = _loaded();
-        final grass = _loaded();
-        final stone = _loaded();
+    test('a representation element round-trips through its declared table', () {
+      final placeholder = _loaded();
+      final grass = _loaded();
+      final stone = _loaded();
 
-        late DataArrayPointer<Asset<_Texture>> textures;
-        final h = _Harness(
-          (data) => textures = data.hasArray(
-            assets.of<_Texture>(),
-            3,
-            placeholder,
-          ),
-        );
-        addTearDown(h.dispose);
+      late DataArrayPointer<Asset<_Texture>> textures;
+      final h = _Harness(
+        (data) =>
+            textures = data.hasArray(assets.of<_Texture>(), 3, placeholder),
+      );
+      addTearDown(h.dispose);
 
-        final e = h.spawn();
-        for (var i = 0; i < 3; i++) {
-          expect(
-            textures.get(e, i),
-            same(placeholder),
-            reason: 'declared default, element $i',
-          );
-        }
-
-        h.pool.beginTick();
-        textures.set(e, 0, grass);
-        textures.set(e, 2, stone);
-        h.pool.commitTick();
-        expect(textures.get(e, 0), same(grass));
+      final e = h.spawn();
+      for (var i = 0; i < 3; i++) {
         expect(
-          textures.get(e, 1),
+          textures.get(e, i),
           same(placeholder),
-          reason: 'untouched element',
+          reason: 'declared default, element $i',
         );
-        expect(textures.get(e, 2), same(stone));
-      },
-    );
+      }
+
+      h.pool.beginTick();
+      textures.set(e, 0, grass);
+      textures.set(e, 2, stone);
+      h.pool.commitTick();
+      expect(textures.get(e, 0), same(grass));
+      expect(
+        textures.get(e, 1),
+        same(placeholder),
+        reason: 'untouched element',
+      );
+      expect(textures.get(e, 2), same(stone));
+    });
 
     test(
       'a nullable representation element starts null and round-trips it',

@@ -111,6 +111,38 @@
 
 ### Breaking
 
+* **A column declaration works nothing out, and a malformed one is reported
+  when the archetype is laid out** (#404). `Field.uint8(10)` used to ask a
+  `switch` which class eight unsigned bits are, and `Field.array(.uint8, 0)`
+  and `Field.packed` against a representation claiming 65 bits both threw out
+  of the field initialiser that wrote them. Now every check runs at the
+  reservation pass:
+
+  ```dart
+  // before: ArgumentError from inside Player's constructor
+  // after:  StateError from the registration -
+  //         "Player declares a column that cannot be laid out: must be at
+  //          least 1"
+  class Player extends EntityStruct {
+    final slots = Field.array(.uint8, 0);
+  }
+  ```
+
+  Two things a field initialiser could not do come out of that. The message
+  names the prefab whose row was being laid out, which nothing had while a
+  constructor was running. And a declaration nothing ever collects - a base
+  class's column a subclass shadows, a prefab constructed and never registered
+  - can no longer have any effect at all.
+
+  What was an `ArgumentError` at declare time is now a `StateError` at
+  registration, so code catching the first will not see the second. The
+  affected calls are `hasArray`, `hasArrayOf`, `optArray`, `hasPacked`,
+  `optPacked` and `hasEnum`, plus their `Field.*` spellings.
+
+  `DataArrayPointer.length` no longer refuses a length below 1 where it is
+  set; the same length is refused at the reservation pass, against the number
+  the row actually got.
+
 * **A scene's prefab is `@prefab`, and `@sub` narrows to a child entity**
   (#398). One marker covered two relationships and named only the second one
   correctly: a `Player` a scene holds is not a sub-entity of the scene, it is

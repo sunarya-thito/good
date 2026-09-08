@@ -162,6 +162,7 @@ abstract class DataDescriptor {
 
   InitialPointer<double?> optFloat32([double? initialValue]);
   InitialPointer<double?> optFloat64([double? initialValue]);
+
   /// A fixed-length inline array of [length] [element]s, one run per entity's
   /// row.
   ///
@@ -385,11 +386,27 @@ abstract class DataDescriptor {
 /// # Nothing is open around the call
 ///
 /// A `Field.*` static reaches no archetype, no scene and no allocation
-/// cursor. It builds the column and hands it back; the row space is reserved
-/// afterwards, once the whole set of a class's declarations is known. Two
-/// things depend on that being the order: [optCameraView] names a table that
-/// belongs to the scene, which a field initialiser cannot reach, and
-/// [DataArrayPointer.length] can still move.
+/// cursor. It names the column and hands it back; the width, the checks and
+/// the row space all come afterwards, once the whole set of a class's
+/// declarations is known. Two things depend on that being the order:
+/// [optCameraView] names a table that belongs to the scene, which a field
+/// initialiser cannot reach, and [DataArrayPointer.length] can still move.
+///
+/// # A declaration cannot fail
+///
+/// Nothing here counts, derives or checks anything, so nothing here can
+/// refuse. `Field.array(.uint8, 0)` and `Field.packed` against a
+/// representation claiming 65 bits both hand back a column, and both are
+/// refused when the archetype is laid out - by a message naming the prefab
+/// whose row it was (#404).
+///
+/// That is worth the deferral for two reasons. A field initialiser has no
+/// class to name: it runs while the object is being built, so a throw out of
+/// one says which *representation* was wrong and not which prefab wrote it.
+/// And a declaration is not always collected - a base class's column that a
+/// subclass shadows still runs its initialiser, and a prefab may be
+/// constructed and never registered - so "was this declared" and "did this
+/// take effect" have to be one question and not two.
 ///
 /// It also leaves the declaration nowhere to be misattributed to. These used
 /// to reach an ambient descriptor, so an initialiser that ran late - a `late`
@@ -619,7 +636,6 @@ abstract final class Field {
   /// See [DataDescriptor.optHeapObject].
   static DataPointer<T?> optHeapObject<T>() =>
       declaredColumns.optHeapObject<T>();
-
 }
 
 abstract class DataPointer<T> implements ScannableField {

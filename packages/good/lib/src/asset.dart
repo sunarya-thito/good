@@ -485,7 +485,7 @@ final class Asset<T> implements ScannableField, IntRepresentable {
   /// ```
   ///
   /// This declares and reserves nothing. It builds a handle carrying the key
-  /// and hands it back, exactly as `Field.float64` builds a column and hands
+  /// and hands it back, exactly as `Field.float64` names a column and hands
   /// it back, and the scene that brings the declarer up reads it off the
   /// constructed object and addresses it - `_AssetDescriptor.declare`, through
   /// [Assets.bind]. So it works wherever a field initialiser works: inside a
