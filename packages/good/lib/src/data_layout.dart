@@ -551,16 +551,19 @@ class _EnumField<E extends Enum> extends InitialPointer<E>
     // two address the same member only when `values` is the enum's whole
     // list in declaration order. A partial list is silent otherwise: it
     // reads back the wrong member.
-    assert(
-      _values.isNotEmpty &&
-          _values.every(
-            (value) =>
-                value.index < _values.length &&
-                identical(_values[value.index], value),
-          ),
-      'hasEnum indexes `values` by Enum.index, so it must be the whole '
-      'values list the enum declares.',
-    );
+    if (_values.isEmpty ||
+        !_values.every(
+          (value) =>
+              value.index < _values.length &&
+              identical(_values[value.index], value),
+        )) {
+      throw ArgumentError.value(
+        _values,
+        'values',
+        'hasEnum indexes `values` by Enum.index, so it must be the whole '
+            'values list the enum declares',
+      );
+    }
     _raw = _intColumn(
       _enumIndexWidth(_values.length),
       false,

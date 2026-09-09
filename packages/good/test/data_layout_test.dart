@@ -905,25 +905,35 @@ void main() {
       expect(phase[e], _Phase.values.last);
     });
 
-    test('a list that is not the whole values list is rejected, at the '
-        'reservation pass and not at the declaration', () {
-      // Writing stores `Enum.index`, so a partial list reads back a
-      // different member than was written - silent, and only at run time.
-      var declared = false;
-      final error = _reservationError((data) {
-        data.hasEnum(_Element.values.sublist(1));
-        declared = true;
-      });
+    for (final malformed in <List<_Element>>[
+      const <_Element>[],
+      _Element.values.sublist(1),
+    ]) {
+      test('a malformed values list is rejected at the reservation pass, '
+          'naming the class (${malformed.length} members)', () {
+        // Writing stores `Enum.index`, so an empty list cannot supply a
+        // default and a partial one reads back a different member than was
+        // written. Both have to fail before either becomes a runtime read.
+        var declared = false;
+        final error = _reservationError((data) {
+          data.hasEnum(malformed);
+          declared = true;
+        });
 
-      expect(
-        declared,
-        isTrue,
-        reason:
-            'the declaration holds the list and checks nothing; a column '
-            'nothing collects has to be able to hold a bad one silently',
-      );
-      expect(error, isA<AssertionError>());
-    });
+        expect(
+          declared,
+          isTrue,
+          reason:
+              'the declaration holds the list and checks nothing; a column '
+              'nothing collects has to be able to hold a bad one silently',
+        );
+        expect(error, isA<StateError>());
+        expect(
+          (error! as StateError).message,
+          allOf(contains('_AdHoc'), contains('whole values list')),
+        );
+      });
+    }
   });
 
   group('tick semantics', () {
