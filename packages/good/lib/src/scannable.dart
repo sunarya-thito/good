@@ -683,7 +683,7 @@ class Describes {
 /// them.
 ///
 /// This is the whole of what replaced the ambient window. A declaration
-/// reaches nothing where it is written - `Field.float64(3)` builds a column
+/// reaches nothing where it is written - `Field.float64(3)` names a column
 /// and hands it back, `Event.of(...)` builds a dispatcher and hands it back -
 /// so the only record of what a class declared is the fields it holds, and
 /// this is what reads them back off. `ArchetypeDataDescriptor.declare` and

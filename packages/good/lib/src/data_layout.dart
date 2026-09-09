@@ -183,30 +183,51 @@ int _writeRow(ArchetypeStorage storage, Entity entity) {
   return row;
 }
 
-/// A column a declaration produced, before it has any row space.
+/// A column a declaration named, before anything has been worked out about
+/// it.
 ///
 /// `final speed = Field.float64(3)` runs in a field initialiser, where there
-/// is no archetype, no scene and no allocation cursor - so it builds the
-/// column object and stops. [realize] is the other half: it runs once the
-/// whole set of a class's declarations is known, in the order they were
-/// declared, and is where the bits are reserved and the column is bound to
-/// the storage that holds them.
+/// is no archetype, no scene and no allocation cursor - so it holds what it
+/// was given and stops. [realize] is the other half: it runs once the whole
+/// set of a class's declarations is known, in the order they were declared,
+/// and is where a width is worked out, a length is checked, the bits are
+/// reserved and the column is bound to the storage that holds them.
+///
+/// # What a declaration is not allowed to do
+///
+/// Anything that could refuse. A declaration is a list append and nothing
+/// else, so that one bad line cannot take a game down before it has a class
+/// to name, and so that a declaration nothing ever collects costs nothing at
+/// all - a base class's column a subclass shadows, a prefab constructed and
+/// never registered. Every check this file makes therefore runs from
+/// [realize] and is reported by `ArchetypeDataDescriptor.realize`, which
+/// knows whose row it is laying out (#404).
+///
+/// The same rule settles where a *class* is chosen. `hasUint8` names
+/// `_Uint8Field`, because the method already carries the width; `hasEnum` and
+/// `hasPacked` do not, because theirs comes off a member count or a
+/// representation, and deriving it is the step that can be wrong. So those
+/// two build the column they wrap at [realize] - see [_EnumField] and
+/// [_PackedField].
+///
+/// # What the split already bought
 ///
 /// Two things the engine could not do while a declaration reserved its row
-/// space on the spot fall out of the split, and both were breakages until it
-/// existed. A `DataArrayPointer`'s `length` can move, because nothing has
-/// been reserved for it yet - see [DataArrayPointer.length]. And
-/// `optCameraView` can name a table that belongs to the scene, because
-/// `ArchetypeStorage.scene` is reachable here and is not reachable from a
-/// field initialiser - see [_CameraViewField].
+/// space on the spot, and both were breakages until it existed. A
+/// `DataArrayPointer`'s `length` can move, because nothing has been reserved
+/// for it yet - see [DataArrayPointer.length]. And `optCameraView` can name a
+/// table that belongs to the scene, because `ArchetypeStorage.scene` is
+/// reachable here and is not reachable from a field initialiser - see
+/// [_CameraViewField].
 ///
 /// Nothing here is ambient. A declaration reaches no descriptor while it is
 /// being made, so there is no stack to push, nothing to pop on the way out,
 /// and no way for a value produced in one place to land on whichever owner
 /// happened to be under construction somewhere else.
 abstract interface class _Declared implements ScannableField {
-  /// Reserves this column's row space on [storage], binds it, and registers
-  /// whatever stamps a fresh row's initial value.
+  /// Works out whatever the declaration left open, reserves this column's row
+  /// space on [storage], binds it, and registers whatever stamps a fresh
+  /// row's initial value.
   void realize(ArchetypeStorage storage);
 }
 
@@ -412,8 +433,7 @@ class _BoolField extends InitialPointer<bool> implements _Declared {
 /// `readPending` is not delegated - `_Int64Field` does not implement it, so
 /// forwarding would only move the `UnsupportedError` to a message naming the
 /// wrong class.
-class _EntityHandleField extends InitialPointer<Entity>
-    implements _Declared {
+class _EntityHandleField extends InitialPointer<Entity> implements _Declared {
   const _EntityHandleField(this._raw);
 
   final _ValueField<int> _raw;
@@ -488,9 +508,17 @@ class _OptionalEntityHandleField extends InitialPointer<Entity?>
 /// An `E` view over the unsigned field `hasEnum` declares, which holds the
 /// member's `index`.
 ///
-/// Delegation for the same reason [_EntityHandleField] delegates: the width,
-/// the default stamping and the row resolution are already right in the field
+/// Delegation for the same reason [_EntityHandleField] delegates: the
+/// default stamping and the row resolution are already right in the field
 /// this wraps (the one-fact-one-place rule).
+///
+/// The wrapped field is built at [realize] and not where the column is
+/// declared, because its width is not a constant: it is the narrowest one
+/// that can index [_values], so `hasEnum` would have to count the members
+/// and pick a column class where the declaration is written. That is the
+/// work a declaration does not do - see [_Declared] - and it is also the one
+/// thing here that can fail, so leaving it to realize is what puts the
+/// declaring prefab's name on the message.
 ///
 /// [_values] is the enum's own `values` list, so a read is one load out of a
 /// const list and allocates nothing.
@@ -500,13 +528,50 @@ class _OptionalEntityHandleField extends InitialPointer<Entity?>
 /// message naming the wrong class.
 class _EnumField<E extends Enum> extends InitialPointer<E>
     implements _Declared {
-  const _EnumField(this._raw, this._values);
+  _EnumField(this._values, this._default);
 
-  final _ValueField<int> _raw;
   final List<E> _values;
 
+  /// The member a fresh row starts at, or null for the first one.
+  ///
+  /// Held here rather than in the wrapped field because there is no wrapped
+  /// field until [realize], and [InitialPointer.initialValue] is readable and
+  /// writable through the whole window before that.
+  E? _default;
+
+  late final _ValueField<int> _raw;
+
+  /// Whether [realize] has run, which is what tells the setter below whether
+  /// there is a wrapped field to write through to.
+  bool _realized = false;
+
   @override
-  void realize(ArchetypeStorage storage) => _raw.realize(storage);
+  void realize(ArchetypeStorage storage) {
+    // The write stores `Enum.index` and the read is `values[index]`, so the
+    // two address the same member only when `values` is the enum's whole
+    // list in declaration order. A partial list is silent otherwise: it
+    // reads back the wrong member.
+    if (_values.isEmpty ||
+        !_values.every(
+          (value) =>
+              value.index < _values.length &&
+              identical(_values[value.index], value),
+        )) {
+      throw ArgumentError.value(
+        _values,
+        'values',
+        'hasEnum indexes `values` by Enum.index, so it must be the whole '
+            'values list the enum declares',
+      );
+    }
+    _raw = _intColumn(
+      _enumIndexWidth(_values.length),
+      false,
+      _default?.index ?? 0,
+    );
+    _realized = true;
+    _raw.realize(storage);
+  }
 
   @override
   E operator [](Entity entity) => _values[_raw[entity]];
@@ -515,10 +580,16 @@ class _EnumField<E extends Enum> extends InitialPointer<E>
   void operator []=(Entity entity, E newValue) => _raw[entity] = newValue.index;
 
   @override
-  E get initialValue => _values[_raw.initialValue];
+  E get initialValue => _default ?? _values[0];
 
+  /// Written through to the wrapped field once there is one, so a default
+  /// moved after the archetype was sealed is refused by the same guard every
+  /// other column's is - see [_Field._requireUnsealed].
   @override
-  set initialValue(E newValue) => _raw.initialValue = newValue.index;
+  set initialValue(E newValue) {
+    if (_realized) _raw.initialValue = newValue.index;
+    _default = newValue;
+  }
 }
 
 // --- sub-byte fields ---------------------------------------------------
@@ -879,14 +950,29 @@ final class _Float64Field extends _ByteAlignedField<double> {
 /// casts here cannot fail.
 abstract base class _PackedField<T> extends _Field<T>
     implements NestedDeclaration {
-  _PackedField(this._bits, this._initialValue);
+  _PackedField(this._initialValue);
 
-  /// The integer field holding the packed bits. Declared and owned here, and
-  /// deliberately **not** registered with the storage itself - this field's
-  /// own [writeInitialValue] drives it, so registering both would stamp the
+  /// The integer field holding the packed bits. Owned here, and deliberately
+  /// **not** registered with the storage itself - this field's own
+  /// [writeInitialValue] drives it, so registering both would stamp the
   /// initial value twice. Which is also why [_reserve] binds it rather than
   /// realizing it.
-  final _ValueField<int> _bits;
+  ///
+  /// Built at [_reserve] and not where the column is declared, because
+  /// [_declaredBitWidth] is what picks the column class and a representation
+  /// is free to answer with a width no row can hold. Building it at the
+  /// declaration is what made `Field.packed` with a 65-bit representation
+  /// throw out of a field initialiser, before anything knew which class was
+  /// being constructed.
+  late final _ValueField<int> _bits;
+
+  /// How many bits of the row this column takes.
+  ///
+  /// Separate from [_repr] because the two are not available at the same
+  /// moment: `hasAsset` and `optCameraView` reserve from a constant while
+  /// their representation belongs to the scene and is not reachable until a
+  /// row is read. See [_AssetField].
+  int get _declaredBitWidth;
 
   /// The default the declaration named, held as the value and not as its
   /// bits. Null for a column that was given none.
@@ -900,10 +986,11 @@ abstract base class _PackedField<T> extends _Field<T>
   /// Nothing about a default sizes the column ([IntRepresentation.bitWidth]
   /// does), so deferring it moves no bits and no row.
   ///
-  /// Only the scalar packed columns defer. `hasArray` against a
-  /// representation still packs its `initialValue` where the array is
-  /// declared, so an array of assets cannot be written as a field
-  /// initialiser yet.
+  /// `hasArray` against a representation defers the same way for the same
+  /// reason - see [_PackedArrayField._broadcast]. What still stops an array
+  /// of assets being written as a field initialiser is the other half: an
+  /// array is no [NestedDeclaration], so nothing addresses the handles inside
+  /// it and packing them at realize throws "no scene ever declared it".
   final T? _initialValue;
 
   /// The representation the stored ints mean something against.
@@ -927,13 +1014,14 @@ abstract base class _PackedField<T> extends _Field<T>
 
   @override
   void _reserve(ArchetypeStorage storage) {
+    final bits = _bits = _intColumn(_declaredBitWidth, false, 0);
     final initial = _initialValue;
     // Before the attach, so the width is reserved from the representation
     // either way and only the stamped value depends on this.
     if (initial != null) {
-      _bits.initialValue = (initial as IntRepresentable).pack();
+      bits.initialValue = (initial as IntRepresentable).pack();
     }
-    _bits.attach(storage);
+    bits.attach(storage);
   }
 
   @override
@@ -950,12 +1038,17 @@ abstract base class _PackedField<T> extends _Field<T>
 /// [_PackedField] against the representation the declaration named - which
 /// is every packed column except the camera view and the asset.
 base class _DeclaredPackedField<T> extends _PackedField<T> {
-  _DeclaredPackedField(super.bits, super.initialValue, this._declaredRepr);
+  _DeclaredPackedField(super.initialValue, this._declaredRepr);
 
   final IntRepresentation<IntRepresentable> _declaredRepr;
 
   @override
   IntRepresentation<IntRepresentable> get _repr => _declaredRepr;
+
+  /// Asked once, at [_PackedField._reserve], which is where a width the row
+  /// cannot hold is refused.
+  @override
+  int get _declaredBitWidth => _checkBitWidth(_declaredRepr);
 }
 
 /// `optCameraView`'s value half: a packed column whose representation is the
@@ -970,14 +1063,18 @@ base class _DeclaredPackedField<T> extends _PackedField<T> {
 /// that is reachable. [_AssetField] is the other.
 ///
 /// Nothing about the table sizes the column: the width is
-/// `CameraViewTable.viewBitWidth`, a constant, so the bits are reserved from
-/// the declaration exactly as every other packed column's are. Only a *read*
-/// consults the table, which is why resolving it later costs nothing.
+/// `CameraViewTable.viewBitWidth`, a constant, so it is a width the
+/// declaration already knows and there is nothing here for realize to work
+/// out. Only a *read* consults the table, which is why resolving it later
+/// costs nothing.
 final class _CameraViewField extends _PackedField<CameraView> {
-  _CameraViewField(super.bits, super.initialValue);
+  _CameraViewField(super.initialValue);
 
   @override
   IntRepresentation<IntRepresentable> get _repr => _storage.scene.cameraViews;
+
+  @override
+  int get _declaredBitWidth => CameraViewTable.viewBitWidth;
 }
 
 /// `hasAsset`/`optAsset`'s value half: a packed column whose representation
@@ -987,8 +1084,8 @@ final class _CameraViewField extends _PackedField<CameraView> {
 /// one [Assets] per game, it is reached through the scene, and a field
 /// initialiser has no scene, so `Field.packed(assets.of<T>(), ...)` could
 /// only ever be written somewhere that already had one in hand. The width is
-/// [Assets.addressBitWidth], a constant, so the bits are reserved from the
-/// declaration exactly as every other packed column's are.
+/// [Assets.addressBitWidth], a constant, so there is nothing here for realize
+/// to work out either.
 ///
 /// Resolved once and held rather than read per access, which is where this
 /// diverges from [_CameraViewField]'s plain getter: `scene.cameraViews` is a
@@ -1006,11 +1103,14 @@ final class _CameraViewField extends _PackedField<CameraView> {
 /// column that has already realized.
 final class _AssetField<T> extends _PackedField<Asset<T>>
     implements PackedPointer<Asset<T>> {
-  _AssetField(super.bits, super.initialValue);
+  _AssetField(super.initialValue);
 
   @override
   late final IntRepresentation<IntRepresentable> _repr = _storage.scene.assets
       .of<T>();
+
+  @override
+  int get _declaredBitWidth => Assets.addressBitWidth;
 
   @override
   int packedAt(Entity entity) => _bits[entity];
@@ -1024,7 +1124,7 @@ final class _AssetField<T> extends _PackedField<Asset<T>>
 final class _PackedPointerField<T extends IntRepresentable>
     extends _DeclaredPackedField<T>
     implements PackedPointer<T> {
-  _PackedPointerField(super.bits, super.initialValue, super.repr);
+  _PackedPointerField(super.initialValue, super.repr);
 
   @override
   int packedAt(Entity entity) => _bits[entity];
@@ -1339,7 +1439,6 @@ abstract base class _ArrayField<T>
         'Anything later is resizing a row that has already been laid out.',
       );
     }
-    _checkArrayLength(newLength);
     _length = newLength;
   }
 
@@ -1351,6 +1450,12 @@ abstract base class _ArrayField<T>
 
   /// [realize] without the registration - see [_Field.attach].
   void attach(ArchetypeStorage storage) {
+    // Here and not at either place a length is written, so the declaration
+    // and the prefab's `length =` are refused by one rule at one moment -
+    // and so the refusal names the class being laid out. A length that would
+    // be legal on its own is still wrong once a prefab has shortened it, and
+    // this is the first line that sees the number the row will actually get.
+    _checkArrayLength(_length);
     _storage = storage;
     _realized = true;
     _reserve(storage);
@@ -1833,24 +1938,59 @@ final class _Float64ArrayField extends _ByteAlignedArrayField<double> {
 /// [T] is unbounded here for [_PackedField]'s reason, and the two casts
 /// cannot fail for the same one.
 final class _PackedArrayField<T> extends _ArrayField<T> {
-  _PackedArrayField(_ArrayField<int> bits, this._repr)
-    : _bits = bits,
-      super(bits.length);
+  _PackedArrayField(
+    super.length,
+    this._repr,
+    this._broadcast,
+    this._perElement,
+  );
 
-  final _ArrayField<int> _bits;
   final IntRepresentation<IntRepresentable> _repr;
 
-  /// Both halves delegated, so the two can never disagree about how many
-  /// elements there are: the integer array underneath is what reserves them,
-  /// and a length moved on this one has to reach it.
-  @override
-  int get length => _bits.length;
+  /// The one value every element starts at, or null when `hasArrayOf` named
+  /// one each. Held as the value and packed at [_reserve], for
+  /// [_PackedField._initialValue]'s reason: `pack` is the representation's
+  /// own code and a declaration runs none.
+  final T? _broadcast;
+
+  /// One value per element, from `hasArrayOf`, or null.
+  final List<T>? _perElement;
+
+  /// The integer array holding the packed elements, built at [_reserve]
+  /// because its width comes from [_repr] and its length is not final until
+  /// then - see [DataArrayPointer.length].
+  late final _ArrayField<int> _bits;
 
   @override
-  set length(int newLength) => _bits.length = newLength;
-
-  @override
-  void _reserve(ArchetypeStorage storage) => _bits.attach(storage);
+  void _reserve(ArchetypeStorage storage) {
+    final broadcast = _broadcast;
+    final perElement = _perElement;
+    if (broadcast == null && perElement == null) {
+      throw ArgumentError.value(
+        null,
+        'initialValue',
+        'a ${_repr.runtimeType} array needs one. The bits an unwritten '
+            'element holds are 0, which a representation is under no '
+            'obligation to have a value for, so the first read would throw '
+            'out of unpack. Pass the value every element starts at, or '
+            'declare the column with optArray and let unwritten elements '
+            'read null.',
+      );
+    }
+    final bits = _bits = _intArrayColumn(
+      length,
+      _checkBitWidth(_repr),
+      false,
+      (broadcast as IntRepresentable?)?.pack(),
+      perElement == null
+          ? null
+          : <int>[
+              for (final value in perElement)
+                (value as IntRepresentable).pack(),
+            ],
+    );
+    bits.attach(storage);
+  }
 
   @override
   T get(Entity entity, int index) {
@@ -1969,15 +2109,26 @@ final class _OptionalArrayField<T> extends _ArrayField<T?> {
 // Declaring a column
 // ---------------------------------------------------------------------------
 //
-// Everything from here to `_ColumnDescriptor` builds a column and reserves
-// nothing. A declaration runs in a field initialiser, where there is no
+// Everything from here to `_ColumnDescriptor` names a column and works
+// nothing out. A declaration runs in a field initialiser, where there is no
 // archetype and no allocation cursor to take bits from, so the row space is
-// taken afterwards - see [_Declared].
+// taken afterwards - see [_Declared] - and so is every step that could refuse
+// what was written.
+//
+// The width dispatch below is part of that. `hasUint8` names `_Uint8Field`
+// and does not ask a `switch` which class 8 unsigned bits are, because the
+// method already said. What is left in `_intColumn` is the case a
+// declaration cannot answer: a width that comes off a representation or off
+// an enum's member count, which is worked out at realize by the column that
+// needs it.
 
 /// A zero- or negative-length array is rejected rather than quietly accepted:
 /// every index into it would be out of range, so it can only be a caller
-/// mistake, and catching it where the length is written beats a `RangeError`
-/// out of every access at runtime.
+/// mistake, and catching it before the elements are reserved beats a
+/// `RangeError` out of every access at runtime.
+///
+/// Called from `_ArrayField.attach` and nowhere else, so it sees the length
+/// the row is about to get rather than the one the declaration named.
 void _checkArrayLength(int length) {
   if (length < 1) {
     throw ArgumentError.value(length, 'length', 'must be at least 1');
@@ -2007,6 +2158,13 @@ int _checkBitWidth(IntRepresentation<Object?> repr) {
 /// One `switch` and no second table of widths: `_ByteAlignedField` carries
 /// each width as a constant of its own class, so adding a rung is a class and
 /// a case, not a third place to keep in step.
+///
+/// **Reached only from a realize, never from a declaration.** A width a
+/// method named is the class that method names; what comes here is a width
+/// derived from something the declaration was handed - a representation's
+/// [IntRepresentation.bitWidth], an enum's member count - and deriving it is
+/// the step that can fail, which is why the throw below is now a resolve-time
+/// failure that `ArchetypeDataDescriptor.realize` can attribute to a prefab.
 _ValueField<int> _intColumn(int bitWidth, bool signed, int initialValue) {
   if (bitWidth < 8) {
     return signed
@@ -2027,27 +2185,16 @@ _ValueField<int> _intColumn(int bitWidth, bool signed, int initialValue) {
 }
 
 _ValueField<double> _floatColumn(int bitWidth, double initialValue) =>
-    bitWidth == 32
-    ? _Float32Field(initialValue)
-    : _Float64Field(initialValue);
+    bitWidth == 32 ? _Float32Field(initialValue) : _Float64Field(initialValue);
 
-/// [_intColumn] behind a presence flag, so "no value" is a state of its own.
-_DefaultableOptionalField<int> _optIntColumn(
-  int bitWidth,
-  bool signed,
-  int? initialValue,
-) => _DefaultableOptionalField<int>(
-  _intColumn(bitWidth, signed, initialValue ?? 0),
-  initialValue != null,
-);
-
-_DefaultableOptionalField<double> _optFloatColumn(
-  int bitWidth,
-  double? initialValue,
-) => _DefaultableOptionalField<double>(
-  _floatColumn(bitWidth, initialValue ?? 0.0),
-  initialValue != null,
-);
+/// [value] behind a presence flag, so "no value" is a state of its own.
+///
+/// The caller builds the value half, because the caller is the `opt*` method
+/// that already knows which width it means.
+_DefaultableOptionalField<T> _optColumn<T>(
+  _ValueField<T> value,
+  T? initialValue,
+) => _DefaultableOptionalField<T>(value, initialValue != null);
 
 _NativeArrayField<int> _intArrayColumn(
   int length,
@@ -2093,60 +2240,43 @@ _NativeArrayField<double> _floatArrayColumn(
 ///
 /// [broadcast] is one value for every element and [perElement] is one each;
 /// both `null` asks for the element's own zero - which a native width has and
-/// a representation does not, so the representation branch refuses it by name.
+/// a representation does not, so `_PackedArrayField._reserve` refuses it by
+/// name.
+///
+/// The `switch` stays at the declaration where the other width dispatches
+/// left it, and that is the one place this file still picks a class from an
+/// argument. It can be here because it cannot fail: [DataElement] is sealed,
+/// the four native cases are `const` members of it, and every rung they name
+/// exists. The representation case names one class whatever the
+/// representation says, and what that width decides is settled inside it.
 _ArrayField<T> _arrayColumn<T>(
   DataElement<T> element,
   int length,
   T? broadcast,
   List<T>? perElement,
 ) {
-  _checkArrayLength(length);
   switch (element) {
     case IntElement(:final bitWidth, :final signed):
       return _intArrayColumn(
-            length,
-            bitWidth,
-            signed,
-            broadcast as int?,
-            perElement as List<int>?,
-          )
-          as _ArrayField<T>;
+        length,
+        bitWidth,
+        signed,
+        broadcast as int?,
+        perElement as List<int>?,
+      ) as _ArrayField<T>;
     case FloatElement(:final bitWidth):
       return _floatArrayColumn(
-            length,
-            bitWidth,
-            broadcast as double?,
-            perElement as List<double>?,
-          )
-          as _ArrayField<T>;
+        length,
+        bitWidth,
+        broadcast as double?,
+        perElement as List<double>?,
+      ) as _ArrayField<T>;
     case IntRepresentation<IntRepresentable>():
-      final repr = element as IntRepresentation<IntRepresentable>;
-      if (broadcast == null && perElement == null) {
-        throw ArgumentError.value(
-          null,
-          'initialValue',
-          'a ${repr.runtimeType} array needs one. The bits an unwritten '
-              'element holds are 0, which a representation is under no '
-              'obligation to have a value for, so the first read would throw '
-              'out of unpack. Pass the value every element starts at, or '
-              'declare the column with optArray and let unwritten elements '
-              'read null.',
-        );
-      }
       return _PackedArrayField<T>(
-        _intArrayColumn(
-          length,
-          _checkBitWidth(repr),
-          false,
-          (broadcast as IntRepresentable?)?.pack(),
-          perElement == null
-              ? null
-              : <int>[
-                  for (final value in perElement)
-                    (value as IntRepresentable).pack(),
-                ],
-        ),
-        repr,
+        length,
+        element as IntRepresentation<IntRepresentable>,
+        broadcast,
+        perElement,
       );
   }
 }
@@ -2166,11 +2296,9 @@ _Field<T> _elementColumn<T>(DataElement<T> element, T? initialValue) {
       return _floatColumn(bitWidth, (initialValue as double?) ?? 0.0)
           as _Field<T>;
     case IntRepresentation<IntRepresentable>():
-      final repr = element as IntRepresentation<IntRepresentable>;
       return _DeclaredPackedField<T>(
-        _intColumn(_checkBitWidth(repr), false, 0),
         initialValue,
-        repr,
+        element as IntRepresentation<IntRepresentable>,
       );
   }
 }
@@ -2195,170 +2323,161 @@ int _enumIndexWidth(int count) {
   );
 }
 
-/// Every `DataDescriptor` method, answered by building the column and handing
-/// it to [_declared].
+/// Every `DataDescriptor` method, answered by naming a column and handing it
+/// to [_declared].
 ///
 /// The two descriptors below differ by exactly that one step - a `Field.*`
 /// static keeps nothing, and a describe pass records what it declared so the
 /// archetype can realize it with everything else - so the vocabulary is
 /// written once here and each of them says only what [_declared] does with a
 /// column.
+///
+/// Each method names the class it means rather than deriving it. `hasUint8`
+/// is `_Uint8Field`, not `_intColumn(8, false, ...)`: the method already
+/// carries the width and the signedness, and asking a `switch` to find them
+/// again is resolution's work done where nothing has been collected yet. What
+/// is left over runs at realize - see [_Declared].
 abstract base class _ColumnDescriptor implements DataDescriptor {
   const _ColumnDescriptor();
 
-  /// Called with each column as it is built, and returns it - which is what
+  /// Called with each column as it is named, and returns it - which is what
   /// keeps every method below one expression.
   D _declared<D extends ScannableField>(D column);
 
   @override
   InitialPointer<bool> hasBool([bool initialValue = false]) =>
-      _declared(_BoolField(_intColumn(1, false, initialValue ? 1 : 0)));
+      _declared(_BoolField(_SubByteUintField(1, initialValue ? 1 : 0)));
 
   @override
   InitialPointer<int> hasUint1([int initialValue = 0]) =>
-      _declared(_intColumn(1, false, initialValue));
+      _declared(_SubByteUintField(1, initialValue));
   @override
   InitialPointer<int> hasInt1([int initialValue = 0]) =>
-      _declared(_intColumn(1, true, initialValue));
+      _declared(_SubByteIntField(1, initialValue));
   @override
   InitialPointer<int> hasUint2([int initialValue = 0]) =>
-      _declared(_intColumn(2, false, initialValue));
+      _declared(_SubByteUintField(2, initialValue));
   @override
   InitialPointer<int> hasInt2([int initialValue = 0]) =>
-      _declared(_intColumn(2, true, initialValue));
+      _declared(_SubByteIntField(2, initialValue));
   @override
   InitialPointer<int> hasUint4([int initialValue = 0]) =>
-      _declared(_intColumn(4, false, initialValue));
+      _declared(_SubByteUintField(4, initialValue));
   @override
   InitialPointer<int> hasInt4([int initialValue = 0]) =>
-      _declared(_intColumn(4, true, initialValue));
+      _declared(_SubByteIntField(4, initialValue));
   @override
   InitialPointer<int> hasUint8([int initialValue = 0]) =>
-      _declared(_intColumn(8, false, initialValue));
+      _declared(_Uint8Field(initialValue));
   @override
   InitialPointer<int> hasInt8([int initialValue = 0]) =>
-      _declared(_intColumn(8, true, initialValue));
+      _declared(_Int8Field(initialValue));
   @override
   InitialPointer<int> hasUint16([int initialValue = 0]) =>
-      _declared(_intColumn(16, false, initialValue));
+      _declared(_Uint16Field(initialValue));
   @override
   InitialPointer<int> hasInt16([int initialValue = 0]) =>
-      _declared(_intColumn(16, true, initialValue));
+      _declared(_Int16Field(initialValue));
   @override
   InitialPointer<int> hasUint32([int initialValue = 0]) =>
-      _declared(_intColumn(32, false, initialValue));
+      _declared(_Uint32Field(initialValue));
   @override
   InitialPointer<int> hasInt32([int initialValue = 0]) =>
-      _declared(_intColumn(32, true, initialValue));
+      _declared(_Int32Field(initialValue));
   @override
   InitialPointer<int> hasUint64([int initialValue = 0]) =>
-      _declared(_intColumn(64, false, initialValue));
+      _declared(_Uint64Field(initialValue));
   @override
   InitialPointer<int> hasInt64([int initialValue = 0]) =>
-      _declared(_intColumn(64, true, initialValue));
+      _declared(_Int64Field(initialValue));
 
   /// Signed 64-bit, like [hasInt64] and for its reason: `Entity.pack` shifts
   /// the archetype id up into the sign position, so only a signed slot
   /// round-trips every handle unchanged.
   @override
-  InitialPointer<Entity> hasEntity([Entity? initialValue]) => _declared(
-    _EntityHandleField(_intColumn(64, true, initialValue?.value ?? 0)),
-  );
+  InitialPointer<Entity> hasEntity([Entity? initialValue]) =>
+      _declared(_EntityHandleField(_Int64Field(initialValue?.value ?? 0)));
 
-  /// Unsigned, and as narrow as the member count allows - see
-  /// [_enumIndexWidth].
+  /// Unsigned, and as narrow as the member count allows - which is the one
+  /// thing here the declaration cannot settle, so [_EnumField] settles it at
+  /// realize. See [_enumIndexWidth].
   @override
-  InitialPointer<E> hasEnum<E extends Enum>(List<E> values, [E? initialValue]) {
-    // The write stores `Enum.index` and the read is `values[index]`, so the
-    // two address the same member only when `values` is the enum's whole
-    // list in declaration order. Checked here, at declare time, because a
-    // partial list is silent otherwise: it reads back the wrong member.
-    assert(
-      values.isNotEmpty &&
-          values.every(
-            (value) =>
-                value.index < values.length &&
-                identical(values[value.index], value),
-          ),
-      'hasEnum indexes `values` by Enum.index, so it must be the whole '
-      'values list the enum declares.',
-    );
-
-    return _declared(
-      _EnumField<E>(
-        _intColumn(
-          _enumIndexWidth(values.length),
-          false,
-          initialValue?.index ?? 0,
-        ),
-        values,
-      ),
-    );
-  }
+  InitialPointer<E> hasEnum<E extends Enum>(
+    List<E> values, [
+    E? initialValue,
+  ]) => _declared(_EnumField<E>(values, initialValue));
 
   @override
   InitialPointer<double> hasFloat32([double initialValue = 0.0]) =>
-      _declared(_floatColumn(32, initialValue));
+      _declared(_Float32Field(initialValue));
   @override
   InitialPointer<double> hasFloat64([double initialValue = 0.0]) =>
-      _declared(_floatColumn(64, initialValue));
+      _declared(_Float64Field(initialValue));
 
   @override
-  InitialPointer<int?> optUint1([int? initialValue]) =>
-      _declared(_optIntColumn(1, false, initialValue));
+  InitialPointer<int?> optUint1([int? initialValue]) => _declared(
+    _optColumn(_SubByteUintField(1, initialValue ?? 0), initialValue),
+  );
   @override
-  InitialPointer<int?> optInt1([int? initialValue]) =>
-      _declared(_optIntColumn(1, true, initialValue));
+  InitialPointer<int?> optInt1([int? initialValue]) => _declared(
+    _optColumn(_SubByteIntField(1, initialValue ?? 0), initialValue),
+  );
   @override
-  InitialPointer<int?> optUint2([int? initialValue]) =>
-      _declared(_optIntColumn(2, false, initialValue));
+  InitialPointer<int?> optUint2([int? initialValue]) => _declared(
+    _optColumn(_SubByteUintField(2, initialValue ?? 0), initialValue),
+  );
   @override
-  InitialPointer<int?> optInt2([int? initialValue]) =>
-      _declared(_optIntColumn(2, true, initialValue));
+  InitialPointer<int?> optInt2([int? initialValue]) => _declared(
+    _optColumn(_SubByteIntField(2, initialValue ?? 0), initialValue),
+  );
   @override
-  InitialPointer<int?> optUint4([int? initialValue]) =>
-      _declared(_optIntColumn(4, false, initialValue));
+  InitialPointer<int?> optUint4([int? initialValue]) => _declared(
+    _optColumn(_SubByteUintField(4, initialValue ?? 0), initialValue),
+  );
   @override
-  InitialPointer<int?> optInt4([int? initialValue]) =>
-      _declared(_optIntColumn(4, true, initialValue));
+  InitialPointer<int?> optInt4([int? initialValue]) => _declared(
+    _optColumn(_SubByteIntField(4, initialValue ?? 0), initialValue),
+  );
   @override
   InitialPointer<int?> optUint8([int? initialValue]) =>
-      _declared(_optIntColumn(8, false, initialValue));
+      _declared(_optColumn(_Uint8Field(initialValue ?? 0), initialValue));
   @override
   InitialPointer<int?> optInt8([int? initialValue]) =>
-      _declared(_optIntColumn(8, true, initialValue));
+      _declared(_optColumn(_Int8Field(initialValue ?? 0), initialValue));
   @override
   InitialPointer<int?> optUint16([int? initialValue]) =>
-      _declared(_optIntColumn(16, false, initialValue));
+      _declared(_optColumn(_Uint16Field(initialValue ?? 0), initialValue));
   @override
   InitialPointer<int?> optInt16([int? initialValue]) =>
-      _declared(_optIntColumn(16, true, initialValue));
+      _declared(_optColumn(_Int16Field(initialValue ?? 0), initialValue));
   @override
   InitialPointer<int?> optUint32([int? initialValue]) =>
-      _declared(_optIntColumn(32, false, initialValue));
+      _declared(_optColumn(_Uint32Field(initialValue ?? 0), initialValue));
   @override
   InitialPointer<int?> optInt32([int? initialValue]) =>
-      _declared(_optIntColumn(32, true, initialValue));
+      _declared(_optColumn(_Int32Field(initialValue ?? 0), initialValue));
   @override
   InitialPointer<int?> optUint64([int? initialValue]) =>
-      _declared(_optIntColumn(64, false, initialValue));
+      _declared(_optColumn(_Uint64Field(initialValue ?? 0), initialValue));
   @override
   InitialPointer<int?> optInt64([int? initialValue]) =>
-      _declared(_optIntColumn(64, true, initialValue));
+      _declared(_optColumn(_Int64Field(initialValue ?? 0), initialValue));
 
   /// Signed 64-bit beside a presence flag, the signedness for [hasEntity]'s
   /// reason.
   @override
   InitialPointer<Entity?> optEntity([Entity? initialValue]) => _declared(
-    _OptionalEntityHandleField(_optIntColumn(64, true, initialValue?.value)),
+    _OptionalEntityHandleField(
+      _optColumn(_Int64Field(initialValue?.value ?? 0), initialValue?.value),
+    ),
   );
 
   @override
   InitialPointer<double?> optFloat32([double? initialValue]) =>
-      _declared(_optFloatColumn(32, initialValue));
+      _declared(_optColumn(_Float32Field(initialValue ?? 0.0), initialValue));
   @override
   InitialPointer<double?> optFloat64([double? initialValue]) =>
-      _declared(_optFloatColumn(64, initialValue));
+      _declared(_optColumn(_Float64Field(initialValue ?? 0.0), initialValue));
 
   @override
   DataArrayPointer<T> hasArray<T>(
@@ -2379,22 +2498,13 @@ abstract base class _ColumnDescriptor implements DataDescriptor {
     DataElement<T> element,
     int length, [
     T? initialValue,
-  ]) {
-    _checkArrayLength(length);
-    return _declared(_OptionalArrayField<T>(length, element, initialValue));
-  }
+  ]) => _declared(_OptionalArrayField<T>(length, element, initialValue));
 
   @override
   PackedPointer<T> hasPacked<T extends IntRepresentable>(
     IntRepresentation<T> repr,
     T initialValue,
-  ) => _declared(
-    _PackedPointerField<T>(
-      _intColumn(_checkBitWidth(repr), false, 0),
-      initialValue,
-      repr,
-    ),
-  );
+  ) => _declared(_PackedPointerField<T>(initialValue, repr));
 
   @override
   DataPointer<T?> optPacked<T extends IntRepresentable>(
@@ -2402,51 +2512,37 @@ abstract base class _ColumnDescriptor implements DataDescriptor {
     T? initialValue,
   ]) => _declared(
     _OptionalField<T>(
-      _DeclaredPackedField<T>(
-        _intColumn(_checkBitWidth(repr), false, 0),
-        initialValue,
-        repr,
-      ),
+      _DeclaredPackedField<T>(initialValue, repr),
       initialValue != null,
     ),
   );
 
   /// The width is a constant and the table is not, which is the whole shape
-  /// of this column: `CameraViewTable.viewBitWidth` reserves the bits from
-  /// the declaration, and [_CameraViewField] reads the scene's table at
-  /// realize, where a scene is reachable.
+  /// of this column: `CameraViewTable.viewBitWidth` sizes it, and
+  /// [_CameraViewField] reads the scene's table at realize, where a scene is
+  /// reachable.
   @override
   DataPointer<CameraView?> optCameraView([CameraView? initialValue]) =>
       _declared(
         _OptionalField<CameraView>(
-          _CameraViewField(
-            _intColumn(CameraViewTable.viewBitWidth, false, 0),
-            initialValue,
-          ),
+          _CameraViewField(initialValue),
           initialValue != null,
         ),
       );
 
-  /// The same split as [optCameraView]: [Assets.addressBitWidth] reserves the
-  /// bits here, and [_AssetField] reads the registering scene's table at
-  /// realize. `Asset.of` builds an inert handle, so this reaches no game.
+  /// The same split as [optCameraView]: [Assets.addressBitWidth] sizes it
+  /// here, and [_AssetField] reads the registering scene's table at realize.
+  /// `Asset.of` builds an inert handle, so this reaches no game.
   @override
-  PackedPointer<Asset<T>> hasAsset<T>(AssetKey<T> key) => _declared(
-    _AssetField<T>(
-      _intColumn(Assets.addressBitWidth, false, 0),
-      Asset.of(key),
-    ),
-  );
+  PackedPointer<Asset<T>> hasAsset<T>(AssetKey<T> key) =>
+      _declared(_AssetField<T>(Asset.of(key)));
 
   @override
   DataPointer<Asset<T>?> optAsset<T>([AssetKey<T>? key]) {
     final initialValue = key == null ? null : Asset.of(key);
     return _declared(
       _OptionalField<Asset<T>>(
-        _AssetField<T>(
-          _intColumn(Assets.addressBitWidth, false, 0),
-          initialValue,
-        ),
+        _AssetField<T>(initialValue),
         initialValue != null,
       ),
     );
@@ -2466,7 +2562,7 @@ abstract base class _ColumnDescriptor implements DataDescriptor {
 
 /// The descriptor a `Field.*` static declares against.
 ///
-/// It is `const`, holds nothing and reaches nothing: `Field.float64(3)` builds
+/// It is `const`, holds nothing and reaches nothing: `Field.float64(3)` names
 /// a column and hands it straight back, so a field initialiser needs no
 /// archetype, no scene and no pass open around it. That is the whole
 /// difference between this and the ambient window it replaced - there is no
@@ -2551,9 +2647,39 @@ final class ArchetypeDataDescriptor extends _ColumnDescriptor {
   /// that is what leaves an array's length movable and a camera view's table
   /// resolvable right up to this line. Called once, after the describe
   /// passes and before `ArchetypeStorage.seal`.
+  ///
+  /// It is also where a column that cannot be laid out is reported. A
+  /// declaration works nothing out, so a bad width, a bad length and a
+  /// missing element default all reach this line instead of throwing out of
+  /// a field initialiser - and here there is a prefab to name, which is what
+  /// the constructor did not have. Two things follow from that and neither
+  /// was true before: the message says whose row was being laid out, and a
+  /// declaration nothing ever collects cannot fail at all.
+  ///
+  /// The prefab and not the class the column was *written* in, when a mixin
+  /// wrote it: nothing at run time carries that, and a mixin's columns are
+  /// laid into the row of every prefab that applies it, so the prefab is the
+  /// archetype this reservation is about either way.
+  ///
+  /// [ArgumentError] and not every error, so the wrapping says "what was
+  /// declared is wrong" and a failure from inside the reservation machinery
+  /// still reads as itself.
   void realize() {
     for (final column in _columns) {
-      column.realize(_storage);
+      try {
+        column.realize(_storage);
+      } on ArgumentError catch (error, stackTrace) {
+        Error.throwWithStackTrace(
+          StateError(
+            '${_storage.prefab.runtimeType} declares a column that cannot be '
+            'laid out: ${error.message}\n'
+            'The declaration itself works nothing out, so this is reported '
+            'here, where the class laying out the row is known, rather than '
+            'out of the field initialiser that wrote it.',
+          ),
+          stackTrace,
+        );
+      }
     }
   }
 }
